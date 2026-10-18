@@ -162,4 +162,24 @@ public class OvertakingTests
 
         Assert.True(sim.GetVehicle(oncoming).Speed < before - 0.5f, "oncoming car did not slow down");
     }
+
+    [Fact]
+    public void StandingQueue_IsNotOvertaken()
+    {
+        var road = new Road();
+        var sim = new Simulation(road.Net, seed: 1);
+        int wreck = sim.SpawnVehicle(road.Forward, 400f, 0f);
+        sim.Crash(wreck);
+        int queued = sim.SpawnVehicle(road.Forward, 380f, 0f);
+        sim.SetDriver(queued, 0f, 1f, 0f);
+        int impatient = sim.SpawnVehicle(road.Forward, 360f, 8f);
+        sim.SetDriver(impatient, 0f, 1f, 0f);
+
+        for (int i = 0; i < 90 * 20; i++)
+        {
+            sim.Step();
+            Assert.Equal(OvertakePhase.None, sim.GetVehicle(impatient).Overtake);
+            Assert.Equal(OvertakePhase.None, sim.GetVehicle(queued).Overtake);
+        }
+    }
 }

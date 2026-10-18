@@ -4,7 +4,18 @@ namespace TransportMadness.Sim;
 public enum OvertakePhase : byte { None, MovingOut, Passing, Returning }
 
 /// <param name="Lateral">0 in the vehicle's own lane, 1 fully in the oncoming lane.</param>
-public readonly record struct VehicleState(LaneId Lane, float Position, float Speed, float Lateral, OvertakePhase Overtake);
+public enum VehicleKind : byte
+{
+    Car,
+    /// <summary>Crashed or broken-down vehicle: stationary, blocks the road until a rescue crew clears it.</summary>
+    Wreck,
+    /// <summary>Wreckage spread into the lane next to a head-on collision.</summary>
+    Debris,
+    /// <summary>Slot of a vehicle that no longer exists (ids are reused).</summary>
+    Removed,
+}
+
+public readonly record struct VehicleState(LaneId Lane, float Position, float Speed, float Lateral, OvertakePhase Overtake, VehicleKind Kind);
 
 /// <summary>
 /// Deterministic fixed-step traffic simulation on a <see cref="RoadNetwork"/> (ADR 0002, 0003).
@@ -23,6 +34,7 @@ public sealed partial class Simulation
     const float MinGap = 2.0f;
     const float TimeHeadway = 1.5f;
     const float MaxBraking = 9.0f; // physical limit; keeps lane-change speed mismatches from producing absurd decelerations
+    const float BrakeJerk = 15f; // braking builds up at most this fast (m/s^3): drivers need a moment to react
     static readonly float TwoSqrtAB = 2f * MathF.Sqrt(MaxAccel * ComfortDecel);
 
     readonly RoadNetwork _net;
@@ -33,7 +45,9 @@ public sealed partial class Simulation
     readonly float[] _laneLimit;
     readonly int[] _laneEndNode;
 
-    int _count;
+    int _count; // slots in use, including removed ones
+    int _active; // vehicles that currently exist
+    readonly Stack<int> _freeSlots = new();
     int[] _lane = new int[64];
     float[] _pos = new float[64];
     float[] _speed = new float[64];
@@ -52,6 +66,8 @@ public sealed partial class Simulation
     int[] _target = new int[64]; // vehicle being overtaken, or -1
     bool[] _aborting = new bool[64];
     bool[] _keepLane = new bool[64];
+    VehicleKind[] _kind = new VehicleKind[64];
+    int[] _incident = new int[64]; // incident this wreck belongs to, or -1
     float[] _extraGap = new float[64]; // closing obstacle formed by an oncoming overtaker: gap ...
     float[] _extraSpeed = new float[64]; // ... and its speed as seen by us (negative: coming at us)
     float[] _oncGap = new float[64]; // nearest oncoming vehicle ahead of an overtaker
@@ -85,6 +101,7 @@ public sealed partial class Simulation
     }
 
     public RoadNetwork Network => _net;
+    /// <summary>Number of vehicle slots ever used; valid ids are below this. Check <see cref="VehicleKind.Removed"/>.</summary>
     public int VehicleCount => _count;
     public long Tick { get; private set; }
 
@@ -130,6 +147,8 @@ public sealed partial class Simulation
         for (int i = 0; i < _count; i++)
         {
             Mix((ulong)_lane[i]);
+            Mix((ulong)_kind[i]);
+            Mix((ulong)(_incident[i] + 1));
             Mix((ulong)_nextLane[i]);
             MixF(_pos[i]);
             MixF(_speed[i]);
@@ -153,8 +172,14 @@ public sealed partial class Simulation
 
     public int SpawnVehicle(LaneId lane, float position, float speed)
     {
-        if (_count == _lane.Length) Grow();
-        int id = _count++;
+        int id;
+        if (_freeSlots.Count > 0) id = _freeSlots.Pop();
+        else
+        {
+            if (_count == _lane.Length) Grow();
+            id = _count++;
+        }
+        _active++;
         _lane[id] = lane.Value;
         _pos[id] = position;
         _speed[id] = speed;
@@ -164,6 +189,7 @@ public sealed partial class Simulation
         _aggression[id] = 0.5f;
         _attention[id] = 1f;
         _halted[id] = false;
+        _accel[id] = 0f;
         _cooldown[id] = 0;
         _stuck[id] = 0f;
         _lat[id] = 0f;
@@ -171,8 +197,9 @@ public sealed partial class Simulation
         _target[id] = -1;
         _aborting[id] = false;
         _keepLane[id] = false;
+        _kind[id] = VehicleKind.Car;
+        _incident[id] = -1;
         _nextLane[id] = ChooseNextLane(lane).Value;
-        OnVehicleSpawned(id);
         RebuildOrder();
         return id;
     }
@@ -202,7 +229,7 @@ public sealed partial class Simulation
     public void SetKeepLane(int vehicle, bool keepLane) => _keepLane[vehicle] = keepLane;
 
     public VehicleState GetVehicle(int id) =>
-        new(new LaneId(_lane[id]), _pos[id], _speed[id], _lat[id], (OvertakePhase)_phase[id]);
+        new(new LaneId(_lane[id]), _pos[id], _speed[id], _lat[id], (OvertakePhase)_phase[id], _kind[id]);
 
     public void Step()
     {
@@ -224,7 +251,8 @@ public sealed partial class Simulation
                 interaction = MathF.Max(interaction, Interaction(v, _extraGap[i], _extraSpeed[i]));
             interaction = MathF.Max(interaction, JunctionInteraction(i, v));
 
-            _accel[i] = MathF.Max(-MaxBraking, MaxAccel * (1f - ratio * ratio * ratio * ratio - interaction));
+            float wanted = MathF.Max(-MaxBraking, MaxAccel * (1f - ratio * ratio * ratio * ratio - interaction));
+            _accel[i] = MathF.Max(wanted, _accel[i] - BrakeJerk * StepSeconds);
         }
         for (int i = 0; i < _count; i++)
         {
@@ -233,8 +261,8 @@ public sealed partial class Simulation
             _pos[i] += _speed[i] * StepSeconds;
             AdvanceLane(i);
         }
-        DetectIncidents();
         RebuildOrder();
+        DetectIncidents();
         Tick++;
     }
 
@@ -260,8 +288,8 @@ public sealed partial class Simulation
 
     /// <summary>
     /// The vehicle directly ahead in the same lane, or failing that the rearmost one on the lane about to be entered.
-    /// Vehicles that are out in the oncoming lane do not count as being in this one, and a vehicle that is itself out
-    /// there has no leader (it watches oncoming traffic instead) unless it is aborting back behind its target.
+    /// Vehicles that are out in the oncoming lane do not count as being in this one; a vehicle that is itself out
+    /// there follows the others out there (and watches oncoming traffic separately).
     /// </summary>
     bool FindLeader(int i, out int leader, out float gap, out float leadSpeed)
     {
@@ -272,12 +300,32 @@ public sealed partial class Simulation
 
         if (_lat[i] >= HomeLaneLat)
         {
+            // Out in the oncoming lane: only others out there in the same direction are in the way ...
+            bool found = false;
+            for (int r = _rankInOrder[i] + 1; r < _laneStart[lane + 1]; r++)
+            {
+                int j = _order[r];
+                if (_lat[j] < HomeLaneLat) continue;
+                leader = j;
+                gap = _pos[j] - VehicleLength - _pos[i];
+                leadSpeed = _speed[j];
+                found = true;
+                break;
+            }
+            // ... and an aborting overtaker is on its way back in behind its target.
             int t = _target[i];
-            if (!(_aborting[i] && t >= 0 && _lane[t] == lane)) return false;
-            leader = t;
-            gap = _pos[t] - VehicleLength - _pos[i];
-            leadSpeed = _speed[t];
-            return true;
+            if (_aborting[i] && t >= 0 && _lane[t] == lane)
+            {
+                float g = _pos[t] - VehicleLength - _pos[i];
+                if (!found || g < gap)
+                {
+                    leader = t;
+                    gap = g;
+                    leadSpeed = _speed[t];
+                    found = true;
+                }
+            }
+            return found;
         }
 
         int end = _laneStart[lane + 1];
@@ -328,12 +376,14 @@ public sealed partial class Simulation
     void RebuildOrder()
     {
         Array.Clear(_laneStart);
-        for (int i = 0; i < _count; i++) _laneStart[_lane[i] + 1]++;
+        for (int i = 0; i < _count; i++)
+            if (_lane[i] >= 0) _laneStart[_lane[i] + 1]++;
         for (int l = 0; l < _net.LaneCount; l++) _laneStart[l + 1] += _laneStart[l];
 
         // Counting sort by lane, in vehicle-id order (stable, deterministic).
         for (int l = 0; l < _cursor.Length; l++) _cursor[l] = _laneStart[l];
-        for (int i = 0; i < _count; i++) _order[_cursor[_lane[i]]++] = i;
+        for (int i = 0; i < _count; i++)
+            if (_lane[i] >= 0) _order[_cursor[_lane[i]]++] = i;
 
         // Insertion sort by position within each lane; input is nearly sorted between steps.
         for (int l = 0; l < _net.LaneCount; l++)
@@ -350,7 +400,7 @@ public sealed partial class Simulation
                 _order[b + 1] = v;
             }
         }
-        for (int r = 0; r < _count; r++) _rankInOrder[_order[r]] = r;
+        for (int r = 0; r < _active; r++) _rankInOrder[_order[r]] = r;
     }
 
     // Position ascending, ties broken by id so ordering never depends on sort internals.
@@ -377,12 +427,13 @@ public sealed partial class Simulation
         Array.Resize(ref _target, n);
         Array.Resize(ref _aborting, n);
         Array.Resize(ref _keepLane, n);
+        Array.Resize(ref _kind, n);
+        Array.Resize(ref _incident, n);
         Array.Resize(ref _extraGap, n);
         Array.Resize(ref _extraSpeed, n);
         Array.Resize(ref _oncGap, n);
         Array.Resize(ref _oncSpeed, n);
         Array.Resize(ref _order, n);
         Array.Resize(ref _rankInOrder, n);
-        GrowIncidentState(n);
     }
 }

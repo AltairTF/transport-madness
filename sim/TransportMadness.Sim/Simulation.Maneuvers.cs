@@ -10,6 +10,8 @@ public sealed partial class Simulation
     const float OncomingSightLat = 0.3f; // from here on a vehicle is a hazard for oncoming traffic
     const float LateralRate = 0.8f; // lateral fraction per second: a lane change takes 1.25 s
     const float MinEndMargin = 30f;
+    const float EndAbortMargin = 30f; // an overtaker this close to a junction gives up
+    const float StandingObstacle = 15f; // oncoming vehicle this close: no room to carry on whatever its speed
 
     void DecideManoeuvres()
     {
@@ -98,18 +100,25 @@ public sealed partial class Simulation
 
         float v0 = FreeSpeed(i);
         if (!FindLeader(i, out int lead, out float gap, out float leadSpeed) || _lane[lead] != lane
-            || _halted[lead] || gap > 30f || leadSpeed > v0 * 0.85f || v0 - leadSpeed < 1.5f)
+            || _halted[lead] || leadSpeed < 1f || gap > 30f || leadSpeed > v0 * 0.85f || v0 - leadSpeed < 1.5f)
         {
             _stuck[i] = MathF.Max(0f, _stuck[i] - DecisionInterval * StepSeconds);
+            return;
+        }
+        if (HaltedAhead(lead, 80f))
+        {
+            _stuck[i] = 0f; // the slow leader is only slow because the road is blocked; passing it gains nothing
             return;
         }
         _stuck[i] += DecisionInterval * StepSeconds;
         if (_stuck[i] < 2f + 8f * _patience[i]) return;
 
+        // Pessimistic timing: the pass starts from the current speed and accelerates, so use the mean speed.
         float passSpeed = v0 * OvertakeBoost(i);
-        float relative = MathF.Max(passSpeed - leadSpeed, 2f);
+        float meanSpeed = 0.5f * (_speed[i] + passSpeed);
+        float relative = MathF.Max(meanSpeed - leadSpeed, 2f);
         float passTime = (gap + 2f * VehicleLength + 16f) / relative + 1f / LateralRate;
-        if (_laneLength[lane] - _pos[i] < passSpeed * passTime + 40f) return;
+        if (_laneLength[lane] - _pos[i] < passSpeed * passTime + EndAbortMargin + 20f) return;
 
         if (NearestOncoming(lane, oncoming.Value, _pos[i], out _, out float onGap, out float onSpeed))
         {
@@ -117,7 +126,9 @@ public sealed partial class Simulation
             if (onGap < sight)
             {
                 float perceived = onSpeed * (1f - 0.6f * (1f - _attention[i]));
-                float required = (passSpeed + perceived) * passTime + 30f * (1f - 0.5f * _aggression[i]);
+                // Inattentive drivers also underestimate how long the pass will take.
+                float believedTime = passTime * (0.6f + 0.4f * _attention[i]);
+                float required = (passSpeed + perceived) * believedTime + 30f * (1f - 0.5f * _aggression[i]);
                 if (onGap < required) return;
             }
         }
@@ -125,6 +136,19 @@ public sealed partial class Simulation
         _phase[i] = (byte)OvertakePhase.MovingOut;
         _target[i] = lead;
         _aborting[i] = false;
+    }
+
+    /// <summary>A halted vehicle (wreck, breakdown) within <paramref name="range"/> metres ahead of <paramref name="vehicle"/> in its lane.</summary>
+    bool HaltedAhead(int vehicle, float range)
+    {
+        int lane = _lane[vehicle];
+        for (int r = _rankInOrder[vehicle]; r < _laneStart[lane + 1]; r++)
+        {
+            int j = _order[r];
+            if (_pos[j] - _pos[vehicle] > range) return false;
+            if (_halted[j]) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -162,7 +186,7 @@ public sealed partial class Simulation
         }
         _overtakers.Clear();
         for (int i = 0; i < _count; i++)
-            if (_phase[i] != 0) _overtakers.Add(i);
+            if (_phase[i] != 0 && _kind[i] != VehicleKind.Removed) _overtakers.Add(i);
 
         foreach (int o in _overtakers)
         {
@@ -179,7 +203,8 @@ public sealed partial class Simulation
             }
         }
 
-        foreach (int o in _overtakers) AdvanceOvertake(o);
+        foreach (int o in _overtakers)
+            if (!_halted[o]) AdvanceOvertake(o);
     }
 
     void AdvanceOvertake(int o)
@@ -206,9 +231,14 @@ public sealed partial class Simulation
     /// </summary>
     bool ConsiderAbort(int o)
     {
-        if (_oncGap[o] >= float.MaxValue) return false;
-        float closing = _speed[o] + _oncSpeed[o];
-        if (closing < 0.1f || _oncGap[o] / closing >= 1.5f + 2f * _attention[o]) return false;
+        bool nearEnd = _laneLength[_lane[o]] - _pos[o] < EndAbortMargin;
+        if (!nearEnd)
+        {
+            if (_oncGap[o] >= float.MaxValue) return false;
+            float closing = _speed[o] + _oncSpeed[o];
+            bool tooFast = closing >= 0.1f && _oncGap[o] / closing < 1.5f + 2f * _attention[o];
+            if (!tooFast && _oncGap[o] >= StandingObstacle) return false;
+        }
 
         int t = _target[o];
         bool targetHere = t >= 0 && _lane[t] == _lane[o];
