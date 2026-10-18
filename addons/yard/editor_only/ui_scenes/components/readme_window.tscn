@@ -1,0 +1,75 @@
+[gd_scene format=3 uid="uid://woa50nl7s75b"]
+
+[ext_resource type="Script" uid="uid://cbi6iha8se2sg" path="res://addons/yard/editor_only/ui_scenes/components/readme_window.gd" id="1_jbsvw"]
+[ext_resource type="Script" uid="uid://bfyublltgtwo3" path="res://addons/yard/editor_only/classes/markdownlabel/markdownlabel.gd" id="1_xfkfm"]
+[ext_resource type="Script" uid="uid://cv5t5tg8tt0fo" path="res://addons/yard/editor_only/classes/markdownlabel/h1_format.gd" id="2_jbsvw"]
+[ext_resource type="Script" uid="uid://nlhsm3ui24tp" path="res://addons/yard/editor_only/classes/markdownlabel/h2_format.gd" id="3_jo4n4"]
+[ext_resource type="Script" uid="uid://bybkadsssodhg" path="res://addons/yard/editor_only/classes/markdownlabel/h3_format.gd" id="4_o5a66"]
+[ext_resource type="Script" uid="uid://cne86e04ci56j" path="res://addons/yard/editor_only/classes/markdownlabel/h4_format.gd" id="5_2fmg0"]
+[ext_resource type="Script" uid="uid://cewol4xb8qqd3" path="res://addons/yard/editor_only/classes/markdownlabel/h5_format.gd" id="6_3ru8o"]
+[ext_resource type="Script" uid="uid://ck5yuuybmohr2" path="res://addons/yard/editor_only/classes/markdownlabel/h6_format.gd" id="7_a16y5"]
+
+[sub_resource type="Resource" id="Resource_5v6am"]
+resource_local_to_scene = true
+script = ExtResource("2_jbsvw")
+is_bold = true
+draw_horizontal_rule = true
+
+[sub_resource type="Resource" id="Resource_8lmd3"]
+resource_local_to_scene = true
+script = ExtResource("3_jo4n4")
+is_bold = true
+override_font_color = true
+font_color = Color(0, 0, 0, 1)
+draw_horizontal_rule = true
+
+[sub_resource type="Resource" id="Resource_u72bi"]
+resource_local_to_scene = true
+script = ExtResource("4_o5a66")
+is_bold = true
+is_italic = true
+is_underlined = true
+font_color = Color(0, 0, 0, 1)
+
+[sub_resource type="Resource" id="Resource_hmvhy"]
+resource_local_to_scene = true
+script = ExtResource("5_2fmg0")
+
+[sub_resource type="Resource" id="Resource_db5ns"]
+resource_local_to_scene = true
+script = ExtResource("6_3ru8o")
+
+[sub_resource type="Resource" id="Resource_ouans"]
+resource_local_to_scene = true
+script = ExtResource("7_a16y5")
+
+[node name="ReadMeWindow" type="AcceptDialog" unique_id=86896442]
+oversampling_override = 1.0
+title = "Yet Another Resource Database — README.md"
+size = Vector2i(500, 500)
+ok_button_text = "Close"
+script = ExtResource("1_jbsvw")
+
+[node name="MarkdownLabel" type="RichTextLabel" parent="." unique_id=891083432]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -49.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 2
+bbcode_enabled = true
+selection_enabled = true
+script = ExtResource("1_xfkfm")
+h1 = SubResource("Resource_5v6am")
+h2 = SubResource("Resource_8lmd3")
+h3 = SubResource("Resource_u72bi")
+h4 = SubResource("Resource_hmvhy")
+h5 = SubResource("Resource_db5ns")
+h6 = SubResource("Resource_ouans")
+code_override_color = true
+code_override_background_color = true

@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2025-2026, Elliot Fontaine <yard-godot@elliotfontaine.anonaddy.com>
+# SPDX-FileCopyrightText: 2026-present, YARD contributors (see AUTHORS.md)
+#
+# SPDX-License-Identifier: MIT
+
+@tool
+#class_name EditorThemeUtils
+
+static var editor_theme: Theme:
+	get:
+		return EditorInterface.get_editor_theme()
+
+static var base_margin: int:
+	get:
+		return editor_theme.get_constant(&"base_margin", &"Editor")
+
+static var class_icon_size: int:
+	get:
+		return editor_theme.get_constant(&"class_icon_size", &"Editor")
+
+static var scale: float:
+	get:
+		return EditorInterface.get_editor_scale()
+
+static var color_error: Color:
+	get:
+		return editor_theme.get_color(&"error_color", &"Editor")
+
+static var color_warning: Color:
+	get:
+		return editor_theme.get_color(&"warning_color", &"Editor")
+
+static var color_message: Color:
+	get:
+		return editor_theme.get_color(&"font_color", &"Editor")
+
+static var color_success: Color:
+	get:
+		return editor_theme.get_color(&"success_color", &"Editor")
+
+
+static func get_base_color(p_dimness_ofs: float = 0.0, p_saturation_mult: float = 1.0) -> Color:
+	var settings := EditorInterface.get_editor_settings()
+
+	var c: Color = settings.get_setting("interface/theme/base_color")
+	var contrast: float = float(settings.get_setting("interface/theme/contrast"))
+
+	c.v = clamp(lerp(c.v, 0.0, contrast * p_dimness_ofs), 0.0, 1.0)
+	c.s = c.s * p_saturation_mult
+	return c
+
+
+## Returns true if [param node] belongs to the scene currently edited in the editor.
+## Used to skip theming there, since those changes would get saved and show up in VCS diffs.
+static func is_in_edited_scene(node: Node) -> bool:
+	if not Engine.is_editor_hint():
+		return false
+	var root := EditorInterface.get_edited_scene_root()
+	return root and (root == node or root.is_ancestor_of(node))

@@ -1,0 +1,191 @@
+[gd_scene format=3 uid="uid://crnac01bnyk3"]
+
+[ext_resource type="Script" uid="uid://tahli441tq7q" path="res://addons/yard/editor_only/ui_scenes/registry_table_view.gd" id="1_isv8r"]
+[ext_resource type="Script" uid="uid://0fmlvbrxn2lf" path="res://addons/yard/editor_only/classes/editor_icon_controls/editor_icon_popup_menu.gd" id="2_8g0vx"]
+[ext_resource type="Script" uid="uid://d25c0lxjdxouk" path="res://addons/yard/editor_only/classes/data_table/data_table.gd" id="2_wsykm"]
+[ext_resource type="PackedScene" uid="uid://ew8kojkf6l4i" path="res://addons/yard/editor_only/ui_scenes/components/footer.tscn" id="4_p6h1j"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_5vsn3"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_8g0vx"]
+draw_center = false
+border_color = Color(0.14117648, 0.16078432, 0.21568628, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_5vsn3"]
+content_margin_right = 3.0
+content_margin_bottom = 3.0
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1gq3u"]
+bg_color = Color(0.164, 0.1886, 0.2542, 0.8)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_p6h1j"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(1, 0.365, 0.365, 1)
+draw_center = false
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_detail = 1
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_p6h1j"]
+
+[node name="RegistryTableView" type="PanelContainer" unique_id=1120767594]
+clip_contents = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("StyleBoxEmpty_5vsn3")
+script = ExtResource("1_isv8r")
+
+[node name="EditContextMenu" type="PopupMenu" parent="." unique_id=593794315]
+unique_name_in_owner = true
+size = Vector2i(130, 65)
+item_count = 13
+item_0/text = "Delete Entry"
+item_0/id = 0
+item_1/text = "Duplicate Entry"
+item_1/id = 4
+item_2/text = "Copy String ID"
+item_2/id = 1
+item_3/text = "Copy UID"
+item_3/id = 2
+item_4/text = "Show in FileSystem"
+item_4/id = 3
+item_5/id = 100
+item_5/separator = true
+item_6/text = "Cut Cell Value"
+item_6/id = 5
+item_7/text = "Copy Cell Value"
+item_7/id = 6
+item_8/text = "Paste to Cell"
+item_8/id = 7
+item_9/id = 8
+item_9/separator = true
+item_10/text = "Select All"
+item_10/id = 9
+item_11/text = "Invert Selection"
+item_11/id = 10
+item_12/text = "Unselect"
+item_12/id = 11
+script = ExtResource("2_8g0vx")
+icon_names = Dictionary[int, String]({
+0: "Remove",
+1: "ActionCopy",
+2: "Instance",
+3: "ShowInFileSystem",
+4: "Duplicate",
+5: "ActionCut",
+6: "ActionCopy",
+7: "ActionPaste"
+})
+
+[node name="ColumnContextMenu" type="PopupMenu" parent="." unique_id=635807844]
+unique_name_in_owner = true
+oversampling_override = 1.0
+item_count = 2
+item_0/text = "Frozen"
+item_0/checkable = 1
+item_0/id = 1
+item_1/text = "Hide"
+item_1/id = 0
+script = ExtResource("2_8g0vx")
+icon_names = Dictionary[int, String]({
+0: "GuiVisibilityHidden",
+1: "Pin"
+})
+
+[node name="DeleteEntriesConfirmationDialog" type="ConfirmationDialog" parent="." unique_id=758043123]
+unique_name_in_owner = true
+title = "Please Confirm"
+initial_position = 1
+size = Vector2i(400, 100)
+ok_button_text = "Yes"
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=255515281]
+layout_mode = 2
+alignment = 2
+
+[node name="SubresourceBar" type="VBoxContainer" parent="VBoxContainer" unique_id=427454043]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="HSeparator" type="HSeparator" parent="VBoxContainer/SubresourceBar" unique_id=1957184373]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="SubresourceBarBreadcrumb" type="HBoxContainer" parent="VBoxContainer/SubresourceBar" unique_id=906492000]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="Border" type="PanelContainer" parent="VBoxContainer" unique_id=181058665]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_8g0vx")
+
+[node name="ClipChildren" type="PanelContainer" parent="VBoxContainer/Border" unique_id=1784196887]
+clip_children = 1
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 1
+theme_override_styles/panel = SubResource("StyleBoxFlat_5vsn3")
+
+[node name="DataTable" type="Control" parent="VBoxContainer/Border/ClipChildren" unique_id=1763694056]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+focus_mode = 2
+mouse_filter = 1
+script = ExtResource("2_wsykm")
+
+[node name="DragAndDropInfoPanel" type="PanelContainer" parent="VBoxContainer/Border" unique_id=1840337053]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_1gq3u")
+
+[node name="FocusPanel" type="PanelContainer" parent="VBoxContainer/Border/DragAndDropInfoPanel" unique_id=1619309456]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_p6h1j")
+
+[node name="CenterContainer" type="CenterContainer" parent="VBoxContainer/Border/DragAndDropInfoPanel" unique_id=1042757960]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="VBoxContainer/Border/DragAndDropInfoPanel/CenterContainer" unique_id=1072208539]
+layout_mode = 2
+text = "Drop resource files here to add them to the registry."
+
+[node name="PanelContainer" type="PanelContainer" parent="VBoxContainer" unique_id=204083610]
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_p6h1j")
+
+[node name="Footer" parent="VBoxContainer/PanelContainer" unique_id=1668691582 instance=ExtResource("4_p6h1j")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[connection signal="about_to_popup" from="EditContextMenu" to="." method="_on_edit_context_menu_about_to_popup"]
+[connection signal="id_pressed" from="EditContextMenu" to="." method="_on_edit_context_menu_id_pressed"]
+[connection signal="about_to_popup" from="ColumnContextMenu" to="." method="_on_column_context_menu_about_to_popup"]
+[connection signal="id_pressed" from="ColumnContextMenu" to="." method="_on_column_context_menu_id_pressed"]
+[connection signal="confirmed" from="DeleteEntriesConfirmationDialog" to="." method="_on_delete_entries_confirmation_dialog_confirmed"]

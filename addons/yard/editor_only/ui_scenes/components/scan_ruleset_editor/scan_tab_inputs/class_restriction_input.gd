@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: 2025-2026, Elliot Fontaine <yard-godot@elliotfontaine.anonaddy.com>
+# SPDX-FileCopyrightText: 2026-present, YARD contributors (see AUTHORS.md)
+#
+# SPDX-License-Identifier: MIT
+
+@tool
+extends "./scan_tab_input.gd"
+
+const Namespace := preload("res://addons/yard/editor_only/namespace.gd")
+const Compat := Namespace.Compat
+const RegistryIO := Namespace.RegistryIO
+const ScanTabInput := preload("./scan_tab_input.gd")
+const ClassRestrictionInput := preload("./class_restriction_input.gd")
+
+const REQUEST_CLASS_RESTRICTION_CLASS_LIST_DIALOG_ACTION := &"request_class_restriction_class_list_dialog"
+const REQUEST_CLASS_RESTRICTION_FILE_DIALOG_ACTION := &"request_class_restriction_file_dialog"
+
+@onready var class_restriction_line_edit: LineEdit = %ClassRestrictionLineEdit
+@onready var class_list_dialog_button: Button = %ClassListDialogButton
+@onready var class_filesystem_button: Button = %ClassFilesystemButton
+
+
+func _ready() -> void:
+	if not Engine.is_editor_hint() or EditorInterface.get_edited_scene_root() == self:
+		return
+
+	class_restriction_line_edit.text_changed.connect(input_changed.emit.unbind(1))
+	class_list_dialog_button.pressed.connect(_on_class_list_dialog_button_pressed)
+	class_filesystem_button.pressed.connect(_on_class_filesystem_button_pressed)
+
+	disabled = disabled
+
+
+func _set_disabled(value: bool) -> void:
+	super(value)
+	if is_node_ready():
+		class_restriction_line_edit.editable = not disabled
+		class_list_dialog_button.disabled = disabled
+		class_filesystem_button.disabled = disabled
+
+
+func get_value() -> Variant:
+	var stripped := class_restriction_line_edit.text.strip_edges()
+	if RegistryIO.is_quoted_string(stripped) and RegistryIO.is_resource_class_string(stripped):
+		var unquoted := RegistryIO.unquote(stripped) # should be a path
+		var as_uid := Compat.path_to_uid(unquoted)
+		return '"%s"' % as_uid
+	else:
+		return stripped
+
+
+func set_value(value: Variant) -> void:
+	if typeof(value) == TYPE_STRING or typeof(value) == TYPE_STRING_NAME:
+		if RegistryIO.is_quoted_string(value) and RegistryIO.is_resource_class_string(value):
+			var unquoted := RegistryIO.unquote(value) # must be a valid uid
+			var as_path := Compat.ensure_path(unquoted)
+			class_restriction_line_edit.text = '"%s"' % as_path
+		else:
+			class_restriction_line_edit.text = value
+
+
+func reset_value() -> void:
+	class_restriction_line_edit.text = ""
+
+
+## We should receive an updated class icon texture to render
+func render_validation_results(args: Variant) -> void:
+	if args is Texture2D:
+		class_restriction_line_edit.right_icon = args
+
+
+func _on_class_list_dialog_button_pressed() -> void:
+	request_action.emit(
+		REQUEST_CLASS_RESTRICTION_CLASS_LIST_DIALOG_ACTION,
+		class_restriction_line_edit.text,
+	)
+
+
+func _on_class_filesystem_button_pressed() -> void:
+	request_action.emit(
+		REQUEST_CLASS_RESTRICTION_FILE_DIALOG_ACTION,
+		class_restriction_line_edit.text,
+	)
