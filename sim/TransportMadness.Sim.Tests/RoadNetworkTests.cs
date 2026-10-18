@@ -79,4 +79,16 @@ public class RoadNetworkTests
         Assert.Equal(new[] { backward }, net.GetLane(forward).Next);
         Assert.Equal(new[] { forward }, net.GetLane(backward).Next);
     }
+
+    [Fact]
+    public void Road_RejectsNonPositiveSpeedLimitAndTooShortSegments()
+    {
+        var net = new RoadNetwork();
+        int a = net.AddNode(0, 0);
+        int near = net.AddNode(3, 0);
+        int far = net.AddNode(100, 0);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => net.AddRoad(a, far, RoadType.TwoLane, 0f));
+        Assert.Throws<ArgumentException>(() => net.AddRoad(a, near, RoadType.TwoLane, 14f));
+    }
 }

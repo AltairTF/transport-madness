@@ -123,4 +123,39 @@ public class SimulationTests
         float gap = 200f - s.Position + w.Position - Simulation.VehicleLength;
         Assert.InRange(gap, 0.5f, 6f);
     }
+
+    [Fact]
+    public void VehicleFarAboveTheSpeedLimit_SlowsDownWithinPhysicalBrakingLimit()
+    {
+        var (net, lane) = StraightRoad(5000f, limit: 14f);
+        var sim = new Simulation(net, seed: 1);
+        int car = sim.SpawnVehicle(lane, position: 10f, speed: 30f);
+
+        sim.Step();
+
+        float speed = sim.GetVehicle(car).Speed;
+        Assert.InRange(speed, 30f - 9f * Simulation.StepSeconds - 0.001f, 30f);
+    }
+
+    [Fact]
+    public void DesiredSpeed_MustBePositive()
+    {
+        var (net, lane) = StraightRoad(500f);
+        var sim = new Simulation(net, seed: 1);
+        int car = sim.SpawnVehicle(lane, position: 10f, speed: 0f);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => sim.SetDesiredSpeed(car, 0f));
+    }
+
+    [Fact]
+    public void StateHash_ReflectsHaltedVehicles()
+    {
+        var (net, lane) = StraightRoad(500f);
+        var plain = new Simulation(net, seed: 1);
+        var halted = new Simulation(net, seed: 1);
+        plain.SpawnVehicle(lane, 100f, 0f);
+        halted.SetHalted(halted.SpawnVehicle(lane, 100f, 0f), true);
+
+        Assert.NotEqual(plain.StateHash(), halted.StateHash());
+    }
 }

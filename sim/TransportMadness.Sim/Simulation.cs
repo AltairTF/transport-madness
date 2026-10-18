@@ -16,6 +16,7 @@ public sealed class Simulation
     const float ComfortDecel = 2.0f;
     const float MinGap = 2.0f;
     const float TimeHeadway = 1.5f;
+    const float MaxBraking = 9.0f; // physical limit; keeps lane-change speed mismatches from producing absurd decelerations
 
     readonly RoadNetwork _net;
     readonly SimRandom _rng;
@@ -33,12 +34,15 @@ public sealed class Simulation
     int[] _order = new int[64];
     int[] _laneStart = Array.Empty<int>();
     int[] _rankInOrder = new int[64];
+    int[] _cursor = Array.Empty<int>();
 
+    /// <summary>The network must be complete: lanes added after construction are not simulated.</summary>
     public Simulation(RoadNetwork net, ulong seed)
     {
         _net = net;
         _rng = new SimRandom(seed);
         _laneStart = new int[net.LaneCount + 1];
+        _cursor = new int[net.LaneCount];
     }
 
     public RoadNetwork Network => _net;
@@ -85,6 +89,8 @@ public sealed class Simulation
             Mix((ulong)_nextLane[i]);
             Mix(BitConverter.SingleToUInt32Bits(_pos[i]));
             Mix(BitConverter.SingleToUInt32Bits(_speed[i]));
+            Mix(BitConverter.SingleToUInt32Bits(_desired[i]));
+            Mix(_halted[i] ? 1UL : 0UL);
         }
         var (a, b, c, d) = _rng.State;
         Mix(a); Mix(b); Mix(c); Mix(d);
@@ -112,7 +118,11 @@ public sealed class Simulation
         if (halted) _speed[vehicle] = 0f;
     }
 
-    public void SetDesiredSpeed(int vehicle, float speed) => _desired[vehicle] = speed;
+    public void SetDesiredSpeed(int vehicle, float speed)
+    {
+        if (!(speed > 0f)) throw new ArgumentOutOfRangeException(nameof(speed), "Desired speed must be positive; use SetHalted to stop a vehicle.");
+        _desired[vehicle] = speed;
+    }
 
     public VehicleState GetVehicle(int id) => new(new LaneId(_lane[id]), _pos[id], _speed[id]);
 
@@ -154,7 +164,7 @@ public sealed class Simulation
                 float g = desiredGap / gap;
                 interaction = g * g;
             }
-            _accel[i] = MaxAccel * (free - interaction);
+            _accel[i] = MathF.Max(-MaxBraking, MaxAccel * (free - interaction));
         }
         for (int i = 0; i < _count; i++)
         {
@@ -192,9 +202,8 @@ public sealed class Simulation
         for (int l = 0; l < _net.LaneCount; l++) _laneStart[l + 1] += _laneStart[l];
 
         // Counting sort by lane, in vehicle-id order (stable, deterministic).
-        Span<int> cursor = _net.LaneCount <= 512 ? stackalloc int[_net.LaneCount] : new int[_net.LaneCount];
-        for (int l = 0; l < cursor.Length; l++) cursor[l] = _laneStart[l];
-        for (int i = 0; i < _count; i++) _order[cursor[_lane[i]]++] = i;
+        for (int l = 0; l < _cursor.Length; l++) _cursor[l] = _laneStart[l];
+        for (int i = 0; i < _count; i++) _order[_cursor[_lane[i]]++] = i;
 
         // Insertion sort by position within each lane; input is nearly sorted between steps.
         for (int l = 0; l < _net.LaneCount; l++)

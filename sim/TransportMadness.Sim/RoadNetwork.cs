@@ -64,6 +64,9 @@ public sealed class Road
 /// <summary>Lane-level road graph on flat terrain. Straight segments only for now.</summary>
 public sealed class RoadNetwork
 {
+    /// <summary>Keeps a lane longer than a vehicle so a vehicle never spans more than two lanes.</summary>
+    public const float MinRoadLength = 10f;
+
     readonly List<(float X, float Z)> _nodes = new();
     readonly List<List<RoadId>> _nodeRoads = new();
     readonly List<Road> _roads = new();
@@ -90,7 +93,8 @@ public sealed class RoadNetwork
         var (x0, z0) = _nodes[from];
         var (x1, z1) = _nodes[to];
         float length = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
-        if (length < 1f) throw new ArgumentException("Road is shorter than 1 m.");
+        if (length < MinRoadLength) throw new ArgumentException($"Road is shorter than {MinRoadLength} m.");
+        if (!(speedLimit > 0f)) throw new ArgumentOutOfRangeException(nameof(speedLimit), "Speed limit must be positive.");
 
         var id = new RoadId(_roads.Count);
         int perDirection = type == RoadType.TwoLane ? 1 : 2;
