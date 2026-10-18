@@ -91,4 +91,65 @@ public class RoadNetworkTests
         Assert.Throws<ArgumentOutOfRangeException>(() => net.AddRoad(a, far, RoadType.TwoLane, 0f));
         Assert.Throws<ArgumentException>(() => net.AddRoad(a, near, RoadType.TwoLane, 14f));
     }
+
+    // Cross junction: west, east, south, north arms around a centre node.
+    static (RoadNetwork Net, RoadId W, RoadId E, RoadId S, RoadId N) CrossJunction()
+    {
+        var net = new RoadNetwork();
+        int c = net.AddNode(0, 0);
+        int w = net.AddNode(-100, 0);
+        int e = net.AddNode(100, 0);
+        int s = net.AddNode(0, -100);
+        int n = net.AddNode(0, 100);
+        return (net,
+            net.AddRoad(w, c, RoadType.TwoLane, 14f),
+            net.AddRoad(c, e, RoadType.TwoLane, 14f),
+            net.AddRoad(s, c, RoadType.TwoLane, 14f),
+            net.AddRoad(c, n, RoadType.TwoLane, 14f));
+    }
+
+    [Fact]
+    public void Moves_StraightThroughCrossingStraight_Conflict()
+    {
+        var (net, w, e, s, n) = CrossJunction();
+        var fromWest = net.GetRoad(w).ForwardLanes[0];
+        var toEast = net.GetRoad(e).ForwardLanes[0];
+        var fromSouth = net.GetRoad(s).ForwardLanes[0];
+        var toNorth = net.GetRoad(n).ForwardLanes[0];
+
+        Assert.True(net.MovesConflict(fromWest, toEast, fromSouth, toNorth));
+    }
+
+    [Fact]
+    public void Moves_OppositeStraightsDoNotConflict()
+    {
+        var (net, w, e, _, _) = CrossJunction();
+        var fromWest = net.GetRoad(w).ForwardLanes[0];
+        var toEast = net.GetRoad(e).ForwardLanes[0];
+        var fromEast = net.GetRoad(e).BackwardLanes[0];
+        var toWest = net.GetRoad(w).BackwardLanes[0];
+
+        Assert.False(net.MovesConflict(fromWest, toEast, fromEast, toWest));
+    }
+
+    [Fact]
+    public void Moves_IntoTheSameLaneConflict_ButDivergingFromTheSameLaneDoNot()
+    {
+        var (net, w, e, s, n) = CrossJunction();
+        var fromWest = net.GetRoad(w).ForwardLanes[0];
+        var fromSouth = net.GetRoad(s).ForwardLanes[0];
+        var toEast = net.GetRoad(e).ForwardLanes[0];
+        var toNorth = net.GetRoad(n).ForwardLanes[0];
+
+        Assert.True(net.MovesConflict(fromWest, toEast, fromSouth, toEast));
+        Assert.False(net.MovesConflict(fromWest, toEast, fromWest, toNorth));
+    }
+
+    [Fact]
+    public void IncomingLanes_ListsLanesThatEndAtTheNode()
+    {
+        var (net, _, _, _, _) = CrossJunction();
+
+        Assert.Equal(4, net.IncomingLanes(0).Count);
+    }
 }

@@ -18,8 +18,13 @@ public readonly record struct RoadId(int Value);
 
 public sealed class Lane
 {
-    internal Lane(LaneId id, RoadId road, int index, float length, float speedLimit)
+    internal Lane(LaneId id, RoadId road, int index, float length, float speedLimit,
+        int startNode, int endNode, float angleAtStart, float angleAtEnd)
     {
+        StartNode = startNode;
+        EndNode = endNode;
+        AngleAtStart = angleAtStart;
+        AngleAtEnd = angleAtEnd;
         Id = id;
         Road = road;
         Index = index;
@@ -33,6 +38,12 @@ public sealed class Lane
     public int Index { get; }
     public float Length { get; }
     public float SpeedLimit { get; }
+    public int StartNode { get; }
+    public int EndNode { get; }
+    /// <summary>Heading (radians, atan2 of z over x) from the start node into the road.</summary>
+    public float AngleAtStart { get; }
+    /// <summary>Heading from the end node back along the road, i.e. the direction the traffic arrives from.</summary>
+    public float AngleAtEnd { get; }
     public LaneId Left { get; internal set; } = LaneId.None;
     public LaneId Right { get; internal set; } = LaneId.None;
     public LaneId Oncoming { get; internal set; } = LaneId.None;
@@ -71,6 +82,7 @@ public sealed class RoadNetwork
     readonly List<List<RoadId>> _nodeRoads = new();
     readonly List<Road> _roads = new();
     readonly List<Lane> _lanes = new();
+    readonly List<List<LaneId>> _incoming = new();
 
     public int NodeCount => _nodes.Count;
     public int RoadCount => _roads.Count;
@@ -80,12 +92,41 @@ public sealed class RoadNetwork
     {
         _nodes.Add((x, z));
         _nodeRoads.Add(new List<RoadId>());
+        _incoming.Add(new List<LaneId>());
         return _nodes.Count - 1;
     }
 
     public (float X, float Z) GetNode(int node) => _nodes[node];
     public Road GetRoad(RoadId id) => _roads[id.Value];
     public Lane GetLane(LaneId id) => _lanes[id.Value];
+
+    /// <summary>Lanes whose traffic arrives at <paramref name="node"/>.</summary>
+    public IReadOnlyList<LaneId> IncomingLanes(int node) => _incoming[node];
+
+    /// <summary>
+    /// True when a vehicle going <paramref name="inA"/> to <paramref name="outA"/> through a junction can meet one going
+    /// <paramref name="inB"/> to <paramref name="outB"/>: they merge into the same lane, or their paths cross.
+    /// Paths are approximated as chords between the arms they use, so they cross when the chords interleave.
+    /// </summary>
+    public bool MovesConflict(LaneId inA, LaneId outA, LaneId inB, LaneId outB)
+    {
+        if (outA == outB) return inA != inB;
+        if (inA == inB) return false;
+        const float eps = 1e-3f;
+        float a0 = GetLane(inA).AngleAtEnd, a1 = GetLane(outA).AngleAtStart;
+        float b0 = GetLane(inB).AngleAtEnd, b1 = GetLane(outB).AngleAtStart;
+        float arc = Wrap(a1 - a0);
+        if (arc < eps || arc > MathF.Tau - eps) return false; // U-turn
+        float p = Wrap(b0 - a0), q = Wrap(b1 - a0);
+        if (p < eps || q < eps || MathF.Abs(p - arc) < eps || MathF.Abs(q - arc) < eps) return false; // shared arm
+        return (p < arc) != (q < arc);
+    }
+
+    static float Wrap(float angle)
+    {
+        angle %= MathF.Tau;
+        return angle < 0f ? angle + MathF.Tau : angle;
+    }
 
     public RoadId AddRoad(int from, int to, RoadType type, float speedLimit)
     {
@@ -98,8 +139,10 @@ public sealed class RoadNetwork
 
         var id = new RoadId(_roads.Count);
         int perDirection = type == RoadType.TwoLane ? 1 : 2;
-        var forward = NewCarriageway(id, perDirection, length, speedLimit);
-        var backward = NewCarriageway(id, perDirection, length, speedLimit);
+        float heading = MathF.Atan2(z1 - z0, x1 - x0);
+        float reverse = MathF.Atan2(z0 - z1, x0 - x1);
+        var forward = NewCarriageway(id, perDirection, length, speedLimit, from, to, heading, reverse);
+        var backward = NewCarriageway(id, perDirection, length, speedLimit, to, from, reverse, heading);
         if (type == RoadType.TwoLane)
         {
             _lanes[forward[0].Value].Oncoming = backward[0];
@@ -114,13 +157,15 @@ public sealed class RoadNetwork
         return id;
     }
 
-    LaneId[] NewCarriageway(RoadId road, int count, float length, float speedLimit)
+    LaneId[] NewCarriageway(RoadId road, int count, float length, float speedLimit,
+        int startNode, int endNode, float angleAtStart, float angleAtEnd)
     {
         var ids = new LaneId[count];
         for (int i = 0; i < count; i++)
         {
             ids[i] = new LaneId(_lanes.Count);
-            _lanes.Add(new Lane(ids[i], road, i, length, speedLimit));
+            _lanes.Add(new Lane(ids[i], road, i, length, speedLimit, startNode, endNode, angleAtStart, angleAtEnd));
+            _incoming[endNode].Add(ids[i]);
         }
         for (int i = 0; i + 1 < count; i++)
         {

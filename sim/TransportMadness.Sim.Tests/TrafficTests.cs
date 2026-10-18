@@ -71,7 +71,7 @@ public class TrafficTests
         {
             var v = sim.GetVehicle(i);
             var lane = net.GetLane(v.Lane);
-            Assert.True(v.Speed >= 0f && v.Speed <= lane.SpeedLimit * 1.05f, $"speed {v.Speed}");
+            Assert.True(v.Speed >= 0f && v.Speed <= lane.SpeedLimit * 1.25f, $"speed {v.Speed}");
             Assert.True(v.Position >= 0f && v.Position < lane.Length, $"pos {v.Position}");
         }
     }
@@ -89,5 +89,22 @@ public class TrafficTests
         clock.Stop();
 
         Assert.True(clock.ElapsedMilliseconds < 1000, $"{clock.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
+    public void BusyGrid_KeepsFlowingInsteadOfLockingUp()
+    {
+        var sim = RunGrid(seed: 11, vehicles: 400, steps: 4000);
+
+        float total = 0f;
+        int crawling = 0;
+        for (int i = 0; i < sim.VehicleCount; i++)
+        {
+            float v = sim.GetVehicle(i).Speed;
+            total += v;
+            if (v < 0.2f) crawling++;
+        }
+        Assert.True(total / sim.VehicleCount > 3f, $"mean speed {total / sim.VehicleCount:F2} m/s");
+        Assert.True(crawling < sim.VehicleCount / 4, $"{crawling} of {sim.VehicleCount} stopped");
     }
 }

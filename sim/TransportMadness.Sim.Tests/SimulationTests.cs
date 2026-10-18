@@ -62,6 +62,7 @@ public class SimulationTests
         int leader = sim.SpawnVehicle(lane, position: 100f, speed: 5f);
         sim.SetDesiredSpeed(leader, 5f);
         int follower = sim.SpawnVehicle(lane, position: 10f, speed: 14f);
+        sim.SetKeepLane(follower, true);
 
         Run(sim, 60f);
 
