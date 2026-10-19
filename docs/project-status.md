@@ -49,6 +49,16 @@ addons/                    godot_ai and yard (third party, untouched)
 
 Tooling: Godot 4.7.2 .NET editor build, .NET 8 SDK (installed per user in `~/.dotnet` because the cask needs sudo). The root project and the simulation both target `net8.0`.
 
+### Repository and workflow
+
+- GitHub: `AltairTF/transport-madness`, private, default branch `main`. Created on 2026-10-19 with `gh repo create AltairTF/transport-madness --private --source=. --remote=origin --push`. The first attempt used the git user name `AltairTF96` as owner and failed (`AltairTF cannot create a repository for AltairTF96`): `gh` is logged in as `AltairTF`. The push then failed over SSH because the SSH key authenticates as `AltairTF96`; the remote was switched to HTTPS (`https://github.com/AltairTF/transport-madness.git`) and `gh auth setup-git` configured the credential helper.
+- History on `main`: M0 and M1 commits up to `b41e2cd` (vehicles drive through junctions), then `af5d136` (M2 code, data, tests and game layer; it also contains the M1 close-out that had been left uncommitted, because both touch the same files and could not be split cleanly), then `35abaac` (docs: M2 status, vocabulary, docs index).
+- Commits end with a `Co-Authored-By` line. No CI yet (listed under cross-cutting work in section 11); `cd sim && dotnet test` is run by hand.
+
+### Current status (2026-10-19)
+
+M0, M1 and M2 are done (M2 without tier 1 and 2 ambient traffic, section 11). 200 tests pass. The game layer of M2 compiles but has not been played (section 10). Next is M3 (towns, industries, cargo chains, trip flows), which replaces the fixed cargo supply of stations (5.10).
+
 ## 4. Architecture
 
 Follows ADR 0001: the simulation assembly never references Godot. `SimHost` (C#, in the Godot project) owns a `Simulation`, advances it in fixed steps against the frame clock and draws it. GDScript only emits intent (speed, tool, action) and calls `SimHost`'s PascalCase methods.

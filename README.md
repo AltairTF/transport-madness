@@ -2,6 +2,18 @@
 
 3D transport management game, see `docs/game-plan.md` for the plan, `docs/project-status.md` for what exists, how it works and what comes next, `CONTEXT.md` for vocabulary and `docs/adr/` for decisions.
 
+## Repository
+
+Hosted at https://github.com/AltairTF/transport-madness (private), branch `main`, created on 2026-10-19 with the GitHub CLI after the M2 commits. The `origin` remote is HTTPS, not SSH: the SSH key on the development machine authenticates as the other GitHub account (`AltairTF96`, the git user name), which has no access to a repository owned by `AltairTF`. `gh auth setup-git` makes git use the `gh` login for HTTPS. To work from a fresh checkout:
+
+```sh
+gh auth login                                   # as AltairTF
+git clone https://github.com/AltairTF/transport-madness.git
+cd transport-madness/sim && dotnet test         # 200 tests
+```
+
+`.godot/`, `bin/` and `obj/` are ignored, so Godot imports the project on first open.
+
 ## Layout
 
 - `sim/` the simulation: a pure C# library with no Godot types (ADR 0001) and its xUnit tests. Godot ignores this folder (`.gdignore`).
