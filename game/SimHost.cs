@@ -536,15 +536,14 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>
-    /// Buys a vehicle of a model for a line at the first depot with room for it. Returns the vehicle id, -1 when no
-    /// depot can take it or the company cannot pay.
+    /// Buys a vehicle of a model for a line at the nearest depot that is connected to the line by road and has room for
+    /// it. Returns the vehicle id, -1 when no depot can take it or the company cannot pay.
     /// </summary>
     public int BuyVehicle(string model, int line)
     {
-        foreach (var depot in Sim.Depots)
+        foreach (int depot in Sim.DepotsByDistance(line))
         {
-            if (!depot.Active) continue;
-            int id = Sim.Execute(new BuyVehicleCommand(depot.Id, model, line));
+            int id = Sim.Execute(new BuyVehicleCommand(depot, model, line));
             if (id >= 0) return id;
         }
         return -1;

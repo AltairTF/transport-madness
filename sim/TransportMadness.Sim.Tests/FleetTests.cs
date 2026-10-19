@@ -185,6 +185,23 @@ public class FleetTests
     }
 
     [Fact]
+    public void AVehicleIsNotBoughtAtADepotThatHasNoRoadToTheLine_AndTheNearerConnectedDepotComesFirst()
+    {
+        var (sim, depot, a, b) = StraightLine();
+        // A second depot on the same road, just short of the line's first station, and one on a road of its own.
+        Assert.True(sim.Execute(new BuildStationCommand(100, 0)) >= 0);
+        int near = sim.Execute(new AddDepotCommand(sim.Network.FindNodeNear(100, 0, 1f), DepotLevel.Simple));
+        Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 600, 300, 600, RoadType.TwoLane, 14f)));
+        int island = sim.Execute(new AddDepotCommand(sim.Network.FindNodeNear(0, 600, 1f), DepotLevel.Simple));
+        int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
+        Assert.True(near >= 0 && island >= 0);
+
+        Assert.Equal(-1, sim.Execute(new BuyVehicleCommand(island, "bus", line)));
+        Assert.Equal(new[] { near, depot }, sim.DepotsByDistance(line));
+        Assert.Equal(-1, sim.Execute(new BuyVehicleCommand(island, "bus", line)));
+    }
+
+    [Fact]
     public void ARouteGoesRoundTheNetwork_ToTheStationItNeeds()
     {
         // A T junction: the depot is on the stem, the stations on the two arms; the bus must choose the right turn each time.

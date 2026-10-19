@@ -115,6 +115,7 @@ public sealed partial class Simulation
             float position = _laneReach[lane] + spec.Length + SpawnGap;
             if (position > _laneLength[lane] || !IsClear(new LaneId(lane), position, spec.Length + _traffic.SpawnClearance)) continue;
             float cost = field?[lane] ?? 0f;
+            if (float.IsPositiveInfinity(cost)) continue; // no way from here to the line's first station
             if (bestLane < 0 || cost < bestCost) { bestLane = lane; bestCost = cost; }
         }
         if (bestLane < 0) return -1;
@@ -128,6 +129,34 @@ public sealed partial class Simulation
         _length[id] = spec.Length;
         _nextLane[id] = RouteNextLane(id, bestLane);
         return id;
+    }
+
+    /// <summary>
+    /// The active depots from which a vehicle could drive to the first station of a line, nearest (by driving time)
+    /// first; empty when the line is not open or no depot is connected to it by road.
+    /// </summary>
+    public IReadOnlyList<int> DepotsByDistance(int line)
+    {
+        SyncNetwork();
+        var result = new List<(float Cost, int Depot)>();
+        if (line < 0 || line >= _lines.Count || !_lines[line].Active) return Array.Empty<int>();
+        var first = _stations[_lines[line].Stops[0]];
+        if (!first.Active) return Array.Empty<int>();
+        var field = FieldTo(first);
+        foreach (var depot in _depots)
+        {
+            if (!depot.Active) continue;
+            float best = float.PositiveInfinity;
+            foreach (var roadId in _net.RoadsAt(depot.Node))
+            {
+                var road = _net.GetRoad(roadId);
+                int lane = (road.From == depot.Node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+                best = MathF.Min(best, field[lane]);
+            }
+            if (!float.IsPositiveInfinity(best)) result.Add((best, depot.Id));
+        }
+        result.Sort((a, b) => a.Cost != b.Cost ? a.Cost.CompareTo(b.Cost) : a.Depot.CompareTo(b.Depot));
+        return result.Select(r => r.Depot).ToList();
     }
 
     /// <summary>Whether a vehicle is about to arrive at the node (within <see cref="ArrivalWatch"/> metres of the end of a lane running into it) and would run into one just put on the road there.</summary>

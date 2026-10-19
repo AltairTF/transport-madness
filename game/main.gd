@@ -166,7 +166,7 @@ func _on_line_action(kind: String, line: int, model: String) -> void:
 	match kind:
 		"buy":
 			var id: int = host.BuyVehicle(model, line)
-			hud.show_message("Bought a %s for line %d" % [model, line + 1] if id >= 0 else "Can't buy that: not enough money, or no depot with room (is the road at a depot busy?)")
+			hud.show_message("Bought a %s for line %d" % [model, line + 1] if id >= 0 else "Can't buy that: not enough money, no depot connected by road to the line's first station, or its junction is busy (try again)")
 		"delete":
 			hud.show_message("Line %d deleted, its vehicles sold" % (line + 1) if host.DeleteLine(line) else "No such line")
 
