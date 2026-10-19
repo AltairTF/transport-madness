@@ -1,6 +1,6 @@
 # Transport Madness
 
-3D transport management game, see `docs/game-plan.md` for the plan, `CONTEXT.md` for vocabulary and `docs/adr/` for decisions.
+3D transport management game, see `docs/game-plan.md` for the plan, `docs/project-status.md` for what exists, how it works and what comes next, `CONTEXT.md` for vocabulary and `docs/adr/` for decisions.
 
 ## Layout
 
