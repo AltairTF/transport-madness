@@ -12,6 +12,9 @@ var _settings_page: Control
 var _map_buttons: Dictionary = {}
 var _map_text: Label
 var _seed: SpinBox
+var _towns_row: Control
+var _towns_value: Label
+var _towns_slider: HSlider
 
 
 func _ready() -> void:
@@ -19,6 +22,7 @@ func _ready() -> void:
 		get_tree().change_scene_to_file.call_deferred(GAME)
 		return
 	theme = UiTheme.build()
+	Session.map = "towns" # what a new game offers first; the self-tests keep Session's own default
 
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0.07, 0.10, 0.14)
@@ -126,6 +130,27 @@ func _build_new_game_page() -> Control:
 	random.pressed.connect(func() -> void: _seed.value = randi_range(1, 999999))
 	seed_row.add_child(random)
 
+	_towns_row = HBoxContainer.new()
+	column.add_child(_towns_row)
+	var towns_label := Label.new()
+	towns_label.text = "Towns"
+	towns_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_towns_row.add_child(towns_label)
+	_towns_slider = HSlider.new()
+	_towns_slider.min_value = 2
+	_towns_slider.max_value = 10
+	_towns_slider.step = 1
+	_towns_slider.value = Session.towns
+	_towns_slider.custom_minimum_size = Vector2(240, 0)
+	_towns_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_towns_slider.value_changed.connect(_on_towns_changed)
+	_towns_row.add_child(_towns_slider)
+	_towns_value = Label.new()
+	_towns_value.custom_minimum_size = Vector2(40, 0)
+	_towns_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_towns_row.add_child(_towns_value)
+	_on_towns_changed(Session.towns)
+
 	var buttons := HBoxContainer.new()
 	column.add_child(buttons)
 	var back := _button(buttons, "Back", func() -> void: _show(_main_page))
@@ -144,6 +169,12 @@ func _select_map(id: String) -> void:
 	for map in Session.MAPS:
 		if map["id"] == id:
 			_map_text.text = map["text"]
+			_towns_row.visible = map.get("towns", false)
+
+
+func _on_towns_changed(value: float) -> void:
+	Session.towns = int(value)
+	_towns_value.text = str(Session.towns)
 
 
 func _start() -> void:

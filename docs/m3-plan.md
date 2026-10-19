@@ -1,12 +1,12 @@
 # M3 plan: towns, industries, cargo chains, trip flows
 
-Status: designed (grilled and agreed 2026-10-19), not started. Done when (game-plan.md): a town grows only when it is supplied and connected.
+Status: designed (grilled and agreed 2026-10-19). M3a is built (see `project-status.md` section 5.11); M3b to M3d are not started. Done when (game-plan.md): a town grows only when it is supplied and connected.
 
 M3 is built in four vertical slices; each leaves a playable, tested game. Numbers named here live in `data/tuning.json` (every key required), not in code. Vocabulary is in `/CONTEXT.md`.
 
 ## Slices
 
-### M3a: towns, buildings, coverage, calendar
+### M3a: towns, buildings, coverage, calendar (built)
 - `dayLength` goes from 60 s to 600 s so that a commute fits inside a day. Per-day amounts (upkeep, interest, pay timings that are expressed per day) are rescaled so the economy stays the same per second. Golden hashes change once, deliberately.
 - Calendar: 30-day months, 12-month years. HUD only, plus the clock of the day (needed by M3c). The sim keeps the integer day counter and derives month and year from it.
 - Towns and buildings in the sim: `Town`, `Building` (type home, commerce or light industry; size tier; lot; road access point). Stored in flat arrays like vehicles, with a spatial grid for coverage queries.

@@ -3,7 +3,8 @@ extends Node3D
 ##   --bench                      measure frame rate with 1000 vehicles at 1x and 8x, then quit
 ##   --shot=<file> [--shot-after=<seconds>]   save a screenshot and quit
 ##   --selftest-build             build roads with simulated mouse clicks, run, print stats, quit
-##   --hills                      start on an empty generated-hills map instead of the demo grid
+##   --hills                      start on an empty generated-hills map instead of the default map
+##   --towns[=<n>]                start on the generated map with n towns (default 5)
 ##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
 ##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
@@ -24,6 +25,7 @@ var _bench: Array = []
 var _bench_index := 0
 var _bench_phase_time := 0.0
 var _frame_ms: Array = []
+var _world_note := "" ## said once the HUD exists, e.g. that fewer towns fit than were asked for
 
 
 func _ready() -> void:
@@ -44,6 +46,10 @@ func _ready() -> void:
 	var map: String = Session.map
 	if _args.has("--hills") or _args.has("--selftest-hills"):
 		map = "hills"
+	if _args.has("--towns"):
+		map = "towns"
+		if _args["--towns"] is String:
+			Session.towns = int(_args["--towns"])
 	_new_world(map)
 	if _args.has("--focus"):
 		rig.focus_on(rig.position.x, rig.position.z) # now that the terrain exists, stand on it
@@ -53,6 +59,9 @@ func _ready() -> void:
 	hud.speed_selected.connect(func(speed: float) -> void: host.SetSpeed(speed))
 	hud.set_models(host.GetVehicleModels())
 	hud.line_action.connect(_on_line_action)
+	hud.town_focus.connect(rig.focus_on)
+	if _world_note != "":
+		hud.show_message(_world_note)
 
 	build_tool = load("res://game/build_tool.gd").new()
 	add_child(build_tool)
@@ -93,6 +102,7 @@ func _process(delta: float) -> void:
 		hud.show_stats(host.GetStats())
 		hud.show_company(host.GetCompany())
 		hud.show_lines(host.GetLines())
+		hud.show_towns(host.GetTowns())
 
 	if _args.has("--shot") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
@@ -114,9 +124,17 @@ func _leave_to_menu() -> void:
 	get_tree().change_scene_to_file("res://game/main_menu.tscn")
 
 
-## Replaces the world: "demo" (street grid with traffic), "hills" or "empty".
+## Replaces the world: "towns" (hills with towns), "demo" (street grid with traffic), "hills" or "empty".
 func _new_world(map: String) -> void:
 	match map:
+		"towns":
+			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns)
+			_world_note = "" if placed >= Session.towns else "Only %d of %d towns fit on this map" % [placed, Session.towns]
+			if hud != null and _world_note != "":
+				hud.show_message(_world_note)
+			var towns: Array = host.GetTowns()
+			if not towns.is_empty() and not _args.has("--focus"):
+				rig.focus_on(towns[0]["x"], towns[0]["z"])
 		"hills":
 			host.NewHillsWorld(Session.world_seed)
 		"empty":
@@ -136,7 +154,7 @@ func _on_action(action: String) -> void:
 			hud.show_message("Borrowed 100,000" if host.TakeLoan(100000) else "The loan limit is reached")
 		"repay":
 			hud.show_message("Repaid 100,000" if host.RepayLoan(100000) else "Nothing to repay, or not enough money")
-		"empty", "hills", "demo":
+		"empty", "hills", "demo", "towns":
 			_new_world(action)
 
 

@@ -19,6 +19,8 @@ public sealed partial class Simulation
     /// <summary>Every building ever made, in id order; demolished ones stay in the list in state <see cref="BuildingState.Demolished"/>.</summary>
     public IReadOnlyList<Building> Buildings => _buildings;
     public TownsTuning TownTuning => _townTuning;
+    /// <summary>Changes whenever any building changes state (for a renderer to know when to redraw).</summary>
+    public int BuildingsVersion { get; private set; }
 
     /// <summary>People and jobs in a town, and its buildings by state.</summary>
     public readonly record struct TownStats(int Population, int Jobs, int Homes, int Commerce, int Industry, int Inactive, int Abandoned);
@@ -52,6 +54,7 @@ public sealed partial class Simulation
             }
         }
         _coverageDirty = true;
+        BuildingsVersion++;
         EvaluateAccess();
     }
 
@@ -133,6 +136,7 @@ public sealed partial class Simulation
         b.State = state;
         b.StateSince = Day;
         _coverageDirty = true;
+        BuildingsVersion++;
     }
 
     /// <summary>The turn of a day for the towns: buildings without a road age, and each month the towns recover some satisfaction.</summary>

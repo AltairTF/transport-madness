@@ -285,7 +285,7 @@ func _update_preview(screen: Vector2) -> void:
 	var cost: Dictionary = host.EstimateCurveCost(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	var valid: bool = cost["valid"]
 	var width := 16.0 if _road_type() == 1 else 7.0
-	_material.albedo_color = ROAD_COLORS["valid"] if valid else ROAD_COLORS["invalid"]
+	_material.albedo_color = ROAD_COLORS["valid"] if valid and cost["affordable"] else ROAD_COLORS["invalid"]
 
 	if absf(sweep) > 0.0001:
 		_preview.visible = false
@@ -306,6 +306,7 @@ func _update_preview(screen: Vector2) -> void:
 			text += "   bridge %d m" % cost["bridge"]
 		if cost["tunnel"] > 0.0:
 			text += "   tunnel %d m" % cost["tunnel"]
+		text += _demolition_text(cost)
 		message.emit(text)
 	else:
 		message.emit("Can't build there: too short, too steep (max 12%), curve too tight, in water, or too close to a junction")
@@ -327,7 +328,7 @@ func _hover_station(screen: Vector2) -> void:
 	_preview.mesh.size = Vector3(14, 4, 10)
 	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"] - 24.0, site["y"] + 2.0, site["z"] - 24.0))
 	_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
-	message.emit("Station: cost %s   serves buildings within %d m" % [_money(site["price"]), site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
+	message.emit("Station: cost %s   serves %d buildings within %d m" % [_money(site["price"]), site["covered"], site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
 
 
 ## Line tool: the station under the mouse is added to the line being drawn.
@@ -426,7 +427,7 @@ func _hover_move(screen: Vector2) -> void:
 		return
 	var target := _move_target(p)
 	var cost: Dictionary = host.EstimateMoveNode(_picked_node, target.x, target.z)
-	_material.albedo_color = ROAD_COLORS["valid"] if cost["valid"] else ROAD_COLORS["invalid"]
+	_material.albedo_color = ROAD_COLORS["valid"] if cost["valid"] and cost["affordable"] else ROAD_COLORS["invalid"]
 	# Strips from the new place to the other end of each road that will be rebuilt, with the road's bend.
 	var first := true
 	for shape in host.NodeRoadShapes(_picked_node):
@@ -444,6 +445,7 @@ func _hover_move(screen: Vector2) -> void:
 			text += "   bridge %d m" % cost["bridge"]
 		if cost["tunnel"] > 0.0:
 			text += "   tunnel %d m" % cost["tunnel"]
+		text += _demolition_text(cost)
 		message.emit(text)
 	else:
 		message.emit("Can't move it there: roads too short, too steep or too tightly curved, an end in water, or on another junction")
@@ -469,6 +471,16 @@ func _draw_arc(points: PackedVector3Array, width: float, clear := true) -> void:
 		mesh.surface_add_vertex(points[i] - right + lift)
 		mesh.surface_add_vertex(points[i] + right + lift)
 	mesh.surface_end()
+
+
+## What a road would tear down, as the end of the cost line: "   demolishes 3 buildings for 12,000", or "   (not enough money)".
+func _demolition_text(cost: Dictionary) -> String:
+	var text := ""
+	if cost["demolished"] > 0:
+		text += "   demolishes %d %s for %s" % [cost["demolished"], "building" if cost["demolished"] == 1 else "buildings", _money(cost["demolition_price"])]
+	if not cost["affordable"]:
+		text += "   (not enough money)"
+	return text
 
 
 func _money(amount: float) -> String:

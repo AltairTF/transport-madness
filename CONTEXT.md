@@ -8,7 +8,7 @@ A 3D transport management game in the lineage of Transport Tycoon and Transport 
 The player's transport business. Owns vehicles, stations and the money.
 
 **Town**:
-A settlement made of buildings that generate and consume passengers and goods. Grows when well served.
+A settlement made of buildings along a grid of streets that generate and consume passengers and goods. Grows when well served. Has a name and a Satisfaction.
 _Avoid_: City
 
 **Building**:
@@ -34,7 +34,7 @@ The share of a Town's Buildings that were reached in a month: their Trip groups 
 A person moving between a home and a place of work or leisure.
 
 **Station**:
-A place on the road network where vehicles load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. Until towns exist it produces passengers and goods at a fixed rate.
+A place on the road network where vehicles load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. On a map with towns it collects passengers and goods from the Buildings in its radius (a stopgap until trip groups); on a map without, it produces them at a fixed rate.
 
 **Line**:
 A recurring route that a group of vehicles runs between stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own.
@@ -100,10 +100,10 @@ _Avoid_: "player vehicle" (ambiguous with the camera), "fleet car"
 Money earned for cargo or passengers delivered: quantity times straight-line distance between the stations times the cargo's rate, reduced when the trip took longer than the cargo tolerates.
 
 **Day**:
-60 seconds of simulated time. Upkeep and loan interest are paid at the turn of a day.
+600 seconds of simulated time (ten minutes), long enough for a commute. Upkeep and loan interest are paid at the turn of a day. Thirty days make a month and twelve months a year (shown on the HUD with the time of day).
 
 **Loan**:
-Money borrowed, up to a limit, that costs interest every day. A Company whose net worth stays below minus the debt limit for two years goes bankrupt (the sandbox carries on).
+Money borrowed, up to a limit, that costs interest every day. A Company whose net worth stays below minus the debt limit for 73 days goes bankrupt (the sandbox carries on).
 
 **Bridge / Tunnel**:
 A stretch of road carried over water or a deep valley (Bridge), or through a hill (Tunnel), instead of being cut or filled into the ground. Chosen automatically when a road is planned, priced per metre, and leaves the ground as it was. Other roads can join one in the middle or pass over or under it.

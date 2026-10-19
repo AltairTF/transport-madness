@@ -8,6 +8,8 @@ signal action_requested(action: String)
 ## A line row button: kind is "buy" (with a vehicle model id) or "delete".
 signal line_action(kind: String, line: int, model: String)
 signal menu_requested
+## The Towns window asks the camera to go to a town.
+signal town_focus(x: float, z: float)
 
 const UiTheme := preload("res://game/ui_theme.gd")
 
@@ -36,7 +38,7 @@ const WINDOWS := [
 	["Lines", "lines", ""],
 	["Vehicles", "vehicles", "The whole fleet in one list: condition, age, where each vehicle is, sell and replace. Planned."],
 	["Stations", "stations", "Every station with its waiting cargo and ratings. Planned."],
-	["Towns", "towns", "Towns, their growth and what they need. Arrives with M3."],
+	["Towns", "towns", ""],
 	["Industries", "industries", "Industries and the cargo chains between them. Arrives with M3."],
 ]
 const MESSAGE_SECONDS := 8.0
@@ -62,6 +64,10 @@ var _lines_box: VBoxContainer
 var _lines_empty: Label
 var _line_rows: Dictionary = {} # line id -> {"row": Control, "label": Label, "separator": Control}
 var _models: Array = []
+var _towns_box: VBoxContainer
+var _towns_empty: Label
+var _town_rows: Dictionary = {} # town id -> {"row": Control, "label": Label, "bar": ProgressBar}
+const MONTHS := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
 func _ready() -> void:
@@ -174,6 +180,8 @@ func _build_window_panel() -> void:
 				page = _build_company_page()
 			"lines":
 				page = _build_lines_page()
+			"towns":
+				page = _build_towns_page()
 			_:
 				page = _placeholder(entry[2])
 		page.visible = false
@@ -205,6 +213,16 @@ func _build_lines_page() -> Control:
 	return _lines_box
 
 
+func _build_towns_page() -> Control:
+	_towns_box = VBoxContainer.new()
+	_towns_empty = Label.new()
+	_towns_empty.theme_type_variation = "Dim"
+	_towns_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_towns_empty.text = "There are no towns on this map. Start a new game on the Towns map."
+	_towns_box.add_child(_towns_empty)
+	return _towns_box
+
+
 func _placeholder(text: String) -> Control:
 	var label := Label.new()
 	label.theme_type_variation = "Dim"
@@ -231,7 +249,7 @@ func _build_debug_panel() -> void:
 	var row := HFlowContainer.new()
 	row.custom_minimum_size = Vector2(440, 0)
 	column.add_child(row)
-	for entry in [["+100 cars", "traffic"], ["Crash!", "crash"], ["Empty map", "empty"], ["Hills map", "hills"], ["Demo map", "demo"]]:
+	for entry in [["+100 cars", "traffic"], ["Crash!", "crash"], ["Empty map", "empty"], ["Hills map", "hills"], ["Towns map", "towns"], ["Demo map", "demo"]]:
 		var button := Button.new()
 		button.text = entry[0]
 		button.pressed.connect(func() -> void: action_requested.emit(entry[1]))
@@ -367,11 +385,70 @@ func show_stats(stats: Dictionary) -> void:
 
 ## Company summary: money and day in the bar, the books in the Company window.
 func show_company(company: Dictionary) -> void:
-	_money.text = "Money %s   Day %d%s" % [_money_text(company["money"]), company["day"], "   BANKRUPT" if company["bankrupt"] else ""]
+	_money.text = "Money %s   %s%s" % [_money_text(company["money"]), _date_text(company), "   BANKRUPT" if company["bankrupt"] else ""]
 	_money.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4) if company["bankrupt"] or company["money"] < 0 else UiTheme.TEXT)
-	_company_details.text = "Money   %s\nLoan   %s of %s\nDay   %d\n\nIncome   %s\nUpkeep   %s\nInterest   %s" % [
-		_money_text(company["money"]), _money_text(company["loan"]), _money_text(company["max_loan"]), company["day"],
+	_company_details.text = "Money   %s\nLoan   %s of %s\nDate   %s\n\nIncome   %s\nUpkeep   %s\nInterest   %s" % [
+		_money_text(company["money"]), _money_text(company["loan"]), _money_text(company["max_loan"]), _date_text(company),
 		_money_text(company["income"]), _money_text(-company["upkeep"]), _money_text(-company["interest"])]
+
+
+## "12 Mar, year 2   14:30": the calendar day and the time of day (a day is 10 minutes long).
+func _date_text(company: Dictionary) -> String:
+	var hour: float = company["hour"]
+	return "%d %s, year %d   %02d:%02d" % [company["day_of_month"], MONTHS[(company["month"] - 1) % 12], company["year"], int(hour), int(fmod(hour, 1.0) * 60.0)]
+
+
+## One row per town: its name and numbers, a satisfaction bar and a button that takes the camera there.
+func show_towns(towns: Array) -> void:
+	var seen := {}
+	for town in towns:
+		var id: int = town["id"]
+		seen[id] = true
+		if not _town_rows.has(id):
+			_add_town_row(id, town)
+		var entry: Dictionary = _town_rows[id]
+		var label: Label = entry["label"]
+		label.text = "%s\n%d people   %d jobs\n%d homes   %d shops and offices   %d industries" % [
+			town["name"], town["population"], town["jobs"], town["homes"], town["commerce"], town["industry"]]
+		if town["inactive"] > 0 or town["abandoned"] > 0:
+			label.text += "\n%d cut off from the roads   %d abandoned" % [town["inactive"], town["abandoned"]]
+		var bar: ProgressBar = entry["bar"]
+		bar.value = town["satisfaction"]
+		bar.tooltip_text = "Satisfaction %d of 100. It falls when buildings are demolished or abandoned, and slowly recovers." % roundi(town["satisfaction"])
+	for id in _town_rows.keys():
+		if not seen.has(id):
+			_town_rows[id]["row"].queue_free()
+			_town_rows[id]["separator"].queue_free()
+			_town_rows.erase(id)
+	_towns_empty.visible = _town_rows.is_empty()
+
+
+func _add_town_row(id: int, town: Dictionary) -> void:
+	var row := VBoxContainer.new()
+	var label := Label.new()
+	row.add_child(label)
+	var satisfaction := HBoxContainer.new()
+	row.add_child(satisfaction)
+	var caption := Label.new()
+	caption.theme_type_variation = "Dim"
+	caption.text = "Satisfaction"
+	satisfaction.add_child(caption)
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 18)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	satisfaction.add_child(bar)
+	var go := Button.new()
+	go.text = "Go to"
+	go.pressed.connect(func() -> void: town_focus.emit(town["x"], town["z"]))
+	row.add_child(go)
+	var separator := HSeparator.new()
+	_towns_box.add_child(row)
+	_towns_box.add_child(separator)
+	_town_rows[id] = {"row": row, "label": label, "bar": bar, "separator": separator}
 
 
 ## Models the company can buy, for the buy buttons of the line rows (call before show_lines).

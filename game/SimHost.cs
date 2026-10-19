@@ -30,6 +30,9 @@ public partial class SimHost : Node3D
 
     MultiMesh _vehicles = null!;
     MultiMesh _crews = null!;
+    MultiMesh _buildings = null!;
+    Node3D _townLabels = null!;
+    int _buildingsVersion = -1;
     readonly float[] _crewBuffer = new float[CrewCapacity * FloatsPerInstance];
     float[] _buffer = new float[InitialCapacity * FloatsPerInstance];
     int _capacity = InitialCapacity;
@@ -105,6 +108,16 @@ public partial class SimHost : Node3D
             InstanceCount = CrewCapacity,
             VisibleInstanceCount = 0,
         };
+        _buildings = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            UseColors = true,
+            Mesh = new BoxMesh { Size = Vector3.One },
+            InstanceCount = 0,
+        };
+        AddChild(new MultiMeshInstance3D { Name = "Buildings", Multimesh = _buildings, MaterialOverride = material });
+        _townLabels = new Node3D { Name = "TownLabels" };
+        AddChild(_townLabels);
         AddChild(new MultiMeshInstance3D { Name = "Crews", Multimesh = _crews, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         AddChild(new MultiMeshInstance3D { Name = "Vehicles", Multimesh = _vehicles, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
@@ -142,6 +155,24 @@ public partial class SimHost : Node3D
         RebuildRoads();
         _accumulator = 0;
     }
+
+    /// <summary>
+    /// Starts a map of generated hills with towns. Returns how many towns were placed; fewer than <paramref name="towns"/>
+    /// when the land ran out. A few ambient cars are put on the streets.
+    /// </summary>
+    public int NewTownsWorld(long seed, int towns)
+    {
+        var net = new RoadNetwork(Terrain.Generate((ulong)seed));
+        var plan = TownGenerator.Generate(net, (ulong)seed, towns);
+        Sim = new Simulation(net, (ulong)seed);
+        Sim.AddTowns(plan);
+        Sim.Execute(new SeedTrafficCommand(TownTrafficPerTown * Math.Max(1, plan.Towns.Count)));
+        RebuildRoads();
+        _accumulator = 0;
+        return plan.Towns.Count;
+    }
+
+    const int TownTrafficPerTown = 30; // ambient cars put on a new map per town, until trip groups drive the roads (M3c)
 
     /// <summary>Height of what is seen at a point: the ground, or the water surface over it.</summary>
     public float HeightAt(float x, float z) => Math.Max(_terrain.HeightAt(x, z), _terrain.WaterSurfaceAt(x, z));
@@ -208,7 +239,14 @@ public partial class SimHost : Node3D
     {
         var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep);
         if (cost is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
-        return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money, ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength };
+        var demolition = Sim.EstimateRoadDemolition(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        return new Godot.Collections.Dictionary
+        {
+            ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money,
+            ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength,
+            ["demolished"] = demolition.Count, ["demolition_price"] = demolition.Price,
+            ["affordable"] = Sim.CanAfford(c.Money + demolition.Price),
+        };
     }
 
     /// <summary>Points along a road bending by <paramref name="sweep"/> radians, lying on the ground (for the build preview).</summary>
@@ -346,7 +384,14 @@ public partial class SimHost : Node3D
     public Godot.Collections.Dictionary EstimateMoveNode(int node, float x, float z)
     {
         if (Sim.Network.EstimateMoveNode(node, x, z) is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
-        return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money, ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength };
+        var demolition = Sim.EstimateMoveDemolition(node, x, z);
+        return new Godot.Collections.Dictionary
+        {
+            ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money,
+            ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength,
+            ["demolished"] = demolition.Count, ["demolition_price"] = demolition.Price,
+            ["affordable"] = Sim.CanAfford(c.Money + demolition.Price),
+        };
     }
 
     /// <summary>
@@ -404,6 +449,10 @@ public partial class SimHost : Node3D
             ["max_loan"] = Sim.Network.Tuning.Economy.MaxLoan,
             ["net_worth"] = c.NetWorth,
             ["day"] = Sim.Day,
+            ["year"] = Sim.Today.Year,
+            ["month"] = Sim.Today.Month,
+            ["day_of_month"] = Sim.Today.DayOfMonth,
+            ["hour"] = Sim.TimeOfDay * 24f,
             ["bankrupt"] = c.Bankrupt,
             ["income"] = c.Total(LedgerEntry.Income),
             ["upkeep"] = c.Total(LedgerEntry.Upkeep),
@@ -426,7 +475,17 @@ public partial class SimHost : Node3D
             ["price"] = Sim.StationPrice,
             ["affordable"] = Sim.CanAfford(Sim.StationPrice),
             ["radius"] = Sim.Network.Tuning.Stations.CoverageRadius,
+            ["covered"] = CoveredCount(site.X, site.Z),
         };
+    }
+
+    /// <summary>Buildings a station at a point would serve: those standing with a road, within the coverage radius.</summary>
+    int CoveredCount(float x, float z)
+    {
+        int n = 0;
+        foreach (int id in Sim.BuildingsNear(x, z, Sim.Network.Tuning.Stations.CoverageRadius))
+            if (Sim.Buildings[id].State == BuildingState.Active) n++;
+        return n;
     }
 
     /// <summary>Builds a station at the node or road point near (x, z). Returns its id, -1 when refused.</summary>
@@ -538,6 +597,28 @@ public partial class SimHost : Node3D
         return stations;
     }
 
+    /// <summary>
+    /// The towns: for each {id, name, x, y, z, satisfaction, population, jobs, homes, commerce, industry, inactive,
+    /// abandoned} (the last six are counts of buildings, inactive and abandoned ones apart).
+    /// </summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> GetTowns()
+    {
+        var towns = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var town in Sim.Towns)
+        {
+            var s = Sim.StatsOf(town.Id);
+            towns.Add(new Godot.Collections.Dictionary
+            {
+                ["id"] = town.Id, ["name"] = town.Name, ["x"] = town.X, ["y"] = HeightAt(town.X, town.Z), ["z"] = town.Z,
+                ["satisfaction"] = town.Satisfaction,
+                ["population"] = s.Population, ["jobs"] = s.Jobs,
+                ["homes"] = s.Homes, ["commerce"] = s.Commerce, ["industry"] = s.Industry,
+                ["inactive"] = s.Inactive, ["abandoned"] = s.Abandoned,
+            });
+        }
+        return towns;
+    }
+
     /// <summary>Runs the simulation for this many simulated seconds right now, without drawing (for the self-tests).</summary>
     public void StepFor(double seconds)
     {
@@ -637,6 +718,7 @@ public partial class SimHost : Node3D
             _simSecondsThisSecond = _realSecondsThisSecond = 0;
         }
 
+        if (Sim.BuildingsVersion != _buildingsVersion) RebuildBuildings();
         float fraction = _speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f;
         DrawVehicles(fraction);
         DrawCrews(fraction);
@@ -869,6 +951,63 @@ public partial class SimHost : Node3D
             var building = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(22f, 6f, 22f) }, MaterialOverride = _depotMaterial };
             building.Position = new Vector3(x + 26f, _terrain.HeightAt(x + 26f, z + 26f) + 3f, z + 26f);
             _roadRoot.AddChild(building);
+        }
+        RebuildBuildings();
+    }
+
+    static readonly Color[] BuildingColors =
+    {
+        new(0.80f, 0.64f, 0.46f), // home
+        new(0.38f, 0.58f, 0.86f), // commerce
+        new(0.62f, 0.62f, 0.66f), // industry
+    };
+
+    /// <summary>Redraws every building that stands (one box each, coloured by kind and state) and the town names.</summary>
+    void RebuildBuildings()
+    {
+        _buildingsVersion = Sim.BuildingsVersion;
+        var tuning = Sim.TownTuning;
+        int n = 0;
+        foreach (var b in Sim.Buildings) if (b.State != BuildingState.Demolished) n++;
+        _buildings.InstanceCount = n;
+        var buf = new float[n * FloatsPerInstance];
+        int k = 0;
+        foreach (var b in Sim.Buildings)
+        {
+            if (b.State == BuildingState.Demolished) continue;
+            var tier = tuning.Of(b.Type, b.Tier);
+            float side = tier.Size * 2f;
+            float fx = MathF.Cos(b.Facing), fz = MathF.Sin(b.Facing);
+            float y = Math.Max(_terrain.HeightAt(b.X, b.Z), _terrain.WaterSurfaceAt(b.X, b.Z)) - 0.3f + tier.Height * 0.5f;
+            int o = k++ * FloatsPerInstance;
+            buf[o + 0] = fx * side;  buf[o + 1] = 0f;          buf[o + 2] = -fz * side; buf[o + 3] = b.X;
+            buf[o + 4] = 0f;         buf[o + 5] = tier.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
+            buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = b.Z;
+            var colour = BuildingColors[(int)b.Type];
+            colour = b.State switch
+            {
+                BuildingState.Inactive => colour.Lerp(new Color(0.45f, 0.45f, 0.45f), 0.65f),
+                BuildingState.Abandoned => new Color(0.17f, 0.15f, 0.15f),
+                _ => colour,
+            };
+            buf[o + 12] = colour.R; buf[o + 13] = colour.G; buf[o + 14] = colour.B; buf[o + 15] = 1f;
+        }
+        if (n > 0) _buildings.Buffer = buf;
+
+        foreach (var child in _townLabels.GetChildren()) child.QueueFree();
+        foreach (var town in Sim.Towns)
+        {
+            _townLabels.AddChild(new Label3D
+            {
+                Text = town.Name,
+                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+                FixedSize = true,
+                PixelSize = 0.0014f,
+                FontSize = 36,
+                OutlineSize = 10,
+                NoDepthTest = true,
+                Position = new Vector3(town.X, HeightAt(town.X, town.Z) + 70f, town.Z),
+            });
         }
     }
 
