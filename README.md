@@ -5,6 +5,7 @@
 ## Layout
 
 - `sim/` the simulation: a pure C# library with no Godot types (ADR 0001) and its xUnit tests. Godot ignores this folder (`.gdignore`).
+- `data/` tuning and prices (`tuning.json`), embedded in the simulation assembly; edit and rebuild to retune.
 - `game/` the Godot side: `SimHost.cs` steps and draws the simulation, GDScript does camera, HUD and the build tool.
 - `transport-madness.csproj` the Godot .NET project; it references `sim/`.
 
@@ -31,6 +32,6 @@ Controls: right mouse orbits, middle mouse or WASD pans, wheel zooms. Pick a roa
 | 2. 1000 ambient vehicles at 60 fps at 1x; at least 10 fps at 8x | Met on the development machine (Apple M4): 60 fps at 1x, 65 fps at 8x with the simulation at full 8x; one step costs about 0.5 ms |
 | 3. Visible overtaking with occasional failures becoming accidents | Done: roughly one head-on in 70 overtakes |
 | 4. An accident blocks the road, a crew clears it, traffic reorganizes | Done: wrecks block their lane, crews come from the nearest free depot, drivers avoid blocked roads |
-| 5. Headless deterministic test | Done: same seed, same hash (`TrafficTests`) |
+| 5. Headless deterministic test | Done: same seed, same hash, and a command log that replays a whole run with building, crashes and crews (`TrafficTests`, `DeterminismTests`) |
 
 Known gaps: no terrain, towns or economy (later milestones); ambient traffic is a random walk over the network; incident causes are limited to overtaking, rear-ending and junction merges; vehicles are boxes.

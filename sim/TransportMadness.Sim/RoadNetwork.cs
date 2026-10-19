@@ -124,15 +124,18 @@ public sealed class RoadNetwork
     /// <summary>How far from the node a junction's paths begin and end, matching the drawn junction area.</summary>
     public const float JunctionRadius = 8f;
 
-    // Prices are placeholders until economy data files exist (M2).
-    const float TwoLaneCostPerMetre = 40f, AvenueCostPerMetre = 90f;
-    const float CutCostPerCubicMetre = 6f, FillCostPerCubicMetre = 9f;
-    const float EarthworkSlope = 1.5f; // horizontal metres per metre of height
     const float SampleSpacing = 3f;    // for intersecting curved roads
-    const float DemolitionCostPerMetre = 10f;
-    const float UpgradeRefundShare = 0.5f; // of the two-lane road's price, for the part that is reused
 
-    public RoadNetwork(Terrain? terrain = null) => Terrain = terrain;
+    /// <param name="terrain">The ground the roads sit on, or null for a perfectly flat map.</param>
+    /// <param name="tuning">Prices and simulation tuning; the shipped <c>data/tuning.json</c> when omitted.</param>
+    public RoadNetwork(Terrain? terrain = null, Tuning? tuning = null)
+    {
+        Terrain = terrain;
+        Tuning = tuning ?? Tuning.Load();
+    }
+
+    /// <summary>Prices and simulation tuning for this world. The simulation reads its tuning from here.</summary>
+    public Tuning Tuning { get; }
 
     /// <summary>The ground the roads sit on, or null for a perfectly flat map.</summary>
     public Terrain? Terrain { get; }
@@ -416,12 +419,13 @@ public sealed class RoadNetwork
                 var (x, z) = geometry.PointAt(a.Along + run * t);
                 float height = Terrain.HeightAt(x, z) - (a.Y + (b.Y - a.Y) * t);
                 float h = MathF.Abs(height);
-                float section = h * width + EarthworkSlope * h * h;
+                float section = h * width + Tuning.Roads.EarthworkSlope * h * h;
                 if (height > 0f) cut += section * ds; else fill += section * ds;
             }
         }
-        float perMetre = type == RoadType.Avenue2x2 ? AvenueCostPerMetre : TwoLaneCostPerMetre;
-        return new RoadCost(length, cut, fill, length * perMetre + cut * CutCostPerCubicMetre + fill * FillCostPerCubicMetre);
+        var prices = Tuning.Roads;
+        float perMetre = prices.Of(type).CostPerMetre;
+        return new RoadCost(length, cut, fill, length * perMetre + cut * prices.CutCostPerCubicMetre + fill * prices.FillCostPerCubicMetre);
     }
 
     public bool CanBuildRoad(float x0, float z0, float x1, float z1, float sweep = 0f) => Plan(x0, z0, x1, z1, sweep) != null;
@@ -556,7 +560,7 @@ public sealed class RoadNetwork
     }
 
     /// <summary>What it costs to tear a road down. Vehicles on it are removed; the ground keeps its cut and fill.</summary>
-    public float DemolitionCost(RoadId id) => _roads[id.Value].Length * DemolitionCostPerMetre;
+    public float DemolitionCost(RoadId id) => _roads[id.Value].Length * Tuning.Roads.DemolitionCostPerMetre;
 
     /// <summary>
     /// Tears a road piece down. Its lanes are retired with no replacement, so a simulation removes the vehicles on them;
@@ -609,12 +613,13 @@ public sealed class RoadNetwork
                 float edge = (HalfWidth(RoadType.TwoLane) + HalfWidth(RoadType.Avenue2x2)) * 0.5f;
                 float height = 0.5f * (Terrain.HeightAt(x + nx * edge, z + nz * edge) + Terrain.HeightAt(x - nx * edge, z - nz * edge)) - (y0 + (y1 - y0) * t);
                 float h = MathF.Abs(height);
-                float section = h * (width - HalfWidth(RoadType.TwoLane) * 2f) + EarthworkSlope * h * h;
+                float section = h * (width - HalfWidth(RoadType.TwoLane) * 2f) + Tuning.Roads.EarthworkSlope * h * h;
                 if (height > 0f) cut += section * ds; else fill += section * ds;
             }
         }
-        float perMetre = AvenueCostPerMetre - UpgradeRefundShare * TwoLaneCostPerMetre;
-        return new RoadCost(road.Length, cut, fill, road.Length * perMetre + cut * CutCostPerCubicMetre + fill * FillCostPerCubicMetre);
+        var prices = Tuning.Roads;
+        float perMetre = prices.Avenue.CostPerMetre - prices.UpgradeRefundShare * prices.TwoLane.CostPerMetre;
+        return new RoadCost(road.Length, cut, fill, road.Length * perMetre + cut * prices.CutCostPerCubicMetre + fill * prices.FillCostPerCubicMetre);
     }
 
     /// <summary>

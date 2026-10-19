@@ -62,11 +62,11 @@ Vehicles and road sections have Condition (0-100). Vehicles lose Condition by di
 
 Repairs:
 - Patch: cheap, fast, small gain, leaves a "patched" mark that wears faster. Any depot, or a road crew.
-- Service: medium cost and time, big gain. Mid-level depot.
-- Overhaul: expensive and slow, nearly full restore, clears accumulated patches. Complete depot only.
+- Service: medium cost and time, big gain. Workshop or Complex depot.
+- Overhaul: expensive and slow, nearly full restore, clears accumulated patches. Complex depot only.
 - Resurfacing (roads): done by a road crew; closes or narrows the road while it runs, so traffic feels it.
 
-Depot levels: Simple workshop, Workshop, Complex. There is no permanent age wear. Old vehicles may be kept, but burn more fuel and cost more to Patch, Service and Overhaul. Eras gate which vehicles are on sale.
+Depot levels: Simple, Workshop, Complex. There is no permanent age wear. Old vehicles may be kept, but burn more fuel and cost more to Patch, Service and Overhaul. Eras gate which vehicles are on sale.
 
 ### Incidents
 Causes: failed overtaking, uncontrolled junctions, fast sharp curves, wet or icy road, bad brakes from low Condition, level crossings, rail signal errors. Consequences: road blocked until a Rescue crew clears it (crew dispatched from a Depot; slower if none nearby), vehicle destroyed, cargo lost, injured passengers (numbers only, no graphic content), fines, town satisfaction drop. Frequency has a game option from off to high.

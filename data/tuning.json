@@ -1,0 +1,107 @@
+// Simulation tuning and prices. This file is embedded in the simulation assembly (the sim project references it from
+// here) and is the only place these numbers live: every key is required, unknown keys are rejected. Distances in
+// metres, times in seconds, speeds in m/s, money in the placeholder currency until the economy exists (M2).
+{
+  // Intelligent Driver Model, shared by every driver. Driver traits only change when to overtake.
+  "driving": {
+    "maxAccel": 1.5,
+    "comfortDecel": 2.0,
+    "minGap": 2.0,
+    "timeHeadway": 1.5,
+    "maxBraking": 9.0,          // physical limit; stops lane-change speed mismatches giving absurd decelerations
+    "brakeJerk": 15.0,          // braking builds up at most this fast (m/s^3): drivers need a moment to react
+    "minInteractionGap": 0.01,  // gaps are clamped to this before the IDM division
+    "junctionRange": 40.0,      // within this distance of a junction a vehicle yields to conflicting traffic
+    "junctionMargin": 2.0       // extra clearance on top of a vehicle length when yielding to conflicting traffic
+  },
+
+  // Ambient traffic placed by SeedTraffic.
+  "traffic": {
+    "spawnClearance": 12.0,       // free space needed around a spawn point, and kept from lane ends
+    "spawnAttemptsPerVehicle": 30,
+    "spawnSpeedFactor": 0.5,      // initial speed as a share of the lane's limit
+    "driverSpeedFactorMin": 0.65, // personal share of the speed limit is drawn from min .. min + range
+    "driverSpeedFactorRange": 0.35
+  },
+
+  "manoeuvres": {
+    "decisionInterval": 10,     // ticks: each vehicle reconsiders this often, staggered by id
+    "lateralRate": 0.8,         // lateral fraction per second: a lane change takes 1 / rate seconds
+    "stallSpeed": 0.3,          // an overtaker slower than this counts as standing still
+    "stallLimit": 4.0           // seconds standing still beside the target before giving up and cutting back in
+  },
+
+  // Free lane choice on multi-lane carriageways.
+  "laneChange": {
+    "cooldown": 60,                 // ticks between lane changes
+    "endMargin": 30.0,              // no lane change this close to either end of a lane
+    "hinderedGap": 35.0,            // a leader closer than this may be holding us up ...
+    "hinderedSpeedShare": 0.85,     // ... when slower than this share of our free speed ...
+    "hinderedSpeedDeficit": 1.5,    // ... by at least this much
+    "leftGapAdvantage": 10.0,       // moving left needs this much more gap ahead ...
+    "leftSpeedAdvantage": 2.0,      // ... or a leader this much faster
+    "rightFreeGap": 50.0,           // moving back right needs this much gap ahead ...
+    "rightSpeedShare": 0.85,        // ... or a leader at least this share of our free speed
+    "frontGapBase": 8.0,            // gap needed ahead in the target lane: base + perSpeed * v
+    "frontGapPerSpeed": 0.4,
+    "closingGap": 25.0,             // a slower leader closer than this blocks the move ...
+    "closingSpeedDelta": 2.0,       // ... when slower than us by more than this
+    "rearGapBase": 6.0,             // gap needed behind: base + perSpeedDifference * (their speed - ours)
+    "rearGapPerSpeedDifference": 2.0
+  },
+
+  // Overtaking via the oncoming lane on two-lane roads.
+  "overtake": {
+    "cooldown": 100,                // ticks after finishing a pass
+    "minStart": 15.0,               // pulling out needs the vehicle itself this far clear of the junction it just left
+    "endAbortMargin": 30.0,         // an overtaker this close to the end of the lane gives up
+    "endRoom": 20.0,                // extra room left past the pass before the end of the lane
+    "standingObstacle": 15.0,       // oncoming vehicle this close: no room to carry on whatever its speed
+    "maxLeaderGap": 30.0,           // only consider a leader this close ...
+    "minLeaderSpeed": 1.0,          // ... that is moving at least this fast ...
+    "slowLeaderShare": 0.85,        // ... and slower than this share of our free speed ...
+    "minSpeedDeficit": 1.5,         // ... by at least this much
+    "queueSpeed": 2.0,              // a vehicle crawling below this is part of a queue
+    "queueLookahead": 100.0,        // never start a pass with a queue this close ahead of the target
+    "haltedLookahead": 80.0,        // nor with a halted vehicle this close ahead of the target
+    "stuckBase": 1.5,               // seconds held up before trying: base + patience * stuckPatience
+    "stuckPatience": 6.0,
+    "boost": 1.1,                   // free speed while passing: boost + aggression * boostAggression
+    "boostAggression": 0.1,
+    "passLengthPad": 16.0,          // distance to cover for a pass: gap + 2 vehicle lengths + this
+    "minRelativeSpeed": 2.0,        // floor on closing speed when timing a pass
+    "sightBase": 60.0,              // how far ahead oncoming traffic is seen: base + attention * sightAttention
+    "sightAttention": 240.0,
+    "misperception": 0.6,           // inattentive drivers underestimate oncoming speed by up to this share
+    "believedTimeBase": 0.6,        // ... and the duration of the pass: time * (base + attention * believedTimeAttention)
+    "believedTimeAttention": 0.4,
+    "safetyMargin": 30.0,           // extra distance wanted before oncoming traffic, shrunk by aggression
+    "safetyAggression": 0.5,
+    "abortTimeBase": 1.5,           // abort when oncoming time-to-collision falls below base + attention * abortTimeAttention
+    "abortTimeAttention": 2.0,
+    "returnBehindBase": 5.0,        // room needed behind to pull back in: base + perSpeedDifference * (their speed - ours)
+    "returnBehindPerSpeed": 2.0,
+    "returnAheadBase": 6.0,         // room needed ahead to pull back in: base + perSpeedDifference * (our speed - theirs)
+    "returnAheadPerSpeed": 1.5
+  },
+
+  // Rescue crews. The crews a depot keeps depend on its level.
+  "crews": {
+    "dispatchDelay": 10.0,
+    "speed": 16.0,                  // by road
+    "roadDetour": 1.4,              // road distance over straight-line distance
+    "fallbackResponse": 300.0,      // no depot can respond sooner: help comes from far away
+    "clearDuration": 45.0,
+    "perDepot": { "simple": 1, "workshop": 1, "complex": 2 }
+  },
+
+  "roads": {
+    "twoLane": { "speedLimit": 14.0, "costPerMetre": 40.0 },
+    "avenue": { "speedLimit": 19.0, "costPerMetre": 90.0 },
+    "cutCostPerCubicMetre": 6.0,
+    "fillCostPerCubicMetre": 9.0,
+    "earthworkSlope": 1.5,          // horizontal metres per metre of height at the edge of a cut or fill
+    "demolitionCostPerMetre": 10.0,
+    "upgradeRefundShare": 0.5       // of the two-lane price, for the part reused when widening to an avenue
+  }
+}

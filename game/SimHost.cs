@@ -96,9 +96,10 @@ public partial class SimHost : Node3D
         var net = new RoadNetwork(Terrain.Flat());
         DemoWorld.Build(net);
         Sim = new Simulation(net, (ulong)seed);
+        // The grid itself is the initial world; everything after it goes through commands so it is logged.
         foreach (int node in new[] { net.NodeCount / 5, net.NodeCount * 2 / 5, net.NodeCount * 3 / 5, net.NodeCount * 4 / 5 })
-            Sim.AddDepot(node, DepotLevel.Simple);
-        Sim.SeedTraffic(vehicles);
+            Sim.Execute(new AddDepotCommand(node, DepotLevel.Simple));
+        Sim.Execute(new SeedTrafficCommand(vehicles));
         RebuildRoads();
         _accumulator = 0;
     }
@@ -182,7 +183,7 @@ public partial class SimHost : Node3D
     /// <summary>What a road bending by <paramref name="sweep"/> radians would cost; see <see cref="EstimateRoadCost"/>.</summary>
     public Godot.Collections.Dictionary EstimateCurveCost(float x0, float z0, float x1, float z1, int type, float sweep)
     {
-        var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, type == 1 ? RoadType.Avenue2x2 : RoadType.TwoLane, sweep);
+        var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep);
         if (cost is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
         return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money };
     }
@@ -201,6 +202,8 @@ public partial class SimHost : Node3D
         return points;
     }
 
+    static RoadType RoadTypeOf(int type) => type == 1 ? RoadType.Avenue2x2 : RoadType.TwoLane;
+
     /// <summary>Builds a straight road. Type 0 is 2-lane, 1 is the 2x2 avenue.</summary>
     public bool BuildRoad(float x0, float z0, float x1, float z1, int type) => BuildCurve(x0, z0, x1, z1, type, 0f);
 
@@ -210,8 +213,8 @@ public partial class SimHost : Node3D
     /// </summary>
     public bool BuildCurve(float x0, float z0, float x1, float z1, int type, float sweep)
     {
-        var built = Sim.Network.BuildRoad(x0, z0, x1, z1, type == 1 ? RoadType.Avenue2x2 : RoadType.TwoLane, type == 1 ? 19f : 14f, sweep);
-        if (built.Count == 0) return false;
+        int built = Sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadTypeOf(type), Sim.Network.Tuning.Roads.Of(RoadTypeOf(type)).SpeedLimit, sweep));
+        if (built == 0) return false;
         RebuildRoads();
         return true;
     }
@@ -245,7 +248,7 @@ public partial class SimHost : Node3D
     /// <summary>Tears a road piece down; vehicles on it disappear.</summary>
     public bool RemoveRoad(int road)
     {
-        if (!Sim.Network.RemoveRoad(new RoadId(road))) return false;
+        if (Sim.Execute(new RemoveRoadCommand(road)) == 0) return false;
         RebuildRoads();
         return true;
     }
@@ -260,7 +263,7 @@ public partial class SimHost : Node3D
     /// <summary>Widens a two-lane road to an avenue.</summary>
     public bool UpgradeRoad(int road)
     {
-        if (Sim.Network.UpgradeRoad(new RoadId(road), 19f) == null) return false;
+        if (Sim.Execute(new UpgradeRoadCommand(road, Sim.Network.Tuning.Roads.Avenue.SpeedLimit)) == 0) return false;
         RebuildRoads();
         return true;
     }
@@ -270,31 +273,16 @@ public partial class SimHost : Node3D
     {
         int node = Sim.Network.FindNodeNear(x, z, 60f);
         if (node < 0) return false;
-        foreach (var depot in Sim.Depots) if (depot.Node == node) return false;
-        Sim.AddDepot(node, (DepotLevel)Math.Clamp(level, 0, 2));
+        if (Sim.Execute(new AddDepotCommand(node, (DepotLevel)Math.Clamp(level, 0, 2))) < 0) return false;
         RebuildRoads();
         return true;
     }
 
     /// <summary>Adds up to <paramref name="count"/> ambient vehicles; returns how many fit.</summary>
-    public int SpawnTraffic(int count) => Sim.SeedTraffic(count);
+    public int SpawnTraffic(int count) => Sim.Execute(new SeedTrafficCommand(count));
 
     /// <summary>Breaks down a moving car, picked deterministically from the current state. Returns its id or -1.</summary>
-    public int CrashSomeone()
-    {
-        int n = Sim.VehicleCount;
-        for (int k = 0; k < n; k++)
-        {
-            int i = (int)((Sim.Tick + k) % n);
-            var v = Sim.GetVehicle(i);
-            if (v.Kind == VehicleKind.Car && v.Speed > 4f)
-            {
-                Sim.Crash(i);
-                return i;
-            }
-        }
-        return -1;
-    }
+    public int CrashSomeone() => Sim.Execute(new CrashSomeoneCommand());
 
     /// <summary>World position of the oldest open incident, or the origin when there is none.</summary>
     public Vector3 FirstOpenIncidentPosition()

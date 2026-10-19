@@ -3,25 +3,15 @@ namespace TransportMadness.Sim;
 /// <summary>Lane changes on multi-lane carriageways and overtaking via the oncoming lane on 2-lane roads.</summary>
 public sealed partial class Simulation
 {
-    const int DecisionInterval = 10; // each vehicle reconsiders every 0.5 s, staggered by id
-    const int LaneChangeCooldown = 60;
-    const int OvertakeCooldown = 100;
     const float HomeLaneLat = 0.5f; // from here on a vehicle no longer blocks the lane it left
     const float OncomingSightLat = 0.3f; // from here on a vehicle is a hazard for oncoming traffic
-    const float LateralRate = 0.8f; // lateral fraction per second: a lane change takes 1.25 s
-    const float LaneChangeSeconds = 1f / LateralRate;
-    const float MinEndMargin = 30f;
-    const float StallLimit = 4f; // seconds standing still beside the target before giving up and cutting back in
-    const float MinOvertakeStart = 15f; // pulling out needs the vehicle itself clear of the junction it just left
-    const float EndAbortMargin = 30f; // an overtaker this close to a junction gives up
-    const float StandingObstacle = 15f; // oncoming vehicle this close: no room to carry on whatever its speed
 
     void DecideManoeuvres()
     {
         for (int i = 0; i < _count; i++)
         {
             if (_cooldown[i] > 0) _cooldown[i]--;
-            if ((i + Tick) % DecisionInterval != 0 || _halted[i] || _keepLane[i] || _phase[i] != 0) continue;
+            if ((i + Tick) % _manoeuvre.DecisionInterval != 0 || _halted[i] || _keepLane[i] || _phase[i] != 0) continue;
             if (!TryLaneChange(i)) TryStartOvertake(i);
         }
     }
@@ -31,22 +21,22 @@ public sealed partial class Simulation
     bool TryLaneChange(int i)
     {
         int lane = _lane[i];
-        var info = _net.GetLane(new LaneId(lane));
-        if (info.Left.IsNone && info.Right.IsNone) return false;
+        int left = _laneLeft[lane], right = _laneRight[lane];
+        if (left < 0 && right < 0) return false;
         // Not near a junction: traffic still arriving from the feeding lanes would not be seen from here.
-        if (_cooldown[i] > 0 || _pos[i] < MinEndMargin || _laneLength[lane] - _pos[i] < MinEndMargin) return false;
+        if (_cooldown[i] > 0 || _pos[i] < _laneChange.EndMargin || _laneLength[lane] - _pos[i] < _laneChange.EndMargin) return false;
 
         float v0 = FreeSpeed(i);
         bool hasLeader = FindLeader(i, out _, out float gap, out float leadSpeed);
-        bool hindered = hasLeader && gap < 35f && leadSpeed < v0 * 0.85f && v0 - leadSpeed > 1.5f;
+        bool hindered = hasLeader && gap < _laneChange.HinderedGap && leadSpeed < v0 * _laneChange.HinderedSpeedShare && v0 - leadSpeed > _laneChange.HinderedSpeedDeficit;
 
-        if (hindered && !info.Left.IsNone && CanMoveInto(i, info.Left.Value, out float newGap, out float newLeadSpeed)
-            && (newGap > gap + 10f || newLeadSpeed > leadSpeed + 2f))
-            return ChangeLane(i, info.Left.Value);
+        if (hindered && left >= 0 && CanMoveInto(i, left, out float newGap, out float newLeadSpeed)
+            && (newGap > gap + _laneChange.LeftGapAdvantage || newLeadSpeed > leadSpeed + _laneChange.LeftSpeedAdvantage))
+            return ChangeLane(i, left);
 
-        if (!hindered && !info.Right.IsNone && CanMoveInto(i, info.Right.Value, out newGap, out newLeadSpeed)
-            && (newGap > 50f || newLeadSpeed >= v0 * 0.85f))
-            return ChangeLane(i, info.Right.Value);
+        if (!hindered && right >= 0 && CanMoveInto(i, right, out newGap, out newLeadSpeed)
+            && (newGap > _laneChange.RightFreeGap || newLeadSpeed >= v0 * _laneChange.RightSpeedShare))
+            return ChangeLane(i, right);
         return false;
     }
 
@@ -68,74 +58,73 @@ public sealed partial class Simulation
         {
             frontGap = _pos[ahead] - VehicleLength - pos;
             frontSpeed = _speed[ahead];
-            if (frontGap < 8f + 0.4f * v || (frontGap < 25f && frontSpeed < v - 2f)) return false;
+            if (frontGap < _laneChange.FrontGapBase + _laneChange.FrontGapPerSpeed * v || (frontGap < _laneChange.ClosingGap && frontSpeed < v - _laneChange.ClosingSpeedDelta)) return false;
         }
         if (behind >= 0)
         {
             float rearGap = pos - VehicleLength - _pos[behind];
-            if (rearGap < 6f + MathF.Max(0f, _speed[behind] - v) * 2f) return false;
+            if (rearGap < _laneChange.RearGapBase + MathF.Max(0f, _speed[behind] - v) * _laneChange.RearGapPerSpeedDifference) return false;
         }
         return true;
     }
 
     bool ChangeLane(int i, int target)
     {
-        int oldNextRoad = _net.GetLane(new LaneId(_nextLane[i])).Road.Value;
+        int oldNextRoad = _laneRoad[_nextLane[i]];
+        int oldLane = _lane[i];
         // Drawn as a gradual move: start where the old lane was (to the right if going left) and fade out.
-        _shift[i] = target == _net.GetLane(new LaneId(_lane[i])).Left.Value ? LaneWidth : -LaneWidth;
+        _shift[i] = target == _laneLeft[oldLane] ? LaneWidth : -LaneWidth;
         _lane[i] = target;
-        _cooldown[i] = LaneChangeCooldown;
+        _cooldown[i] = _laneChange.Cooldown;
         // Keep heading for the same road when the new lane can take it; otherwise pick a turn.
-        var next = _net.GetLane(new LaneId(target)).Next;
         int keep = -1;
-        for (int k = 0; k < next.Length; k++)
-            if (_net.GetLane(next[k]).Road.Value == oldNextRoad) { keep = next[k].Value; break; }
-        _nextLane[i] = keep >= 0 ? keep : ChooseNextLane(new LaneId(target)).Value;
-        RebuildOrder();
+        for (int k = _nextStart[target]; k < _nextStart[target + 1]; k++)
+            if (_laneRoad[_nextLanes[k]] == oldNextRoad) { keep = _nextLanes[k]; break; }
+        _nextLane[i] = keep >= 0 ? keep : ChooseNextLane(target);
+        MoveInOrder(i, oldLane);
         return true;
     }
 
     // ---- Overtaking via the oncoming lane ------------------------------------------------------------------------
 
-    const float QueueSpeed = 2f, QueueLookahead = 100f;
-
     void TryStartOvertake(int i)
     {
         int lane = _lane[i];
-        var oncoming = _net.GetLane(new LaneId(lane)).Oncoming;
-        if (oncoming.IsNone || _cooldown[i] > 0 || _pos[i] < MinOvertakeStart) return;
+        int oncoming = _laneOncoming[lane];
+        if (oncoming < 0 || _cooldown[i] > 0 || _pos[i] < _overtake.MinStart) return;
 
         float v0 = FreeSpeed(i);
         if (!FindLeader(i, out int lead, out float gap, out float leadSpeed) || _lane[lead] != lane
-            || _halted[lead] || leadSpeed < 1f || gap > 30f || leadSpeed > v0 * 0.85f || v0 - leadSpeed < 1.5f)
+            || _halted[lead] || leadSpeed < _overtake.MinLeaderSpeed || gap > _overtake.MaxLeaderGap
+            || leadSpeed > v0 * _overtake.SlowLeaderShare || v0 - leadSpeed < _overtake.MinSpeedDeficit)
         {
-            _stuck[i] = MathF.Max(0f, _stuck[i] - DecisionInterval * StepSeconds);
+            _stuck[i] = MathF.Max(0f, _stuck[i] - _manoeuvre.DecisionInterval * StepSeconds);
             return;
         }
-        if (HaltedAhead(lead, 80f) || QueueAhead(lead, QueueLookahead))
+        if (HaltedAhead(lead, _overtake.HaltedLookahead) || QueueAhead(lead, _overtake.QueueLookahead))
         {
             _stuck[i] = 0f; // the slow leader is only slow because the road is blocked or queued; passing it gains nothing
             return;
         }
-        _stuck[i] += DecisionInterval * StepSeconds;
-        if (_stuck[i] < 1.5f + 6f * _patience[i]) return;
+        _stuck[i] += _manoeuvre.DecisionInterval * StepSeconds;
+        if (_stuck[i] < _overtake.StuckBase + _overtake.StuckPatience * _patience[i]) return;
 
         // Pessimistic timing: the pass starts from the current speed and accelerates, so use the mean speed.
         float passSpeed = v0 * OvertakeBoost(i);
         float meanSpeed = 0.5f * (_speed[i] + passSpeed);
-        float relative = MathF.Max(meanSpeed - leadSpeed, 2f);
-        float passTime = (gap + 2f * VehicleLength + 16f) / relative + 1f / LateralRate;
-        if (_laneLength[lane] - _pos[i] < passSpeed * passTime + EndAbortMargin + 20f) return;
+        float relative = MathF.Max(meanSpeed - leadSpeed, _overtake.MinRelativeSpeed);
+        float passTime = (gap + 2f * VehicleLength + _overtake.PassLengthPad) / relative + 1f / _manoeuvre.LateralRate;
+        if (_laneLength[lane] - _pos[i] < passSpeed * passTime + _overtake.EndAbortMargin + _overtake.EndRoom) return;
 
-        if (NearestOncoming(lane, oncoming.Value, _pos[i], out _, out float onGap, out float onSpeed))
+        if (NearestOncoming(lane, oncoming, _pos[i], out _, out float onGap, out float onSpeed))
         {
-            float sight = 60f + 240f * _attention[i];
+            float sight = _overtake.SightBase + _overtake.SightAttention * _attention[i];
             if (onGap < sight)
             {
-                float perceived = onSpeed * (1f - 0.6f * (1f - _attention[i]));
+                float perceived = onSpeed * (1f - _overtake.Misperception * (1f - _attention[i]));
                 // Inattentive drivers also underestimate how long the pass will take.
-                float believedTime = passTime * (0.6f + 0.4f * _attention[i]);
-                float required = (passSpeed + perceived) * believedTime + 30f * (1f - 0.5f * _aggression[i]);
+                float believedTime = passTime * (_overtake.BelievedTimeBase + _overtake.BelievedTimeAttention * _attention[i]);
+                float required = (passSpeed + perceived) * believedTime + _overtake.SafetyMargin * (1f - _overtake.SafetyAggression * _aggression[i]);
                 if (onGap < required) return;
             }
         }
@@ -146,7 +135,7 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// Whether a vehicle crawling below <see cref="QueueSpeed"/> is within <paramref name="range"/> metres ahead of
+    /// Whether a vehicle crawling below <see cref="OvertakeTuning.QueueSpeed"/> is within <paramref name="range"/> metres ahead of
     /// <paramref name="vehicle"/>: the slow leader is the tail of a queue, and there is nowhere to pull back in.
     /// </summary>
     bool QueueAhead(int vehicle, float range)
@@ -156,7 +145,7 @@ public sealed partial class Simulation
         {
             int j = _order[r];
             if (_pos[j] - _pos[vehicle] > range) return false;
-            if (_speed[j] < QueueSpeed) return true;
+            if (_speed[j] < _overtake.QueueSpeed) return true;
         }
         return false;
     }
@@ -214,8 +203,8 @@ public sealed partial class Simulation
         foreach (int o in _overtakers)
         {
             int lane = _lane[o];
-            var oncoming = _net.GetLane(new LaneId(lane)).Oncoming;
-            if (oncoming.IsNone || !NearestOncoming(lane, oncoming.Value, _pos[o], out int other, out float gap, out float speed))
+            int oncoming = _laneOncoming[lane];
+            if (oncoming < 0 || !NearestOncoming(lane, oncoming, _pos[o], out int other, out float gap, out float speed))
                 continue;
             _oncGap[o] = gap;
             _oncSpeed[o] = speed;
@@ -242,14 +231,14 @@ public sealed partial class Simulation
         switch (phase)
         {
             case OvertakePhase.MovingOut:
-                _lat[o] = MathF.Min(1f, _lat[o] + LateralRate * StepSeconds);
+                _lat[o] = MathF.Min(1f, _lat[o] + _manoeuvre.LateralRate * StepSeconds);
                 if (!ConsiderAbort(o) && _lat[o] >= 1f) _phase[o] = (byte)OvertakePhase.Passing;
                 break;
             case OvertakePhase.Passing:
                 if (!ConsiderAbort(o) && TargetPassed(o) && CanReturn(o)) _phase[o] = (byte)OvertakePhase.Returning;
                 break;
             case OvertakePhase.Returning:
-                _lat[o] = MathF.Max(0f, _lat[o] - LateralRate * StepSeconds);
+                _lat[o] = MathF.Max(0f, _lat[o] - _manoeuvre.LateralRate * StepSeconds);
                 if (_lat[o] <= 0f) FinishOvertake(o);
                 break;
         }
@@ -258,8 +247,8 @@ public sealed partial class Simulation
     /// <summary>Counts how long an overtaker has been standing still; true once it has been stuck too long.</summary>
     bool TrackStall(int o)
     {
-        _stall[o] = _speed[o] < 0.3f ? _stall[o] + StepSeconds : 0f;
-        return _stall[o] > StallLimit;
+        _stall[o] = _speed[o] < _manoeuvre.StallSpeed ? _stall[o] + StepSeconds : 0f;
+        return _stall[o] > _manoeuvre.StallLimit;
     }
 
     /// <summary>
@@ -268,13 +257,13 @@ public sealed partial class Simulation
     /// </summary>
     bool ConsiderAbort(int o)
     {
-        bool nearEnd = _laneLength[_lane[o]] - _pos[o] < EndAbortMargin;
+        bool nearEnd = _laneLength[_lane[o]] - _pos[o] < _overtake.EndAbortMargin;
         if (!nearEnd)
         {
             if (_oncGap[o] >= float.MaxValue) return false;
             float closing = _speed[o] + _oncSpeed[o];
-            bool tooFast = closing >= 0.1f && _oncGap[o] / closing < 1.5f + 2f * _attention[o];
-            if (!tooFast && _oncGap[o] >= StandingObstacle) return false;
+            bool tooFast = closing >= 0.1f && _oncGap[o] / closing < _overtake.AbortTimeBase + _overtake.AbortTimeAttention * _attention[o];
+            if (!tooFast && _oncGap[o] >= _overtake.StandingObstacle) return false;
         }
 
         int t = _target[o];
@@ -315,8 +304,8 @@ public sealed partial class Simulation
             if (_pos[j] - VehicleLength > front) { if (ahead < 0) ahead = j; continue; } // entirely ahead
             return false;                                                    // alongside
         }
-        if (behind >= 0 && rear - _pos[behind] < 5f + MathF.Max(0f, _speed[behind] - _speed[o]) * 2f) return false;
-        if (ahead >= 0 && _pos[ahead] - VehicleLength - front < 6f + MathF.Max(0f, _speed[o] - _speed[ahead]) * 1.5f) return false;
+        if (behind >= 0 && rear - _pos[behind] < _overtake.ReturnBehindBase + MathF.Max(0f, _speed[behind] - _speed[o]) * _overtake.ReturnBehindPerSpeed) return false;
+        if (ahead >= 0 && _pos[ahead] - VehicleLength - front < _overtake.ReturnAheadBase + MathF.Max(0f, _speed[o] - _speed[ahead]) * _overtake.ReturnAheadPerSpeed) return false;
         return true;
     }
 
@@ -328,6 +317,6 @@ public sealed partial class Simulation
         _aborting[o] = false;
         _stuck[o] = 0f;
         _stall[o] = 0f;
-        _cooldown[o] = OvertakeCooldown;
+        _cooldown[o] = _overtake.Cooldown;
     }
 }

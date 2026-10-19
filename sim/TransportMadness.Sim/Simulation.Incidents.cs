@@ -55,12 +55,12 @@ public sealed class Incident
 
 public sealed class Depot
 {
-    internal Depot(int id, int node, DepotLevel level)
+    internal Depot(int id, int node, DepotLevel level, int crews)
     {
         Id = id;
         Node = node;
         Level = level;
-        Crews = level == DepotLevel.Complex ? 2 : 1;
+        Crews = crews;
     }
 
     public int Id { get; }
@@ -72,13 +72,6 @@ public sealed class Depot
 
 public sealed partial class Simulation
 {
-    // Crew timings in seconds (tuning; will move to data files).
-    const float DispatchDelay = 10f;
-    const float CrewSpeed = 16f;          // metres per second, by road
-    const float RoadDetour = 1.4f;        // road distance over straight-line distance
-    const float FallbackResponse = 300f;  // no depot at all: help comes from far away
-    const float ClearDuration = 45f;
-
     readonly List<Incident> _incidents = new();
     readonly List<int> _openIncidents = new(); // not yet cleared, in id order
     readonly List<Depot> _depots = new();
@@ -92,7 +85,7 @@ public sealed partial class Simulation
     /// <summary>Places a depot at a node. Its crews respond to incidents; closer depots respond faster.</summary>
     public int AddDepot(int node, DepotLevel level)
     {
-        _depots.Add(new Depot(_depots.Count, node, level));
+        _depots.Add(new Depot(_depots.Count, node, level, _crew.PerDepot.For(level)));
         return _depots.Count - 1;
     }
 
@@ -144,8 +137,7 @@ public sealed partial class Simulation
         int lane = _lane[vehicle];
         if (_lat[vehicle] >= HomeLaneLat)
         {
-            var oncoming = _net.GetLane(new LaneId(lane)).Oncoming;
-            if (!oncoming.IsNone) lane = oncoming.Value;
+            if (_laneOncoming[lane] >= 0) lane = _laneOncoming[lane];
         }
         _blockLane[vehicle] = lane;
         _blockedCount[lane]++;
@@ -231,10 +223,10 @@ public sealed partial class Simulation
                     Collide(o, j, IncidentKind.Sideswipe);
             }
 
-            var oncoming = _net.GetLane(new LaneId(lane)).Oncoming;
-            if (oncoming.IsNone) continue;
+            int oncoming = _laneOncoming[lane];
+            if (oncoming < 0) continue;
             float length = _laneLength[lane];
-            for (int r = _laneStart[oncoming.Value]; r < _laneStart[oncoming.Value + 1]; r++)
+            for (int r = _laneStart[oncoming]; r < _laneStart[oncoming + 1]; r++)
             {
                 int j = _order[r];
                 float jRear = length - _pos[j], jFront = jRear + VehicleLength;
@@ -295,7 +287,7 @@ public sealed partial class Simulation
                 case IncidentState.CrewEnRoute when Tick >= incident.CrewArrivalTick:
                     incident.State = IncidentState.Clearing;
                     break;
-                case IncidentState.Clearing when Tick >= incident.CrewArrivalTick + Ticks(ClearDuration):
+                case IncidentState.Clearing when Tick >= incident.CrewArrivalTick + Ticks(_crew.ClearDuration):
                     Clear(incident);
                     _openIncidents.RemoveAt(k--);
                     break;
@@ -309,7 +301,7 @@ public sealed partial class Simulation
         {
             incident.State = IncidentState.CrewEnRoute;
             incident.DispatchTick = Tick;
-            incident.CrewArrivalTick = Tick + Ticks(FallbackResponse);
+            incident.CrewArrivalTick = Tick + Ticks(_crew.FallbackResponse);
             return;
         }
 
@@ -326,7 +318,7 @@ public sealed partial class Simulation
         if (best == null)
         {
             // Every crew is busy. Keep waiting, but the distant service will not leave the road blocked forever.
-            if (Tick - incident.StartTick >= Ticks(FallbackResponse))
+            if (Tick - incident.StartTick >= Ticks(_crew.FallbackResponse))
             {
                 incident.State = IncidentState.CrewEnRoute;
                 incident.DispatchTick = Tick;
@@ -335,12 +327,12 @@ public sealed partial class Simulation
             return;
         }
 
-        float response = DispatchDelay + bestDistance * RoadDetour / CrewSpeed;
+        float response = _crew.DispatchDelay + bestDistance * _crew.RoadDetour / _crew.Speed;
         incident.State = IncidentState.CrewEnRoute;
         incident.DispatchTick = Tick;
-        if (response >= FallbackResponse)
+        if (response >= _crew.FallbackResponse)
         {
-            incident.CrewArrivalTick = Tick + Ticks(FallbackResponse); // the distant service gets there first
+            incident.CrewArrivalTick = Tick + Ticks(_crew.FallbackResponse); // the distant service gets there first
             return;
         }
         best.BusyCrews++;

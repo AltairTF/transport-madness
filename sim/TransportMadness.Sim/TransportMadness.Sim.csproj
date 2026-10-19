@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Tuning and prices live in the data folder at the repository root, not in code. -->
+    <EmbeddedResource Include="..\..\data\tuning.json" LogicalName="tuning.json" />
+  </ItemGroup>
+
 </Project>

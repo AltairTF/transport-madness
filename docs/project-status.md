@@ -1,12 +1,12 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: M1 feature-complete in the greybox (terrain, arcs, real junction paths, removal, upgrade); polish items listed in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: M0 closed out (flat per-lane lookups, local lane-change reordering) and M1 feature-complete in the greybox (terrain, arcs, real junction paths, removal, upgrade); player actions are now commands in a replayable log, and tuning and prices live in `data/tuning.json`. Polish items listed in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
 | Milestone | State |
 |---|---|
-| M0 Dynamic traffic prototype | All five exit criteria met (see section 2) |
+| M0 Dynamic traffic prototype | All five exit criteria met (see section 2); cleanup items closed (section 11) |
 | M1 Procedural terrain, road building with cut and fill | Core done: terrain, elevation, grades, cut and fill cost and carving, arcs, path-based junction conflicts, road removal and upgrade (sections 5.1, 5.6, 5.7); polish items open |
 | M2 Stations, lines, player vehicles, basic economy | Not started |
 | M3 Towns, industries, cargo chains, trip flows | Not started |
@@ -34,7 +34,10 @@ README.md                  how to run, M0 status table
 docs/game-plan.md          pitch, pillars, systems, milestones
 docs/adr/                  0001 pure C# core, 0002 kinematic lanes + fidelity tiers, 0003 deterministic fixed step
 docs/project-status.md     this file
+data/tuning.json           tuning and prices, embedded in the sim assembly (section 8)
 sim/                       the simulation (pure C#, no Godot types) and its tests; Godot ignores it (.gdignore)
+                             SimCommand.cs, Simulation.Commands.cs: player actions, command log, replay
+                             Tuning.cs: typed view of data/tuning.json
   TransportMadness.Sim/      library
   TransportMadness.Sim.Tests/ xUnit tests
 game/                      Godot side: SimHost.cs, DemoWorld.cs, GDScript (main, hud, camera_rig, build_tool), main.tscn
@@ -63,7 +66,7 @@ Rendering: roads are boxes with a centre line (avenues get a median); every vehi
 - `SplitRoad` retires the old road and lanes and records for each old lane its two replacements and the split distance. Vehicles migrate in `Simulation.SyncNetwork`.
 
 ### 5.2 Vehicles and the step (`Simulation`, partial class)
-Data layout: parallel arrays indexed by vehicle id (lane, position, speed, traits, manoeuvre state, kind...). Position is the front bumper's distance along its lane. Vehicles are grouped per lane in ascending position (counting sort by lane, insertion sort by position, ties broken by id), rebuilt each step. Ids are reused after a vehicle is removed.
+Data layout: parallel arrays indexed by vehicle id (lane, position, speed, traits, manoeuvre state, kind...). Position is the front bumper's distance along its lane. Vehicles are grouped per lane in ascending position (counting sort by lane, insertion sort by position, ties broken by id), rebuilt each step (a lane change re-files just that vehicle, `MoveInOrder`). Lane links (`Oncoming`, `Left`, `Right`, `Next`, road) are flat arrays refreshed when the network version changes. Ids are reused after a vehicle is removed.
 
 Step order: `SyncNetwork`; `DecideManoeuvres`; `PrepareOvertakes` (observe oncoming traffic, advance overtakes); acceleration for every vehicle from the start-of-step state; integrate and advance lanes; `RebuildOrder`; `DetectIncidents` (collisions, debris, crews); `Tick++`.
 
@@ -83,7 +86,9 @@ Junctions are uncontrolled and zipper-style: within 40 m of a junction a vehicle
 - **Crews**: `AddDepot(node, level)`. A new incident takes the nearest depot with a free crew: arrival after `10 s + straight distance * 1.4 / 16 m/s`; clearing takes 45 s, then wrecks are removed and the crew is free again (it does not drive back). If that response would take 300 s or more, or no depot exists, or every crew has been busy for 300 s, a distant fallback service arrives instead. A car piling into a wreck being cleared restarts the clearing timer.
 
 ### 5.5 Determinism (ADR 0003)
-One seeded RNG (`SimRandom`, xoshiro256** seeded through SplitMix64, own implementation so it never depends on the runtime), vehicles processed in id order, no wall-clock or Godot values inside a step. `StateHash()` is FNV-1a over all vehicle state, incident and depot state and the RNG state. Roads built while running are picked up at the next step or spawn.
+One seeded RNG (`SimRandom`, xoshiro256** seeded through SplitMix64, own implementation so it never depends on the runtime), vehicles processed in id order, no wall-clock or Godot values inside a step. `StateHash()` is FNV-1a over all vehicle state, incident and depot state, the network version and the RNG state. Roads built while running are picked up at the next step or spawn.
+
+Player actions are commands (`SimCommand`: `BuildRoadCommand`, `RemoveRoadCommand`, `UpgradeRoadCommand`, `AddDepotCommand`, `SeedTrafficCommand`, `CrashSomeoneCommand`). `Simulation.Execute` applies one between steps and appends it to `CommandLog` with the tick it ran at (refused commands too: they change nothing and are refused again on replay). `Simulation.Replay(log, untilTick)` runs a fresh simulation (same seed, same initial network) to a tick, executing the log at the recorded ticks. `DeterminismTests` builds its whole world through commands, so the log plus the seed alone reproduces the run. Anything that changes the network or the simulation without going through `Execute` is not replayable; the game's `DemoWorld` grid is the one such initial world (the demo's depots and traffic are commands).
 
 ### 5.7 Arcs, removal and upgrade (M1)
 - `RoadGeometry` is a straight line or a circular arc: start point, start heading, signed sweep (total turn, positive is an increasing heading) and arc length. `PointAt(s)` and `HeadingAt(s)` take distances along the centre line; `Slice` and `Reversed` give the parts and the other direction. Positions of vehicles on every lane of a road are distances along the road's centre line, so parallel lanes share a length; the lane's sideways offset is only used for drawing, junction paths and incident points.
@@ -103,7 +108,7 @@ One seeded RNG (`SimRandom`, xoshiro256** seeded through SplitMix64, own impleme
 
 ## 6. Game layer (`game/`)
 
-- `SimHost.cs`: world creation (`NewDemoWorld`, `NewEmptyWorld`, `NewHillsWorld`), `RayToGround` (picking against the terrain), `HeightAt`, `EstimateRoadCost`, terrain mesh (one `ArrayMesh`, rebuilt in about 50 ms whenever `Terrain.Version` changes), roads and vehicles that follow elevation and grade, speed, stats, build commands (`BuildRoad`, `CanBuildRoad`, `SnapToNode`, `BuildDepot`), `SpawnTraffic`, `CrashSomeone` (picks a moving car deterministically from the tick), drawing.
+- `SimHost.cs`: world creation (`NewDemoWorld`, `NewEmptyWorld`, `NewHillsWorld`), player actions as commands (`BuildCurve`, `RemoveRoad`, `UpgradeRoad`, `BuildDepot`, `SpawnTraffic`, `CrashSomeone` all go through `Sim.Execute`), `RayToGround` (picking against the terrain), `HeightAt`, `EstimateRoadCost`, terrain mesh (one `ArrayMesh`, rebuilt in about 50 ms whenever `Terrain.Version` changes), roads and vehicles that follow elevation and grade, speed, stats, build commands (`BuildRoad`, `CanBuildRoad`, `SnapToNode`, `BuildDepot`), `SpawnTraffic`, `CrashSomeone` (picks a moving car deterministically from the tick), drawing.
 - `build_tool.gd`: mouse to build commands, picking on the terrain. While previewing it shows length, grade, cut, fill and cost. Snaps to nodes within 20 m, else to a road's centre line within 12 m (a junction forms there), else to 15 degree steps and 5 m lengths; green or red preview; roads chain from the last end point; Esc stops.
 - `hud.gd`: speed buttons (pause, 1x to 8x), tool buttons, action buttons, statistics.
 - `camera_rig.gd`: free orbit camera.
@@ -115,7 +120,7 @@ Demo world: 10 x 10 grid, 250 m spacing, an avenue on every third row, 4 simple 
 
 ## 7. Tests
 
-96 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
+111 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
 
 | File | Covers |
 |---|---|
@@ -124,13 +129,17 @@ Demo world: 10 x 10 grid, 250 m spacing, an avenue on every third row, 4 simple 
 | `CurveTests` (`RoadGeometryTests`, `CurvedRoadTests`, `JunctionPathTests`, `CurvedTrafficTests`), `EditRoadTests` | Arc geometry, curve limits, junctions on arcs, path-based conflicts, traffic on a ring of arcs, removal, upgrade, picking |
 | `TerrainTests`, `TerrainRoadTests` | Seeded generation, interpolation, carving, grade, grade speed limit, grade refusal, cut and fill cost |
 | `IncidentTests` | Wrecks, blocking, crews, response time, busy crews, head-on, avoiding blocked roads |
-| `TrafficTests`, `ScenarioTests` | Determinism, sanity bounds, step-time budget, no lock-up on a dense map, long runs with overtaking, accidents and clearing |
+| `TrafficTests`, `ScenarioTests` | Seeded determinism, sanity bounds, step-time budget, no lock-up on a dense map, long runs with overtaking, accidents and clearing |
+| `DeterminismTests` | Ten-minute scenario built entirely by commands (build, upgrade, remove, depots, traffic, crashes, crews, overtaking): two runs agree, replaying the command log reproduces the run, a pinned golden hash; a second pinned hash for an avenue scenario that exercises lane changes |
+| `TuningTests` | The shipped file loads, a missing or unknown key fails, prices and crew counts follow the tuning, driving tuning changes behaviour |
 
 The suite is the main safeguard for tuning: the traffic model is sensitive (a small change to a margin once locked the whole demo map, found only by a 20-minute run with 1000 cars).
 
-## 8. Tuning values (all in code for now)
+## 8. Tuning values
 
-Defined in `Simulation*.cs`: step 0.05 s; vehicle 4.5 x 1.9 m; lane width 3.5 m; IDM acceleration 1.5, comfortable deceleration 2.0, minimum gap 2 m, headway 1.5 s; braking cap 9, jerk 15; decisions every 10 ticks; lane-change cooldown 60 ticks, overtake cooldown 100; lateral rate 0.8 per second; lane margins 30 m (lane change), 15 m (overtake start), 30 m (abort near end); stall limit 4 s; junction range 40 m, conflict clearance 6.5 m; crew timings in 5.4. Road speed limits (14 and 19 m/s) are in `SimHost.BuildRoad` and `DemoWorld`. The game plan says these belong in data files.
+`data/tuning.json` is the only place the behaviour numbers and prices live. It is embedded in the simulation assembly (so the sim stays free of file paths and Godot) and read by `Tuning.Load()` into typed records; the network owns the `Tuning` (`RoadNetwork(terrain, tuning)`, default is the shipped file) and the simulation reads it from there. Every key is required and unknown keys are rejected, so a typo fails at load. Sections: `driving` (IDM, braking, junction yielding), `traffic` (spawning and driver speed spread), `manoeuvres` (decision interval, lateral rate, stall), `laneChange`, `overtake` (every threshold and driver-trait formula), `crews` (timings, crews per depot level), `roads` (speed limit and price per type, earthworks, demolition, upgrade refund). A change to a number is a behaviour change: the golden hash in `DeterminismTests` will move and the traffic tests must still pass (see section 7).
+
+Still in code, on purpose: step 0.05 s (ADR 0003); vehicle 4.5 x 1.9 m and lane width 3.5 m (vehicle sizes move to the vehicle roster at M2); the lateral thresholds `HomeLaneLat` 0.5 and `OncomingSightLat` 0.3 (they define when a vehicle counts as being in the other lane); road geometry rules in `RoadNetwork` (minimum length, maximum grade, minimum radius, maximum sweep, curve comfort). Vehicle roster, eras and economy data come later as their own files.
 
 ## 9. Findings worth remembering
 
@@ -154,23 +163,22 @@ Behaviour:
 - Tiny dense networks (a few roads, dozens of cars) still produce occasional pile-ups at junctions.
 
 Engineering:
-- No command log: player actions (`BuildRoad`, `Crash`, `SpawnTraffic`) are applied at frame boundaries without a tick stamp, so a run with actions cannot be replayed (ADR 0003 promises "same seed and same actions").
-- The determinism test only covers seeded traffic, not crashes, depots, crews or overtaking, and does not pin a golden hash across platforms.
-- Hot loops still read lane data through `RoadNetwork` objects (`Oncoming`, `Left`, `Right`, `Next`); length, limit and end node are already flat arrays. `ChangeLane` rebuilds the whole ordering. Cleared incidents are kept forever (only the open list is scanned each step).
-- Tuning constants are in code; some manoeuvre thresholds are unnamed literals.
+- The golden hashes in `DeterminismTests` (`GoldenHash`, `AvenueGoldenHash`) were pinned on the development machine (macOS arm64). `MathF.Sin/Cos/Sqrt` come from the platform's maths library, so another OS or CPU may need its own value or a deliberate check.
+- The command log is in memory only; saving it (and a snapshot, M6) is not done. `DemoWorld` builds its grid outside the log.
+- Cleared incidents are kept forever (only the open list is scanned each step). Spawning a vehicle, clearing an incident and a network change still rebuild the whole per-lane ordering; only a lane change is local.
+- Tuning is read through section records cached in `Simulation` fields rather than constants; step time at 1000 vehicles measured 0.8 to 1.1 ms in `--bench` after the change (it was about 0.9 ms), so nothing is gained by flattening it yet.
 - `SpawnDebris` goes through `SpawnVehicle` (draws RNG, rebuilds order) although debris never drives.
 - `SimHost` holds some game rules (victim choice, depot snap radius, one depot per node) that belong in the simulation or a rules layer.
-- Vocabulary drift: `Wreck`, `Debris` and `DepotLevel.Workshop`/`Complex` are not in `CONTEXT.md` ("complete Depot" there); `DepotLevel` and the crew count anticipate M5.
+- `DepotLevel` and the crew count anticipate M5; the depot level only sets the number of crews (in `data/tuning.json`) for now.
 - `main.gd` carries the benchmark and self-test harness.
 - Frame-rate numbers are manual, not part of CI.
 
 ## 11. What comes next
 
 **Close out M0 (small)**
-1. Add a command log with tick stamps for player actions and extend the determinism test to cover crashes, crews and overtaking (and a golden hash).
-2. Move tuning to data files and name the remaining literals.
-3. Flatten the remaining per-lane lookups; make lane change local instead of a full reorder.
-4. Update `CONTEXT.md` with Wreck, Debris and the depot level names; reconcile "complete Depot" with `Complex`.
+Done: command log with tick stamps and replay, determinism test over crashes, crews and overtaking with a golden hash, tuning and prices in `data/tuning.json`, `CONTEXT.md` brought in line (Wreck, Debris, Command, depot levels Simple, Workshop, Complex).
+Also done: every per-lane lookup the hot loops use (length, limit, end node, road, `Oncoming`, `Left`, `Right`, `Next`) is a flat array in `Simulation`, refreshed when the network version changes; a lane change re-files only that vehicle (`MoveInOrder`) instead of rebuilding the ordering. A temporary check against `RebuildOrder` over 4533 lane changes found no difference, and `DeterminismTests` pins an avenue scenario (`AvenueGoldenHash`) that exercises lane changes, which the main golden run does not. Step time was not re-measured (`--bench` needs Godot).
+Open: none.
 
 **M1: terrain and road building with cut and fill**
 Done: seeded heightmap, lane elevation and grade with speed limits, cut and fill cost and terrain carving, build tool shows the cost, picking and drawing on terrain.

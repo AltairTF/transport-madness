@@ -17,9 +17,12 @@ public static class DemoWorld
             for (int z = 0; z < size; z++)
             {
                 if (x + 1 < size)
-                    net.AddRoad(nodes[x, z], nodes[x + 1, z], z % 3 == 0 ? RoadType.Avenue2x2 : RoadType.TwoLane, z % 3 == 0 ? 19f : 14f);
+                {
+                    var type = z % 3 == 0 ? RoadType.Avenue2x2 : RoadType.TwoLane;
+                    net.AddRoad(nodes[x, z], nodes[x + 1, z], type, net.Tuning.Roads.Of(type).SpeedLimit);
+                }
                 if (z + 1 < size)
-                    net.AddRoad(nodes[x, z], nodes[x, z + 1], RoadType.TwoLane, 14f);
+                    net.AddRoad(nodes[x, z], nodes[x, z + 1], RoadType.TwoLane, net.Tuning.Roads.TwoLane.SpeedLimit);
             }
     }
 }
