@@ -11,11 +11,24 @@ The player's transport business. Owns vehicles, stations and the money.
 A settlement made of buildings that generate and consume passengers and goods. Grows when well served.
 _Avoid_: City
 
+**Building**:
+A home, a commerce building or a light industry building on a lot beside a street of a Town. Has a size tier that sets how many people live or work in it and what it needs. Gets a Trip group from its people. Grows by upgrading its tier, using the Construction stock it has been delivered. Becomes inactive when it loses all road access, is marked Abandoned after 3 months and demolished a month later.
+_Avoid_: House (a Building is not always a home)
+
 **Industry**:
-A producer or consumer of cargo that sits in a chain (e.g. forest → sawmill → shop).
+A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm) produce at a fixed rate; processors (sawmill, cement works, food plant, factory) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods.
 
 **Cargo**:
-Anything that is not people and is moved between industries and towns.
+Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods.
+
+**Satisfaction**:
+A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold the Town stops growing. Has no effect on money before M5.
+
+**Sustain stock / Construction stock**:
+What a Building holds of delivered Cargo. Sustain (food, goods, planks) is used up every month to meet its needs. Construction (building materials, planks) is spent to upgrade the Building or to found a new one next to it. Deliveries go to the Buildings within the coverage radius of the unloading Station, split by need.
+
+**Connectivity**:
+The share of a Town's Buildings that were reached in a month: their Trip groups finished the work and leisure trips within a time budget, by any mode.
 
 **Passenger**:
 A person moving between a home and a place of work or leisure.
