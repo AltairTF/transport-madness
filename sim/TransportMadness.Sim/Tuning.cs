@@ -164,6 +164,8 @@ public sealed record RoadTuning
     public required float EarthworkSlope { get; init; }
     public required float DemolitionCostPerMetre { get; init; }
     public required float UpgradeRefundShare { get; init; }
+    public required float DowngradeCostPerMetre { get; init; }
+    public required float SpeedLimitChangeCostPerMetre { get; init; }
 
     public RoadTypeTuning Of(RoadType type) => type == RoadType.Avenue2x2 ? Avenue : TwoLane;
 }

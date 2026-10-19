@@ -1,11 +1,14 @@
 extends Node
 ## Turns mouse input into build commands on the simulation host. Straight roads snap to existing nodes
 ## (that is how junctions are made) and otherwise to 15 degree steps and 5 m lengths. Curves take three
-## clicks: start, a point on the curve, end.
+## clicks: start, a point on the curve, end. Road tools (upgrade, downgrade, remove, speed limit) act on the road
+## piece under the mouse; Move takes two clicks: the junction to pick up, then where to put it.
 
 const NODE_SNAP_RADIUS := 20.0
 const ANGLE_STEP := deg_to_rad(15.0)
 const LENGTH_STEP := 5.0
+const PICK_RADIUS := 24.0
+const SPEED_STEP := 10.0 / 3.6 # one click on a speed tool changes the limit by 10 km/h
 const ROAD_COLORS := {"valid": Color(0.3, 0.9, 0.4, 0.7), "invalid": Color(0.95, 0.3, 0.3, 0.7)}
 
 signal message(text: String)
@@ -13,10 +16,11 @@ signal tool_changed(tool_name: String)
 
 var host: Node3D
 var camera: Camera3D
-var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, remove, depot
+var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, downgrade, faster, slower, move, remove, depot
 
 var _start: Variant = null # Vector3 or null
 var _mid: Variant = null   # Vector3 or null, curves only
+var _picked_node := -1     # move tool: the node being dragged, with _start at its place
 var _preview: MeshInstance3D
 var _arc_preview: MeshInstance3D
 var _hover_road := -1
@@ -49,6 +53,10 @@ func set_tool(tool_name: String) -> void:
 		"curve2": message.emit("Curved 2-lane road: click the start, a point on the curve, then the end (Esc stops)")
 		"curve4": message.emit("Curved avenue: click the start, a point on the curve, then the end (Esc stops)")
 		"upgrade": message.emit("Upgrade: click a 2-lane road to widen it to an avenue")
+		"downgrade": message.emit("Downgrade: click an avenue to narrow it to a 2-lane road")
+		"faster": message.emit("Faster: click a road to raise its speed limit by 10 km/h")
+		"slower": message.emit("Slower: click a road to lower its speed limit by 10 km/h")
+		"move": message.emit("Move: click a junction to pick it up, then click where it goes (roads are rebuilt straight)")
 		"remove": message.emit("Remove: click a road piece (junction to junction) to tear it down")
 		"depot": message.emit("Depot: click near a junction")
 		_: message.emit("")
@@ -62,7 +70,12 @@ func _road_type() -> int:
 	return 1 if tool == "road4" or tool == "curve4" else 0
 
 
+func _is_road_tool() -> bool:
+	return tool in ["upgrade", "downgrade", "remove", "faster", "slower"]
+
+
 func _reset() -> void:
+	_picked_node = -1
 	_hover_road = -1
 	_start = null
 	_mid = null
@@ -116,8 +129,11 @@ func _click(screen: Vector2) -> void:
 	var target: Variant = _target_point(screen)
 	if target == null:
 		return
-	if tool == "upgrade" or tool == "remove":
+	if _is_road_tool():
 		_click_road(screen)
+		return
+	if tool == "move":
+		_click_move(screen)
 		return
 	if tool == "depot":
 		var level := 1
@@ -155,13 +171,18 @@ func _click_road(screen: Vector2) -> void:
 		message.emit("No road there")
 		return
 	var road: int = hit["road"]
-	if tool == "remove":
-		var cost: float = host.DemolitionCost(road)
-		message.emit("Road removed (demolition %s)" % _money(cost) if host.RemoveRoad(road) else "Can't remove that")
-	elif host.UpgradeRoad(road):
-		message.emit("Upgraded to an avenue")
-	else:
-		message.emit("Only 2-lane roads can be upgraded")
+	match tool:
+		"remove":
+			var cost: float = host.DemolitionCost(road)
+			message.emit("Road removed (demolition %s)" % _money(cost) if host.RemoveRoad(road) else "Can't remove that")
+		"upgrade":
+			message.emit("Upgraded to an avenue" if host.UpgradeRoad(road) else "Only 2-lane roads can be upgraded")
+		"downgrade":
+			message.emit("Narrowed to a 2-lane road" if host.DowngradeRoad(road) else "Only avenues can be narrowed")
+		"faster", "slower":
+			var delta := SPEED_STEP if tool == "faster" else -SPEED_STEP
+			var limit_kmh: float = host.SteppedSpeedLimit(road, delta) * 3.6
+			message.emit("Speed limit now %d km/h" % roundi(limit_kmh) if host.ChangeSpeedLimit(road, delta) else "The limit can't go any further")
 	_hover_road = -1
 	_arc_preview.visible = false
 	_update_preview(screen)
@@ -178,22 +199,43 @@ func _hover(screen: Vector2) -> void:
 	_hover_road = hit["road"]
 	var width := (16.0 if hit["type"] == 1 else 7.0) + 2.0
 	var color: Color = ROAD_COLORS["invalid"]
-	if tool == "remove":
-		message.emit("Remove %d m of road: demolition %s" % [hit["length"], _money(host.DemolitionCost(_hover_road))])
-	else:
-		var cost: Dictionary = host.EstimateUpgrade(_hover_road)
-		if cost["valid"]:
+	match tool:
+		"remove":
 			color = ROAD_COLORS["valid"]
-			message.emit("Upgrade %d m to an avenue: cut %d m3   fill %d m3   cost %s" % [hit["length"], cost["cut"], cost["fill"], _money(cost["money"])])
-		else:
-			message.emit("Already an avenue")
+			message.emit("Remove %d m of road: demolition %s" % [hit["length"], _money(host.DemolitionCost(_hover_road))])
+		"upgrade":
+			var cost: Dictionary = host.EstimateUpgrade(_hover_road)
+			if cost["valid"]:
+				color = ROAD_COLORS["valid"]
+				message.emit("Upgrade %d m to an avenue: cut %d m3   fill %d m3   cost %s" % [hit["length"], cost["cut"], cost["fill"], _money(cost["money"])])
+			else:
+				message.emit("Already an avenue")
+		"downgrade":
+			var cost: Dictionary = host.EstimateDowngrade(_hover_road)
+			if cost["valid"]:
+				color = ROAD_COLORS["valid"]
+				message.emit("Narrow %d m to a 2-lane road: cost %s" % [hit["length"], _money(cost["money"])])
+			else:
+				message.emit("Already a 2-lane road")
+		_:
+			var delta := SPEED_STEP if tool == "faster" else -SPEED_STEP
+			var now_kmh: float = host.SpeedLimitOf(_hover_road) * 3.6
+			var cost: Dictionary = host.EstimateSpeedLimit(_hover_road, delta)
+			if cost["valid"]:
+				color = ROAD_COLORS["valid"]
+				message.emit("Speed limit %d to %d km/h: cost %s" % [roundi(now_kmh), roundi(cost["limit"] * 3.6), _money(cost["money"])])
+			else:
+				message.emit("Speed limit stays at %d km/h" % roundi(now_kmh))
 	_material.albedo_color = color
 	_draw_arc(host.RoadPoints(_hover_road), width)
 
 
 func _update_preview(screen: Vector2) -> void:
-	if tool == "upgrade" or tool == "remove":
+	if _is_road_tool():
 		_hover(screen)
+		return
+	if tool == "move":
+		_hover_move(screen)
 		return
 	var target: Variant = _target_point(screen)
 	if target == null or tool == "depot":
@@ -240,10 +282,68 @@ func _update_preview(screen: Vector2) -> void:
 		message.emit("Can't build there: too short, too steep (max 12%), curve too tight or too close to a junction")
 
 
-## A flat strip on the ground following the planned curve.
-func _draw_arc(points: PackedVector3Array, width: float) -> void:
+## Move tool: the first click picks up the junction under the mouse, the second drops it.
+func _click_move(screen: Vector2) -> void:
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	if _picked_node < 0:
+		var found: Dictionary = host.NodeAt(p.x, p.z, PICK_RADIUS)
+		if not found["found"]:
+			message.emit("No junction there")
+			return
+		_picked_node = found["node"]
+		_start = Vector3(found["x"], found["y"], found["z"])
+		message.emit("Junction picked up: click where it goes (Esc cancels)")
+		return
+	var target := _move_target(p)
+	if host.MoveNode(_picked_node, target.x, target.z):
+		message.emit("Junction moved")
+		_reset()
+	else:
+		message.emit("Can't move it there")
+
+
+func _move_target(p: Vector3) -> Vector3:
+	return _ground(roundf(p.x / LENGTH_STEP) * LENGTH_STEP, roundf(p.z / LENGTH_STEP) * LENGTH_STEP)
+
+
+func _hover_move(screen: Vector2) -> void:
+	_preview.visible = false
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	if _picked_node < 0:
+		var found: Dictionary = host.NodeAt(p.x, p.z, PICK_RADIUS)
+		_arc_preview.visible = false
+		if found["found"]:
+			_preview.visible = true
+			_preview.mesh.size = Vector3(10, 10, 10)
+			_preview.transform = Transform3D(Basis.IDENTITY, Vector3(found["x"], found["y"] + 5.0, found["z"]))
+			_material.albedo_color = ROAD_COLORS["valid"]
+			message.emit("Click to pick up this junction")
+		else:
+			message.emit("Click a junction to pick it up")
+		return
+	var target := _move_target(p)
+	var cost: Dictionary = host.EstimateMoveNode(_picked_node, target.x, target.z)
+	_material.albedo_color = ROAD_COLORS["valid"] if cost["valid"] else ROAD_COLORS["invalid"]
+	# Straight strips from the new place to the other end of each road that will be rebuilt.
+	var first := true
+	for end in host.NodeNeighbours(_picked_node):
+		_draw_arc(host.CurvePoints(target.x, target.z, end.x, end.z, 0.0), 9.0, first)
+		first = false
+	if cost["valid"]:
+		message.emit("Move here: %d m of road rebuilt, cut %d m3   fill %d m3   cost %s" % [cost["length"], cost["cut"], cost["fill"], _money(cost["money"])])
+	else:
+		message.emit("Can't move it there: roads too short or steep, crossing another road, or on another junction")
+
+
+## A flat strip on the ground following the planned curve. Several strips can share the mesh: pass clear = false to add one.
+func _draw_arc(points: PackedVector3Array, width: float, clear := true) -> void:
 	var mesh: ImmediateMesh = _arc_preview.mesh
-	mesh.clear_surfaces()
+	if clear:
+		mesh.clear_surfaces()
 	_arc_preview.visible = true
 	if points.size() < 2:
 		return

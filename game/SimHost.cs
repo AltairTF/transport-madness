@@ -34,7 +34,9 @@ public partial class SimHost : Node3D
     float[] _buffer = new float[InitialCapacity * FloatsPerInstance];
     int _capacity = InitialCapacity;
     Node3D _roadRoot = null!;
-    MeshInstance3D _terrainMesh = null!;
+    Node3D _terrainRoot = null!;
+    StandardMaterial3D _terrainMaterial = null!;
+    MeshInstance3D?[] _terrainChunks = Array.Empty<MeshInstance3D?>();
     int _terrainVersion = -1;
     Terrain _terrain = null!, _terrainSource = null!;
     StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!;
@@ -60,9 +62,9 @@ public partial class SimHost : Node3D
         ground.MaterialOverride = Flat(new Color(0.42f, 0.58f, 0.34f));
         ground.Position = new Vector3(0, -0.5f, 0);
         AddChild(ground);
-        _terrainMesh = new MeshInstance3D { Name = "Terrain", MaterialOverride = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 1f } };
-        _terrainMesh.Position = new Vector3(0, -TerrainSink, 0);
-        AddChild(_terrainMesh);
+        _terrainMaterial = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 1f };
+        _terrainRoot = new Node3D { Name = "Terrain", Position = new Vector3(0, -TerrainSink, 0) };
+        AddChild(_terrainRoot);
 
         var box = new BoxMesh { Size = new Vector3(Simulation.VehicleLength, 1.5f, Simulation.VehicleWidth) };
         _vehicles = new MultiMesh
@@ -157,7 +159,7 @@ public partial class SimHost : Node3D
     public Godot.Collections.Dictionary SnapToNode(float x, float z, float radius)
     {
         var net = Sim.Network;
-        int node = net.FindNodeNear(x, z, radius);
+        int node = net.FindNodeNear(x, z, radius, withRoadsOnly: true);
         if (node >= 0)
         {
             var (nx, nz) = net.GetNode(node);
@@ -268,10 +270,91 @@ public partial class SimHost : Node3D
         return true;
     }
 
+    /// <summary>What narrowing an avenue to a two-lane road costs: {valid, money}.</summary>
+    public Godot.Collections.Dictionary EstimateDowngrade(int road)
+    {
+        if (Sim.Network.DowngradeCost(new RoadId(road)) is not { } money) return new Godot.Collections.Dictionary { ["valid"] = false };
+        return new Godot.Collections.Dictionary { ["valid"] = true, ["money"] = money };
+    }
+
+    /// <summary>Narrows an avenue to a two-lane road.</summary>
+    public bool DowngradeRoad(int road)
+    {
+        if (Sim.Execute(new DowngradeRoadCommand(road, Sim.Network.Tuning.Roads.TwoLane.SpeedLimit)) == 0) return false;
+        RebuildRoads();
+        return true;
+    }
+
+    const float MinSpeedLimit = 5f, MaxSpeedLimit = 33f; // m/s, what the speed tools allow (18 to 120 km/h)
+
+    /// <summary>A road's posted limit in m/s.</summary>
+    public float SpeedLimitOf(int road) => Sim.Network.GetRoad(new RoadId(road)).SpeedLimit;
+
+    /// <summary>The limit a road would get from <see cref="ChangeSpeedLimit"/>, in m/s.</summary>
+    public float SteppedSpeedLimit(int road, float delta) => Math.Clamp(SpeedLimitOf(road) + delta, MinSpeedLimit, MaxSpeedLimit);
+
+    /// <summary>What re-signing a road costs: {valid, money, limit}; invalid when the limit would not change.</summary>
+    public Godot.Collections.Dictionary EstimateSpeedLimit(int road, float delta)
+    {
+        var id = new RoadId(road);
+        float limit = SteppedSpeedLimit(road, delta);
+        if (limit == SpeedLimitOf(road) || Sim.Network.SpeedLimitChangeCost(id) is not { } money)
+            return new Godot.Collections.Dictionary { ["valid"] = false };
+        return new Godot.Collections.Dictionary { ["valid"] = true, ["money"] = money, ["limit"] = limit };
+    }
+
+    /// <summary>Raises or lowers a road's posted limit by <paramref name="delta"/> m/s, within the allowed range.</summary>
+    public bool ChangeSpeedLimit(int road, float delta)
+    {
+        if (Sim.Execute(new SetSpeedLimitCommand(road, SteppedSpeedLimit(road, delta))) == 0) return false;
+        RebuildRoads();
+        return true;
+    }
+
+    /// <summary>The junction or road end nearest a point within <paramref name="radius"/>: {found, node, x, y, z}.</summary>
+    public Godot.Collections.Dictionary NodeAt(float x, float z, float radius)
+    {
+        var net = Sim.Network;
+        int node = net.FindNodeNear(x, z, radius, withRoadsOnly: true);
+        if (node < 0) return new Godot.Collections.Dictionary { ["found"] = false };
+        var (nx, nz) = net.GetNode(node);
+        return new Godot.Collections.Dictionary { ["found"] = true, ["node"] = node, ["x"] = nx, ["y"] = net.GetNodeHeight(node), ["z"] = nz };
+    }
+
+    /// <summary>What dragging a node to a point costs: {valid, length, cut, fill, money}.</summary>
+    public Godot.Collections.Dictionary EstimateMoveNode(int node, float x, float z)
+    {
+        if (Sim.Network.EstimateMoveNode(node, x, z) is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
+        return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money };
+    }
+
+    /// <summary>The other end of every road at a node, on the ground (to draw where its roads would run).</summary>
+    public Vector3[] NodeNeighbours(int node)
+    {
+        var net = Sim.Network;
+        var ends = new System.Collections.Generic.List<Vector3>();
+        foreach (var id in net.RoadsAt(node))
+        {
+            var road = net.GetRoad(id);
+            int other = road.From == node ? road.To : road.From;
+            var (x, z) = net.GetNode(other);
+            ends.Add(new Vector3(x, net.GetNodeHeight(other), z));
+        }
+        return ends.ToArray();
+    }
+
+    /// <summary>Drags a node to a point; the roads at it are rebuilt straight and vehicles on them disappear.</summary>
+    public bool MoveNode(int node, float x, float z)
+    {
+        if (Sim.Execute(new MoveNodeCommand(node, x, z)) == 0) return false;
+        RebuildRoads();
+        return true;
+    }
+
     /// <summary>Places a depot at the node nearest the point (within 60 m) that has none yet.</summary>
     public bool BuildDepot(float x, float z, int level)
     {
-        int node = Sim.Network.FindNodeNear(x, z, 60f);
+        int node = Sim.Network.FindNodeNear(x, z, 60f, withRoadsOnly: true);
         if (node < 0) return false;
         if (Sim.Execute(new AddDepotCommand(node, (DepotLevel)Math.Clamp(level, 0, 2))) < 0) return false;
         RebuildRoads();
@@ -394,6 +477,41 @@ public partial class SimHost : Node3D
         z = _laneZ[lane] - k * (MathF.Cos(h) - _laneCosH0[lane]);
     }
 
+    /// <summary>
+    /// When the middle of a vehicle is within reach of a junction, its pose along the path through it (the way it is
+    /// about to turn, or the way it just turned), else false. The simulation moves a vehicle across the node in one
+    /// step; this is what makes the turn look right.
+    /// </summary>
+    bool TurnPose(int vehicle, int lane, float centre, out float x, out float z, out float heading, out float y)
+    {
+        x = z = heading = y = 0f;
+        float length = _laneLength[lane];
+        float reach = RoadNetwork.JunctionReach(length);
+        int from, to;
+        float fraction;
+        int next = Sim.NextLaneOf(vehicle).Value;
+        int prev = Sim.PreviousLaneOf(vehicle).Value;
+        if (centre > length - reach && next >= 0)
+        {
+            from = lane; to = next;
+            fraction = (centre - (length - reach)) / (reach + RoadNetwork.JunctionReach(_laneLength[next]));
+        }
+        else if (prev >= 0 && centre < reach)
+        {
+            from = prev; to = lane;
+            float reachIn = RoadNetwork.JunctionReach(_laneLength[prev]);
+            fraction = (reachIn + centre) / (reachIn + reach);
+        }
+        else return false;
+
+        fraction = Math.Clamp(fraction, 0f, 1f);
+        (x, z, heading) = Sim.Network.JunctionPoint(new LaneId(from), new LaneId(to), fraction);
+        float yFrom = _laneY[from] + _laneGrade[from] * (_laneLength[from] - RoadNetwork.JunctionReach(_laneLength[from]));
+        float yTo = _laneY[to] + _laneGrade[to] * RoadNetwork.JunctionReach(_laneLength[to]);
+        y = yFrom + (yTo - yFrom) * fraction;
+        return true;
+    }
+
     void DrawVehicles(float stepFraction)
     {
         int count = Sim.VehicleCount;
@@ -418,8 +536,19 @@ public partial class SimHost : Node3D
             int lane = v.Lane.Value;
             // Look a fraction of a step ahead so motion is smooth between the 20 Hz simulation steps.
             float pos = Math.Min(v.Position + v.Speed * Simulation.StepSeconds * stepFraction, _laneLength[lane]) - Simulation.VehicleLength * 0.5f;
-            LaneFrame(lane, pos, out float cx, out float cz, out float dx, out float dz);
-            float side = _laneSide[lane] - Simulation.LaneWidth * v.Lateral + v.Shift;
+            float side = -Simulation.LaneWidth * v.Lateral + v.Shift;
+            float cx, cz, dx, dz, baseY;
+            if (TurnPose(i, lane, pos, out cx, out cz, out float heading, out baseY))
+            {
+                // Inside a junction the vehicle follows the path through it; that path already includes the lane offset.
+                dx = MathF.Cos(heading); dz = MathF.Sin(heading);
+            }
+            else
+            {
+                LaneFrame(lane, pos, out cx, out cz, out dx, out dz);
+                side += _laneSide[lane];
+                baseY = _laneY[lane] + _laneGrade[lane] * pos;
+            }
             float x = cx - dz * side;
             float z = cz + dx * side;
 
@@ -430,7 +559,7 @@ public partial class SimHost : Node3D
 
             // Pitched to follow the grade of the lane.
             float grade = _laneGrade[lane], tilt = 1f / MathF.Sqrt(1f + grade * grade), rise = grade * tilt;
-            float y = _laneY[lane] + grade * pos + 0.8f;
+            float y = baseY + 0.8f;
             buf[o + 0] = fx * tilt;  buf[o + 1] = -fx * rise; buf[o + 2] = -fz; buf[o + 3] = x;
             buf[o + 4] = rise;       buf[o + 5] = tilt;       buf[o + 6] = 0f;  buf[o + 7] = y;
             buf[o + 8] = fz * tilt;  buf[o + 9] = -fz * rise; buf[o + 10] = fx; buf[o + 11] = z;
@@ -554,6 +683,7 @@ public partial class SimHost : Node3D
 
         foreach (var depot in Sim.Depots)
         {
+            if (!depot.Active) continue;
             var (x, z) = net.GetNode(depot.Node);
             var building = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(22f, 6f, 22f) }, MaterialOverride = _depotMaterial };
             building.Position = new Vector3(x + 26f, _terrain.HeightAt(x + 26f, z + 26f) + 3f, z + 26f);
@@ -628,35 +758,55 @@ public partial class SimHost : Node3D
         _roadRoot.AddChild(mesh);
     }
 
-    /// <summary>Rebuilds the ground mesh when the terrain changed (a road was carved into it).</summary>
+    /// <summary>
+    /// Brings the ground meshes up to date. The map is drawn as chunks of <see cref="Terrain.ChunkCells"/> cells; a new
+    /// terrain builds them all, and a carved road rebuilds only the chunks it touched.
+    /// </summary>
     void RebuildTerrain()
     {
-        if (_terrainVersion == _terrain.Version && _terrainMesh.Mesh != null && _terrainSource == _terrain) return;
+        if (_terrainVersion == _terrain.Version && _terrainSource == _terrain && _terrainChunks.Length > 0) return;
         _terrainVersion = _terrain.Version;
-        _terrainSource = _terrain;
 
-        int n = _terrain.Samples;
-        var vertices = new Vector3[n * n];
-        var normals = new Vector3[n * n];
-        var colors = new Color[n * n];
+        int side = _terrain.ChunksPerSide;
+        if (_terrainSource != _terrain || _terrainChunks.Length != side * side)
+        {
+            _terrainSource = _terrain;
+            foreach (var child in _terrainRoot.GetChildren()) child.QueueFree();
+            _terrainChunks = new MeshInstance3D?[side * side];
+            _terrain.TakeChangedChunks(); // everything is built below
+            for (int c = 0; c < side * side; c++) BuildTerrainChunk(c);
+            return;
+        }
+        foreach (int c in _terrain.TakeChangedChunks()) BuildTerrainChunk(c);
+    }
+
+    void BuildTerrainChunk(int chunk)
+    {
+        int side = _terrain.ChunksPerSide;
+        int i0 = chunk % side * Terrain.ChunkCells, j0 = chunk / side * Terrain.ChunkCells;
+        int i1 = Math.Min(i0 + Terrain.ChunkCells, _terrain.Cells), j1 = Math.Min(j0 + Terrain.ChunkCells, _terrain.Cells);
+        int w = i1 - i0 + 1, h = j1 - j0 + 1;
+        var vertices = new Vector3[w * h];
+        var normals = new Vector3[w * h];
+        var colors = new Color[w * h];
         float cell = _terrain.CellSize, half = _terrain.HalfSize;
-        for (int j = 0; j < n; j++)
-            for (int i = 0; i < n; i++)
+        for (int j = j0; j <= j1; j++)
+            for (int i = i0; i <= i1; i++)
             {
-                float h = _terrain.GetSample(i, j);
-                int k = j * n + i;
-                vertices[k] = new Vector3(i * cell - half, h, j * cell - half);
+                float height = _terrain.GetSample(i, j);
+                int k = (j - j0) * w + (i - i0);
+                vertices[k] = new Vector3(i * cell - half, height, j * cell - half);
                 float gx = _terrain.GetSample(i + 1, j) - _terrain.GetSample(i - 1, j);
                 float gz = _terrain.GetSample(i, j + 1) - _terrain.GetSample(i, j - 1);
                 normals[k] = new Vector3(-gx, 2f * cell, -gz).Normalized();
-                colors[k] = TerrainColor(h, normals[k].Y).SrgbToLinear(); // vertex colours are read as linear
+                colors[k] = TerrainColor(height, normals[k].Y).SrgbToLinear(); // vertex colours are read as linear
             }
-        var indices = new int[_terrain.Cells * _terrain.Cells * 6];
+        var indices = new int[(w - 1) * (h - 1) * 6];
         int t = 0;
-        for (int j = 0; j < _terrain.Cells; j++)
-            for (int i = 0; i < _terrain.Cells; i++)
+        for (int j = 0; j < h - 1; j++)
+            for (int i = 0; i < w - 1; i++)
             {
-                int a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+                int a = j * w + i, b = a + 1, c = a + w, d = c + 1;
                 indices[t++] = a; indices[t++] = b; indices[t++] = c;
                 indices[t++] = b; indices[t++] = d; indices[t++] = c;
             }
@@ -669,7 +819,15 @@ public partial class SimHost : Node3D
         arrays[(int)Mesh.ArrayType.Index] = indices;
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-        _terrainMesh.Mesh = mesh;
+
+        var instance = _terrainChunks[chunk];
+        if (instance == null)
+        {
+            instance = new MeshInstance3D { Name = $"Chunk{chunk}", MaterialOverride = _terrainMaterial };
+            _terrainRoot.AddChild(instance);
+            _terrainChunks[chunk] = instance;
+        }
+        instance.Mesh = mesh;
     }
 
     static Color TerrainColor(float height, float normalY)

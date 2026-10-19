@@ -26,9 +26,16 @@ public sealed partial class Simulation
                 return _net.RemoveRoad(new RoadId(c.Road)) ? 1 : 0;
             case UpgradeRoadCommand c:
                 return _net.UpgradeRoad(new RoadId(c.Road), c.SpeedLimit) == null ? 0 : 1;
+            case DowngradeRoadCommand c:
+                return _net.DowngradeRoad(new RoadId(c.Road), c.SpeedLimit) == null ? 0 : 1;
+            case SetSpeedLimitCommand c:
+                return _net.SetSpeedLimit(new RoadId(c.Road), c.SpeedLimit) == null ? 0 : 1;
+            case MoveNodeCommand c:
+                return c.Node >= 0 && c.Node < _net.NodeCount && _net.MoveNode(c.Node, c.X, c.Z) ? 1 : 0;
             case AddDepotCommand c:
+                if (c.Node < 0 || c.Node >= _net.NodeCount || _net.RoadsAt(c.Node).Count == 0) return -1;
                 foreach (var depot in _depots)
-                    if (depot.Node == c.Node) return -1;
+                    if (depot.Active && depot.Node == c.Node) return -1;
                 return AddDepot(c.Node, c.Level);
             case SeedTrafficCommand c:
                 return SeedTraffic(c.Count);

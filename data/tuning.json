@@ -102,6 +102,8 @@
     "fillCostPerCubicMetre": 9.0,
     "earthworkSlope": 1.5,          // horizontal metres per metre of height at the edge of a cut or fill
     "demolitionCostPerMetre": 10.0,
-    "upgradeRefundShare": 0.5       // of the two-lane price, for the part reused when widening to an avenue
+    "upgradeRefundShare": 0.5,      // of the two-lane price, for the part reused when widening to an avenue
+    "downgradeCostPerMetre": 15.0,  // narrowing an avenue to a two-lane road
+    "speedLimitChangeCostPerMetre": 1.0 // re-signing a road
   }
 }

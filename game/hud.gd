@@ -31,7 +31,7 @@ func _ready() -> void:
 
 	var tools := HBoxContainer.new()
 	column.add_child(tools)
-	for entry in [["Pointer", "pointer"], ["2-lane road", "road2"], ["2x2 avenue", "road4"], ["Curve", "curve2"], ["Curved avenue", "curve4"], ["Upgrade", "upgrade"], ["Remove", "remove"], ["Depot", "depot"]]:
+	for entry in [["Pointer", "pointer"], ["2-lane road", "road2"], ["2x2 avenue", "road4"], ["Curve", "curve2"], ["Curved avenue", "curve4"], ["Upgrade", "upgrade"], ["Downgrade", "downgrade"], ["Faster", "faster"], ["Slower", "slower"], ["Move", "move"], ["Remove", "remove"], ["Depot", "depot"]]:
 		var button := Button.new()
 		button.text = entry[0]
 		button.toggle_mode = true

@@ -64,6 +64,8 @@ public sealed class Lane
     /// <summary>Replacement covering the rest.</summary>
     public LaneId SplitSecond { get; internal set; } = LaneId.None;
     public float SplitDistance { get; internal set; }
+    /// <summary>The replacement is a lane that other lanes of the old road also move into (an avenue narrowed to two lanes), so vehicles may end up on top of each other.</summary>
+    public bool SplitMerges { get; internal set; }
 }
 
 public sealed class Road
@@ -230,6 +232,34 @@ public sealed class RoadNetwork
         return result;
     }
 
+    /// <summary>How far into a lane of the given length a junction path reaches (from its end, or from its start).</summary>
+    public static float JunctionReach(float laneLength) => MathF.Min(JunctionRadius, laneLength * 0.5f);
+
+    /// <summary>
+    /// Where a vehicle is when it is a <paramref name="fraction"/> (0 to 1) of the way along the path from lane
+    /// <paramref name="from"/> to lane <paramref name="to"/> through their junction, and which way it faces. The path
+    /// starts <see cref="JunctionReach"/> before the end of <paramref name="from"/> and ends the same distance into
+    /// <paramref name="to"/>. This is for drawing: the simulation itself carries a vehicle across the node in one step.
+    /// </summary>
+    public (float X, float Z, float Heading) JunctionPoint(LaneId from, LaneId to, float fraction)
+    {
+        var path = MovePath(from, to);
+        float total = 0f;
+        for (int i = 0; i + 1 < path.Length; i++) total += Distance(path[i], path[i + 1]);
+        float target = Math.Clamp(fraction, 0f, 1f) * total;
+        for (int i = 0; i + 1 < path.Length; i++)
+        {
+            float length = Distance(path[i], path[i + 1]);
+            if (target > length && i + 2 < path.Length) { target -= length; continue; }
+            float t = length > 1e-6f ? Math.Clamp(target / length, 0f, 1f) : 0f;
+            float dx = path[i + 1].X - path[i].X, dz = path[i + 1].Z - path[i].Z;
+            return (path[i].X + dx * t, path[i].Z + dz * t, MathF.Atan2(dz, dx));
+        }
+        return (path[0].X, path[0].Z, 0f);
+    }
+
+    static float Distance((float X, float Z) a, (float X, float Z) b) => MathF.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Z - a.Z) * (b.Z - a.Z));
+
     /// <summary>The line a vehicle follows through a junction: a cubic curve between the lane end and the next lane's start.</summary>
     (float X, float Z)[] MovePath(LaneId from, LaneId to)
     {
@@ -237,8 +267,8 @@ public sealed class RoadNetwork
         var a = _lanes[from.Value];
         var b = _lanes[to.Value];
         // The path starts where the incoming lane enters the junction area and ends where the outgoing lane leaves it.
-        float inAlong = MathF.Max(0f, a.Length - Math.Min(JunctionRadius, a.Length * 0.5f));
-        float outAlong = Math.Min(JunctionRadius, b.Length * 0.5f);
+        float inAlong = MathF.Max(0f, a.Length - JunctionReach(a.Length));
+        float outAlong = JunctionReach(b.Length);
         float ha = a.Path.HeadingAt(inAlong), hb = b.Path.HeadingAt(outAlong);
         var (ax, az) = a.Path.PointAt(inAlong);
         var (bx, bz) = b.Path.PointAt(outAlong);
@@ -283,13 +313,17 @@ public sealed class RoadNetwork
         return t >= -tolerance && t <= 1f + tolerance && u >= -tolerance && u <= 1f + tolerance;
     }
 
-    /// <summary>The nearest node within <paramref name="radius"/> of a point, or -1.</summary>
-    public int FindNodeNear(float x, float z, float radius)
+    /// <summary>
+    /// The nearest node within <paramref name="radius"/> of a point, or -1. With <paramref name="withRoadsOnly"/> nodes
+    /// that no road reaches any more (left behind by removing or moving roads) are skipped.
+    /// </summary>
+    public int FindNodeNear(float x, float z, float radius, bool withRoadsOnly = false)
     {
         int best = -1;
         float bestDistance = radius * radius;
         for (int n = 0; n < _nodes.Count; n++)
         {
+            if (withRoadsOnly && _nodeRoads[n].Count == 0) continue;
             float d = (_nodes[n].X - x) * (_nodes[n].X - x) + (_nodes[n].Z - z) * (_nodes[n].Z - z);
             if (d <= bestDistance) { best = n; bestDistance = d; }
         }
@@ -401,7 +435,12 @@ public sealed class RoadNetwork
     {
         var plan = Plan(x0, z0, x1, z1, sweep);
         if (plan == null) return null;
-        var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
+        return Price(plan, RoadGeometry.FromChord(x0, z0, x1, z1, sweep), type);
+    }
+
+    /// <summary>Length, earthworks and money for building a planned road.</summary>
+    RoadCost Price(List<Meeting> plan, RoadGeometry geometry, RoadType type)
+    {
         float width = HalfWidth(type) * 2f;
         float cut = 0f, fill = 0f, length = 0f;
         for (int i = 0; i + 1 < plan.Count; i++)
@@ -592,6 +631,8 @@ public sealed class RoadNetwork
     /// <summary>Whether a road can be widened to an avenue: only two-lane roads can.</summary>
     public bool CanUpgrade(RoadId id) => !_roads[id.Value].Retired && _roads[id.Value].Type == RoadType.TwoLane;
 
+    static bool ValidLimit(float speedLimit) => speedLimit > 0f && float.IsFinite(speedLimit);
+
     /// <summary>The price of upgrading a two-lane road to an avenue, or null if it cannot be. Earthworks are for the extra width.</summary>
     public RoadCost? EstimateUpgrade(RoadId id)
     {
@@ -628,13 +669,9 @@ public sealed class RoadNetwork
     /// </summary>
     public RoadId? UpgradeRoad(RoadId id, float speedLimit)
     {
-        if (!CanUpgrade(id)) return null;
+        if (!CanUpgrade(id) || !ValidLimit(speedLimit)) return null;
         var old = _roads[id.Value];
-        Retire(old);
-        float sweep = old.Geometry.Sweep;
-        var upgraded = _roads[AddRoad(old.From, old.To, RoadType.Avenue2x2, speedLimit, sweep).Value];
-        Replace(old.ForwardLanes[0], upgraded.ForwardLanes[0], LaneId.None, float.MaxValue);
-        Replace(old.BackwardLanes[0], upgraded.BackwardLanes[0], LaneId.None, float.MaxValue);
+        var upgraded = Reshape(old, RoadType.Avenue2x2, speedLimit);
 
         if (Terrain != null)
         {
@@ -650,6 +687,148 @@ public sealed class RoadNetwork
             Terrain.CarvePath(path, HalfWidth(RoadType.Avenue2x2), Shoulder);
         }
         return upgraded.Id;
+    }
+
+    // ---- Moving a node ----------------------------------------------------------------------------------------
+
+    /// <summary>One road to rebuild when a node moves: the new road's ends, geometry and plan.</summary>
+    sealed record MovedRoad(Road Old, int From, int To, float X0, float Z0, float X1, float Z1, RoadGeometry Geometry, List<Meeting> Plan);
+
+    /// <summary>
+    /// What it costs to drag a node to a new place, or null if it cannot be moved there. Every road at the node is torn
+    /// down and rebuilt straight from the moved node to its other end, so the price is their demolition plus new
+    /// construction. Refused when: the node has no roads, the target is within a metre of where it is or on another
+    /// node, or any rebuilt road would be too short, too steep, or cross another road.
+    /// </summary>
+    public RoadCost? EstimateMoveNode(int node, float x, float z)
+    {
+        var moved = PlanMove(node, x, z);
+        if (moved == null) return null;
+        float length = 0f, cut = 0f, fill = 0f, money = 0f;
+        foreach (var m in moved)
+        {
+            var cost = Price(m.Plan, m.Geometry, m.Old.Type);
+            length += cost.Length; cut += cost.CutVolume; fill += cost.FillVolume;
+            money += cost.Money + DemolitionCost(m.Old.Id);
+        }
+        return new RoadCost(length, cut, fill, money);
+    }
+
+    /// <summary>
+    /// Drags a node to a new place (see <see cref="EstimateMoveNode"/>). Vehicles on the roads at the node disappear with
+    /// them, and a depot at the old place closes. Returns false when the node cannot be moved there.
+    /// </summary>
+    public bool MoveNode(int node, float x, float z)
+    {
+        var moved = PlanMove(node, x, z);
+        if (moved == null) return false;
+        foreach (var m in moved) Retire(m.Old);
+        int target = AddNode(x, z, GroundHeight(x, z));
+        foreach (var m in moved)
+        {
+            int from = m.From == node ? target : m.From, to = m.To == node ? target : m.To;
+            AddRoad(from, to, m.Old.Type, m.Old.SpeedLimit);
+            Terrain?.CarvePath(Profile(m.Geometry, m.Plan[0], m.Plan[1]), HalfWidth(m.Old.Type), Shoulder);
+        }
+        RebuildJunction(node);
+        Version++;
+        return true;
+    }
+
+    const float MinAngleBetweenRoads = 0.05f; // radians
+
+    /// <summary>Direction, as an angle, in which a rebuilt road leaves the moved node.</summary>
+    float AngleFrom(MovedRoad m, int node, float x, float z)
+    {
+        var (fx, fz) = _nodes[m.From == node ? m.To : m.From];
+        return MathF.Atan2(fz - z, fx - x);
+    }
+
+    List<MovedRoad>? PlanMove(int node, float x, float z)
+    {
+        var roads = _nodeRoads[node].Select(id => _roads[id.Value]).ToList();
+        if (roads.Count == 0) return null;
+        var (nx, nz) = _nodes[node];
+        if ((nx - x) * (nx - x) + (nz - z) * (nz - z) < 1f) return null;
+        int near = FindNodeNear(x, z, 0.5f);
+        if (near >= 0) return null; // moving onto another node would merge them
+
+        var moved = new List<MovedRoad>();
+        foreach (var road in roads) road.Retired = true; // so the new roads do not see the ones they replace
+        try
+        {
+            foreach (var road in roads)
+            {
+                bool startsHere = road.From == node;
+                var (fx, fz) = _nodes[startsHere ? road.To : road.From];
+                var (x0, z0, x1, z1) = startsHere ? (x, z, fx, fz) : (fx, fz, x, z);
+                var plan = Plan(x0, z0, x1, z1, 0f);
+                if (plan == null || plan.Count != 2) return null; // refused, or it would cross another road
+                moved.Add(new MovedRoad(road, road.From, road.To, x0, z0, x1, z1, RoadGeometry.FromChord(x0, z0, x1, z1, 0f), plan));
+            }
+        }
+        finally
+        {
+            foreach (var road in roads) road.Retired = false;
+        }
+        // Two roads leaving the node the same way would lie on top of each other.
+        for (int i = 0; i < moved.Count; i++)
+            for (int j = i + 1; j < moved.Count; j++)
+            {
+                float ai = AngleFrom(moved[i], node, x, z), aj = AngleFrom(moved[j], node, x, z);
+                float between = MathF.Abs(ai - aj);
+                if (MathF.Min(between, MathF.Tau - between) < MinAngleBetweenRoads) return null;
+            }
+        return moved;
+    }
+
+    /// <summary>Whether an avenue can be narrowed to a two-lane road.</summary>
+    public bool CanDowngrade(RoadId id) => !_roads[id.Value].Retired && _roads[id.Value].Type == RoadType.Avenue2x2;
+
+    /// <summary>The price of narrowing an avenue to a two-lane road, or null if it cannot be. The ground keeps its earthworks.</summary>
+    public float? DowngradeCost(RoadId id) =>
+        CanDowngrade(id) ? _roads[id.Value].Length * Tuning.Roads.DowngradeCostPerMetre : null;
+
+    /// <summary>
+    /// Replaces an avenue by a two-lane road on the same centre line. Vehicles in the right lane carry on in the new
+    /// lane; those in the left lane move into it too, and are removed when they would land on another vehicle.
+    /// Returns the new road, or null if the road cannot be downgraded.
+    /// </summary>
+    public RoadId? DowngradeRoad(RoadId id, float speedLimit)
+    {
+        if (!CanDowngrade(id) || !ValidLimit(speedLimit)) return null;
+        return Reshape(_roads[id.Value], RoadType.TwoLane, speedLimit).Id;
+    }
+
+    /// <summary>The price of re-signing a road with a new speed limit, or null if the road is gone.</summary>
+    public float? SpeedLimitChangeCost(RoadId id) =>
+        _roads[id.Value].Retired ? null : _roads[id.Value].Length * Tuning.Roads.SpeedLimitChangeCostPerMetre;
+
+    /// <summary>Changes a road's posted speed limit; vehicles carry on in the matching lane. Returns the new road, or null when the road is gone, the limit is not positive, or it is unchanged.</summary>
+    public RoadId? SetSpeedLimit(RoadId id, float speedLimit)
+    {
+        var road = _roads[id.Value];
+        if (road.Retired || !ValidLimit(speedLimit) || speedLimit == road.SpeedLimit) return null;
+        return Reshape(road, road.Type, speedLimit).Id;
+    }
+
+    /// <summary>Retires a road and builds another of the given type and limit between the same nodes on the same centre line; each old lane hands its vehicles to the matching new lane (the last one when the new road has fewer).</summary>
+    Road Reshape(Road old, RoadType type, float speedLimit)
+    {
+        Retire(old);
+        var replacement = _roads[AddRoad(old.From, old.To, type, speedLimit, old.Geometry.Sweep).Value];
+        HandOver(old.ForwardLanes, replacement.ForwardLanes);
+        HandOver(old.BackwardLanes, replacement.BackwardLanes);
+        return replacement;
+    }
+
+    void HandOver(LaneId[] from, LaneId[] to)
+    {
+        for (int i = 0; i < from.Length; i++)
+        {
+            Replace(from[i], to[Math.Min(i, to.Length - 1)], LaneId.None, float.MaxValue);
+            _lanes[from[i].Value].SplitMerges = i >= to.Length;
+        }
     }
 
     /// <summary>

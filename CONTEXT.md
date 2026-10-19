@@ -46,6 +46,7 @@ A purely visual figure shown on streets and platforms to make the flow of Trip g
 
 **Depot**:
 A building where vehicles are serviced and from which a Rescue crew is dispatched. Comes in three levels of capability: a Simple Depot only does basic corrections (Patch) to keep the fleet running, a Workshop also does a Service, and a Complex can do an Overhaul. A Complex also keeps two Rescue crews, the other levels one.
+A Depot closes when every road at its node has been torn down or moved away; a crew already on its way is lost.
 _Avoid_: "complete Depot" (the top level is called Complex)
 
 **Rescue crew**:
@@ -76,7 +77,7 @@ The road equivalent of an Overhaul, done by a road crew. Closes or narrows the r
 A vehicle kept past its Era. It has no permanent wear limit, but it burns more fuel and its Patch, Service and Overhaul costs are higher than when new.
 
 **Command**:
-A Player action applied to the simulation between steps (build or remove a road, place a Depot, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
+A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
 
 ## Relationships
 

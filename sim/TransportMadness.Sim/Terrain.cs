@@ -17,7 +17,13 @@ public sealed class Terrain
     /// <summary>Changes whenever any height changes.</summary>
     public int Version { get; private set; }
 
+    /// <summary>Side of a chunk, in cells: a renderer can rebuild the meshes of just the chunks that changed.</summary>
+    public const int ChunkCells = 32;
+    /// <summary>Chunks per side of the map.</summary>
+    public int ChunksPerSide => (Cells + ChunkCells - 1) / ChunkCells;
+
     readonly float[] _heights;
+    readonly HashSet<int> _changedChunks = new();
 
     Terrain(int cells, float cellSize)
     {
@@ -127,7 +133,32 @@ public sealed class Terrain
                 float target = h + (road - h) * blend;
                 if (target != h) { h = target; changed = true; }
             }
-        if (changed) Version++;
+        if (changed)
+        {
+            Version++;
+            MarkChanged(iMin, iMax, jMin, jMax);
+        }
+    }
+
+    /// <summary>
+    /// Chunks (index = row * <see cref="ChunksPerSide"/> + column) whose mesh is out of date since the last call, in
+    /// ascending order. A mesh depends on the samples one step beyond its edge (for normals), so neighbours are included.
+    /// </summary>
+    public List<int> TakeChangedChunks()
+    {
+        var chunks = _changedChunks.ToList();
+        chunks.Sort();
+        _changedChunks.Clear();
+        return chunks;
+    }
+
+    void MarkChanged(int iMin, int iMax, int jMin, int jMax)
+    {
+        int last = ChunksPerSide - 1;
+        int c0 = Math.Clamp((iMin - 2) / ChunkCells, 0, last), c1 = Math.Clamp((iMax + 1) / ChunkCells, 0, last);
+        int r0 = Math.Clamp((jMin - 2) / ChunkCells, 0, last), r1 = Math.Clamp((jMax + 1) / ChunkCells, 0, last);
+        for (int r = r0; r <= r1; r++)
+            for (int c = c0; c <= c1; c++) _changedChunks.Add(r * ChunksPerSide + c);
     }
 
     /// <summary>Order-independent hash of every height; used by tests to compare two maps.</summary>

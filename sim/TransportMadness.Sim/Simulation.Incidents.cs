@@ -68,6 +68,8 @@ public sealed class Depot
     public DepotLevel Level { get; }
     public int Crews { get; }
     public int BusyCrews { get; internal set; }
+    /// <summary>False once every road at its node has been torn down: the depot sends no more crews.</summary>
+    public bool Active { get; internal set; } = true;
 }
 
 public sealed partial class Simulation
@@ -87,6 +89,27 @@ public sealed partial class Simulation
     {
         _depots.Add(new Depot(_depots.Count, node, level, _crew.PerDepot.For(level)));
         return _depots.Count - 1;
+    }
+
+    /// <summary>
+    /// Closes depots whose node has lost every road. A crew already on its way is lost with it: the incident falls back
+    /// to the distant service, counted from now.
+    /// </summary>
+    void CloseOrphanedDepots()
+    {
+        foreach (var depot in _depots)
+        {
+            if (!depot.Active || _net.RoadsAt(depot.Node).Count > 0) continue;
+            depot.Active = false;
+            depot.BusyCrews = 0;
+            foreach (int k in _openIncidents)
+            {
+                var incident = _incidents[k];
+                if (incident.Depot != depot.Id || incident.State != IncidentState.CrewEnRoute) continue;
+                incident.Depot = -1;
+                incident.CrewArrivalTick = Tick + Ticks(_crew.FallbackResponse);
+            }
+        }
     }
 
     /// <summary>Makes a vehicle break down or crash where it stands.</summary>
@@ -109,7 +132,11 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)incident.CrewArrivalTick;
             h = h * 31 + (ulong)incident.ClearedTick;
         }
-        foreach (var depot in _depots) h = h * 31 + (ulong)depot.BusyCrews;
+        foreach (var depot in _depots)
+        {
+            h = h * 31 + (ulong)depot.BusyCrews;
+            if (!depot.Active) h = h * 31 + 1; // active depots add nothing, so runs without closures keep their hash
+        }
         return h;
     }
 
@@ -310,7 +337,7 @@ public sealed partial class Simulation
         float bestDistance = float.MaxValue;
         foreach (var depot in _depots)
         {
-            if (depot.BusyCrews >= depot.Crews) continue;
+            if (!depot.Active || depot.BusyCrews >= depot.Crews) continue;
             var (dx, dz) = _net.GetNode(depot.Node);
             float distance = MathF.Sqrt((dx - x) * (dx - x) + (dz - z) * (dz - z));
             if (distance < bestDistance) { best = depot; bestDistance = distance; }
@@ -352,7 +379,7 @@ public sealed partial class Simulation
         incident.Vehicles.Clear();
         incident.State = IncidentState.Cleared;
         incident.ClearedTick = Tick;
-        if (incident.Depot >= 0) _depots[incident.Depot].BusyCrews--;
+        if (incident.Depot >= 0 && _depots[incident.Depot].Active) _depots[incident.Depot].BusyCrews--;
         RebuildOrder();
     }
 

@@ -54,6 +54,11 @@ public sealed partial class Simulation
     // Lanes reachable at the end of each lane: _nextLanes[_nextStart[l] .. _nextStart[l + 1]).
     int[] _nextStart = new int[1];
     int[] _nextLanes = Array.Empty<int>();
+    // Conflicts between the moves at each node; see SyncConflictTables.
+    int[] _moveLocal = Array.Empty<int>(); // per move: its number among the moves at its node, -1 for a retired lane
+    int[] _nodeMoveCount = Array.Empty<int>();
+    int[] _nodeMatrixStart = new int[1];
+    byte[] _conflictTable = Array.Empty<byte>(); // 0 unknown, 1 no conflict, 2 conflict
 
     int _count; // slots in use, including removed ones
     int _active; // vehicles that currently exist
@@ -65,6 +70,7 @@ public sealed partial class Simulation
     float[] _accel = new float[64];
     bool[] _halted = new bool[64];
     int[] _nextLane = new int[64]; // lane this vehicle will enter at the end of its current one
+    int[] _prevLane = new int[64]; // lane it came from at the last junction, -1 if none; only used to draw the turn, so not part of the state hash
     float[] _factor = new float[64]; // personal fraction of the lane's speed limit
     float[] _patience = new float[64];
     float[] _aggression = new float[64];
@@ -227,6 +233,7 @@ public sealed partial class Simulation
         _keepLane[id] = false;
         _kind[id] = VehicleKind.Car;
         _incident[id] = -1;
+        _prevLane[id] = -1;
         _nextLane[id] = ChooseNextLane(lane.Value);
         RebuildOrder();
         return id;
@@ -255,6 +262,12 @@ public sealed partial class Simulation
 
     /// <summary>A vehicle that keeps its lane never changes lanes or overtakes (scripted traffic, tests).</summary>
     public void SetKeepLane(int vehicle, bool keepLane) => _keepLane[vehicle] = keepLane;
+
+    /// <summary>Lane the vehicle will enter at the end of its current one (for drawing the turn).</summary>
+    public LaneId NextLaneOf(int id) => new(_nextLane[id]);
+
+    /// <summary>Lane the vehicle came from at the junction it last crossed, or none (for drawing the turn).</summary>
+    public LaneId PreviousLaneOf(int id) => new(_prevLane[id]);
 
     public VehicleState GetVehicle(int id) =>
         new(new LaneId(_lane[id]), _pos[id], _speed[id], _lat[id], (OvertakePhase)_phase[id], _kind[id], _shift[id]);
@@ -423,9 +436,17 @@ public sealed partial class Simulation
                 RemoveVehicle(i);
                 continue;
             }
-            MoveOffRetiredLane(i);
+            bool merged = MoveOffRetiredLane(i);
+            if (merged && LandedOnAnother(i))
+            {
+                // An avenue narrowed to two lanes: this vehicle had no room in the lane it was moved into.
+                if (_incident[i] >= 0) _incidents[_incident[i]].Vehicles.Remove(i);
+                RemoveVehicle(i);
+                continue;
+            }
             if (!CanEnter(_lane[i], _nextLane[i])) _nextLane[i] = ChooseNextLane(_lane[i]);
         }
+        CloseOrphanedDepots();
         RebuildOrder();
     }
 
@@ -448,6 +469,7 @@ public sealed partial class Simulation
             foreach (var next in lane.Next) _nextLanes[n++] = next.Value;
         }
         _nextStart[lanes] = n;
+        SyncConflictTables();
     }
 
     bool CanEnter(int lane, int next)
@@ -471,13 +493,15 @@ public sealed partial class Simulation
     }
 
     /// <summary>A junction was built in the middle of the road this vehicle is on: carry on from the same spot on the new piece.</summary>
-    void MoveOffRetiredLane(int i)
+    bool MoveOffRetiredLane(int i)
     {
         var lane = _net.GetLane(new LaneId(_lane[i]));
-        if (!lane.Retired) return;
+        if (!lane.Retired) return false;
         if (_blockLane[i] >= 0) _blockedCount[_blockLane[i]]--;
+        bool merged = false;
         while (lane.Retired)
         {
+            merged |= lane.SplitMerges;
             if (_pos[i] < lane.SplitDistance) _lane[i] = lane.SplitFirst.Value;
             else
             {
@@ -492,6 +516,15 @@ public sealed partial class Simulation
         _target[i] = -1;
         _aborting[i] = false;
         if (_blockLane[i] >= 0) Block(i);
+        return merged;
+    }
+
+    /// <summary>Whether another vehicle already stands where this one has just been placed (a rare, one-off check, so it scans every vehicle).</summary>
+    bool LandedOnAnother(int i)
+    {
+        for (int j = 0; j < _count; j++)
+            if (j != i && _lane[j] == _lane[i] && MathF.Abs(_pos[j] - _pos[i]) < VehicleLength) return true;
+        return false;
     }
 
     /// <summary>Picks the turn for the next junction at random, preferring roads not blocked by a wreck.</summary>
@@ -516,6 +549,7 @@ public sealed partial class Simulation
         while (_pos[i] >= _laneLength[_lane[i]])
         {
             _pos[i] -= _laneLength[_lane[i]];
+            _prevLane[i] = _lane[i];
             _lane[i] = _nextLane[i];
             _nextLane[i] = ChooseNextLane(_lane[i]);
             // A manoeuvre cannot span a junction; the vehicle is simply back in its lane.
@@ -598,6 +632,7 @@ public sealed partial class Simulation
         Array.Resize(ref _accel, n);
         Array.Resize(ref _halted, n);
         Array.Resize(ref _nextLane, n);
+        Array.Resize(ref _prevLane, n);
         Array.Resize(ref _factor, n);
         Array.Resize(ref _patience, n);
         Array.Resize(ref _aggression, n);

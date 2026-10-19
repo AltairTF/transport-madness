@@ -1,5 +1,8 @@
 extends Node3D
-## Free orbit camera: right mouse orbits, middle mouse or WASD pans, wheel zooms.
+## Free orbit camera: right mouse orbits, middle mouse or WASD pans, wheel zooms. The point it orbits follows the
+## height of the ground below it once a host that knows the terrain is set.
+
+const FOLLOW_RATE := 6.0 # per second: how quickly the focus settles on a new ground height
 
 const MIN_DISTANCE := 20.0
 const MAX_DISTANCE := 5000.0
@@ -7,6 +10,7 @@ const MAX_DISTANCE := 5000.0
 var distance := 1100.0
 var yaw := 0.0
 var pitch := -55.0
+var terrain_host: Node3D ## anything with HeightAt(x, z), set by main.gd
 
 @onready var camera: Camera3D = $Camera3D
 
@@ -31,12 +35,30 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_follow_ground(delta)
 	var move := Vector2(
 		Input.get_axis("ui_left", "ui_right") + _key_axis(KEY_A, KEY_D),
 		Input.get_axis("ui_up", "ui_down") + _key_axis(KEY_W, KEY_S))
 	if move != Vector2.ZERO:
 		_pan(move.normalized() * distance * 0.8 * delta)
 		_apply()
+
+
+## Eases the focus height toward the terrain under it, so panning over hills keeps the view level with the ground.
+func _follow_ground(delta: float) -> void:
+	if terrain_host == null:
+		return
+	var target: float = terrain_host.HeightAt(position.x, position.z)
+	if absf(target - position.y) < 0.01:
+		return
+	position.y = lerpf(position.y, target, minf(1.0, FOLLOW_RATE * delta))
+	_apply()
+
+
+## Puts the focus on a ground point at once.
+func focus_on(x: float, z: float) -> void:
+	position = Vector3(x, terrain_host.HeightAt(x, z) if terrain_host != null else 0.0, z)
+	_apply()
 
 
 func _key_axis(negative: Key, positive: Key) -> float:

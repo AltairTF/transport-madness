@@ -31,6 +31,7 @@ func _ready() -> void:
 		_args[parts[0]] = parts[1] if parts.size() > 1 else true
 
 	_build_environment()
+	rig.terrain_host = host
 	if _args.has("--distance"):
 		rig.distance = float(_args["--distance"])
 	if _args.has("--pitch"):
@@ -43,6 +44,8 @@ func _ready() -> void:
 		host.NewHillsWorld(SEED)
 	else:
 		host.NewDemoWorld(SEED, VEHICLES)
+	if _args.has("--focus"):
+		rig.focus_on(rig.position.x, rig.position.z) # now that the terrain exists, stand on it
 
 	hud = load("res://game/hud.gd").new()
 	add_child(hud)
@@ -124,6 +127,10 @@ func _selftest_build() -> void:
 		["curve2", [Vector3(180, 0, 100), Vector3(60, 0, 60), Vector3(0, 0, 100)]],        # arc that meets the first bend and ends on the south road
 		["upgrade", [Vector3(-115, 0, 0)]],                                                 # widen the west road to an avenue
 		["remove", [Vector3(75, 0, 45)]],                                                   # tear down the T road off the avenue
+		["downgrade", [Vector3(30, 0, 0)]],                                                 # narrow the first half of the east avenue
+		["faster", [Vector3(-115, 0, 0)]],                                                  # raise the limit on the west avenue
+		["slower", [Vector3(-115, 0, 0), Vector3(-115, 0, 0)]],                             # ... and lower it twice
+		["move", [Vector3(0, 0, 0), Vector3(10, 0, 10)]],                                   # drag the hub a little south-east
 		["depot", [Vector3(0, 0, 0)]],
 	]
 	for step in clicks:

@@ -15,7 +15,16 @@ public sealed record RemoveRoadCommand(int Road) : SimCommand;
 /// <summary>Widens a two-lane road to an avenue. Result: 1 when upgraded, 0 when refused.</summary>
 public sealed record UpgradeRoadCommand(int Road, float SpeedLimit) : SimCommand;
 
-/// <summary>Places a depot at a node. Result: the depot id, -1 when the node already has one.</summary>
+/// <summary>Narrows an avenue to a two-lane road. Result: 1 when downgraded, 0 when refused.</summary>
+public sealed record DowngradeRoadCommand(int Road, float SpeedLimit) : SimCommand;
+
+/// <summary>Changes a road's posted speed limit. Result: 1 when changed, 0 when refused.</summary>
+public sealed record SetSpeedLimitCommand(int Road, float SpeedLimit) : SimCommand;
+
+/// <summary>Drags a node to a new place, rebuilding the roads at it. Result: 1 when moved, 0 when refused.</summary>
+public sealed record MoveNodeCommand(int Node, float X, float Z) : SimCommand;
+
+/// <summary>Places a depot at a node. Result: the depot id, -1 when refused (the node has no road, or already has a depot).</summary>
 public sealed record AddDepotCommand(int Node, DepotLevel Level) : SimCommand;
 
 /// <summary>Adds ambient vehicles at random free spots. Result: how many were placed.</summary>
