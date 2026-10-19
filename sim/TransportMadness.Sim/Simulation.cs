@@ -3,7 +3,6 @@ namespace TransportMadness.Sim;
 /// <summary>Where a vehicle is in an overtaking manoeuvre on the oncoming lane.</summary>
 public enum OvertakePhase : byte { None, MovingOut, Passing, Returning }
 
-/// <param name="Lateral">0 in the vehicle's own lane, 1 fully in the oncoming lane.</param>
 public enum VehicleKind : byte
 {
     Car,
@@ -15,7 +14,9 @@ public enum VehicleKind : byte
     Removed,
 }
 
-public readonly record struct VehicleState(LaneId Lane, float Position, float Speed, float Lateral, OvertakePhase Overtake, VehicleKind Kind);
+/// <param name="Lateral">0 in the vehicle's own lane, 1 fully in the oncoming lane.</param>
+/// <param name="Shift">Metres to the right of its lane's centre while settling after a lane change; fades to 0.</param>
+public readonly record struct VehicleState(LaneId Lane, float Position, float Speed, float Lateral, OvertakePhase Overtake, VehicleKind Kind, float Shift);
 
 /// <summary>
 /// Deterministic fixed-step traffic simulation on a <see cref="RoadNetwork"/> (ADR 0002, 0003).
@@ -63,6 +64,9 @@ public sealed partial class Simulation
     float[] _stuck = new float[64]; // seconds held up by a slower leader
     float[] _stall = new float[64]; // seconds an overtaker has stood still out in the oncoming lane
     float[] _lat = new float[64]; // 0 in own lane .. 1 fully in the oncoming lane
+    float[] _shift = new float[64]; // visual sideways offset left over from a lane change, metres to the right
+    int[] _blockLane = new int[64]; // lane a wreck physically blocks, or -1
+    int[] _blockedCount = Array.Empty<int>(); // per lane: wrecks and debris in it
     byte[] _phase = new byte[64];
     int[] _target = new int[64]; // vehicle being overtaken, or -1
     bool[] _aborting = new bool[64];
@@ -153,6 +157,7 @@ public sealed partial class Simulation
             MixF(_stall[i]);
             MixF(_accel[i]);
             MixF(_lat[i]);
+            MixF(_shift[i]);
             Mix((ulong)_cooldown[i]);
             Mix((ulong)_phase[i]);
             Mix((ulong)(_target[i] + 1));
@@ -189,6 +194,8 @@ public sealed partial class Simulation
         _stuck[id] = 0f;
         _stall[id] = 0f;
         _lat[id] = 0f;
+        _shift[id] = 0f;
+        _blockLane[id] = -1;
         _phase[id] = 0;
         _target[id] = -1;
         _aborting[id] = false;
@@ -225,7 +232,7 @@ public sealed partial class Simulation
     public void SetKeepLane(int vehicle, bool keepLane) => _keepLane[vehicle] = keepLane;
 
     public VehicleState GetVehicle(int id) =>
-        new(new LaneId(_lane[id]), _pos[id], _speed[id], _lat[id], (OvertakePhase)_phase[id], _kind[id]);
+        new(new LaneId(_lane[id]), _pos[id], _speed[id], _lat[id], (OvertakePhase)_phase[id], _kind[id], _shift[id]);
 
     public void Step()
     {
@@ -256,6 +263,7 @@ public sealed partial class Simulation
             if (_halted[i]) continue;
             _speed[i] = MathF.Max(0f, _speed[i] + _accel[i] * StepSeconds);
             _pos[i] += _speed[i] * StepSeconds;
+            if (_shift[i] != 0f) _shift[i] = MathF.Sign(_shift[i]) * MathF.Max(0f, MathF.Abs(_shift[i]) - LaneWidth / LaneChangeSeconds * StepSeconds);
             AdvanceLane(i);
         }
         RebuildOrder();
@@ -362,6 +370,7 @@ public sealed partial class Simulation
         Array.Resize(ref _laneLength, lanes);
         Array.Resize(ref _laneLimit, lanes);
         Array.Resize(ref _laneEndNode, lanes);
+        Array.Resize(ref _blockedCount, lanes);
         _laneStart = new int[lanes + 1];
         _cursor = new int[lanes];
         for (int l = old; l < lanes; l++)
@@ -375,16 +384,52 @@ public sealed partial class Simulation
         for (int i = 0; i < _count; i++)
         {
             if (_lane[i] < 0) continue;
+            MoveOffRetiredLane(i);
             var next = _net.GetLane(new LaneId(_lane[i])).Next;
             if (Array.IndexOf(next, new LaneId(_nextLane[i])) < 0) _nextLane[i] = ChooseNextLane(new LaneId(_lane[i])).Value;
         }
         RebuildOrder();
     }
 
+    /// <summary>A junction was built in the middle of the road this vehicle is on: carry on from the same spot on the new piece.</summary>
+    void MoveOffRetiredLane(int i)
+    {
+        var lane = _net.GetLane(new LaneId(_lane[i]));
+        if (!lane.Retired) return;
+        if (_blockLane[i] >= 0) _blockedCount[_blockLane[i]]--;
+        while (lane.Retired)
+        {
+            if (_pos[i] < lane.SplitDistance) _lane[i] = lane.SplitFirst.Value;
+            else
+            {
+                _pos[i] -= lane.SplitDistance;
+                _lane[i] = lane.SplitSecond.Value;
+            }
+            lane = _net.GetLane(new LaneId(_lane[i]));
+        }
+        // Any manoeuvre was planned against the old geometry.
+        _phase[i] = 0;
+        _lat[i] = 0f;
+        _target[i] = -1;
+        _aborting[i] = false;
+        if (_blockLane[i] >= 0) Block(i);
+    }
+
+    /// <summary>Picks the turn for the next junction at random, preferring roads not blocked by a wreck.</summary>
     LaneId ChooseNextLane(LaneId lane)
     {
         var next = _net.GetLane(lane).Next;
-        return next.Length == 1 ? next[0] : next[_rng.NextInt(next.Length)];
+        if (next.Length == 1) return next[0];
+
+        int open = 0;
+        for (int k = 0; k < next.Length; k++)
+            if (_blockedCount[next[k].Value] == 0) open++;
+        if (open == 0 || open == next.Length) return next[_rng.NextInt(next.Length)];
+
+        int pick = open == 1 ? 0 : _rng.NextInt(open);
+        for (int k = 0; k < next.Length; k++)
+            if (_blockedCount[next[k].Value] == 0 && pick-- == 0) return next[k];
+        return next[0];
     }
 
     void AdvanceLane(int i)
@@ -453,6 +498,8 @@ public sealed partial class Simulation
         Array.Resize(ref _stuck, n);
         Array.Resize(ref _stall, n);
         Array.Resize(ref _lat, n);
+        Array.Resize(ref _shift, n);
+        Array.Resize(ref _blockLane, n);
         Array.Resize(ref _phase, n);
         Array.Resize(ref _target, n);
         Array.Resize(ref _aborting, n);

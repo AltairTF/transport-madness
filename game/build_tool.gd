@@ -8,6 +8,7 @@ const LENGTH_STEP := 5.0
 const ROAD_COLORS := {"valid": Color(0.3, 0.9, 0.4, 0.7), "invalid": Color(0.95, 0.3, 0.3, 0.7)}
 
 signal message(text: String)
+signal tool_changed(tool_name: String)
 
 var host: Node3D
 var camera: Camera3D
@@ -47,6 +48,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		if _start == null:
 			set_tool("pointer")
+			tool_changed.emit("pointer")
 		else:
 			_start = null
 			_preview.visible = false

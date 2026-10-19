@@ -3,6 +3,7 @@ extends Node3D
 ##   --bench                      measure frame rate with 1000 vehicles at 1x and 8x, then quit
 ##   --shot=<file> [--shot-after=<seconds>]   save a screenshot and quit
 ##   --selftest-build             build roads with simulated mouse clicks, run, print stats, quit
+##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
 const VEHICLES := 1000
@@ -46,11 +47,16 @@ func _ready() -> void:
 	add_child(build_tool)
 	build_tool.setup(host, rig.get_node("Camera3D"))
 	build_tool.message.connect(hud.show_message)
+	if _args.has("--selftest-build"):
+		build_tool.message.connect(func(text: String) -> void: print("SELFTEST message: ", text))
 	hud.tool_selected.connect(build_tool.set_tool)
+	build_tool.tool_changed.connect(hud.select_tool)
 	hud.action_requested.connect(_on_action)
 
 	if _args.has("--selftest-build"):
 		_selftest_build()
+	if _args.has("--selftest-crash"):
+		_selftest_crash()
 
 	if _args.has("--bench"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -65,7 +71,7 @@ func _process(delta: float) -> void:
 		_stats_timer = 0.0
 		hud.show_stats(host.GetStats())
 
-	if _args.has("--shot") and not _args.has("--selftest-build") and _elapsed > float(_args.get("--shot-after", 6.0)):
+	if _args.has("--shot") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
 		get_tree().quit()
 
@@ -78,7 +84,8 @@ func _on_action(action: String) -> void:
 		"traffic":
 			hud.show_message("Added %d cars" % host.SpawnTraffic(100))
 		"crash":
-			hud.show_message("Vehicle %d crashed" % host.CrashSomeone())
+			var victim: int = host.CrashSomeone()
+			hud.show_message("Vehicle %d crashed" % victim if victim >= 0 else "No moving car to crash")
 		"empty":
 			host.NewEmptyWorld(SEED)
 		"demo":
@@ -101,6 +108,8 @@ func _selftest_build() -> void:
 		["road2", [Vector3(-150, 0, 0), Vector3(0, 0, 0), Vector3(0, 0, 100)]],
 		["road4", [Vector3(0, 0, 0), Vector3(150, 0, 0)]],
 		["road2", [Vector3(0, 0, 0), Vector3(-5, 0, -110)]],
+		["road2", [Vector3(-80, 0, 60), Vector3(-80, 0, -60)]], # crosses the first road: a junction forms
+		["road2", [Vector3(75, 0, 0), Vector3(75, 0, 90)]],     # starts on the middle of the avenue: a T junction
 		["depot", [Vector3(0, 0, 0)]],
 	]
 	for step in clicks:
@@ -121,8 +130,42 @@ func _selftest_build() -> void:
 	get_tree().quit()
 
 
+## Crashes a car in the demo world and follows the incident from wreck to cleared road at 8x.
+func _selftest_crash() -> void:
+	await get_tree().create_timer(2.0).timeout
+	host.SetSpeed(8.0)
+	var victim: int = host.CrashSomeone()
+	print("CRASH victim=%d" % victim)
+	var last_state := ""
+	var shot_taken := false
+	var waited := 0.0
+	while waited < 120.0:
+		await get_tree().create_timer(0.25).timeout
+		waited += 0.25
+		var state: String = host.FirstOpenIncidentState()
+		if state != last_state:
+			var stats: Dictionary = host.GetStats()
+			print("CRASH state=%s tick=%d incidents=%d open=%d" % [state, stats["tick"], stats["incidents"], stats["open_incidents"]])
+			last_state = state
+		if state == "Clearing" and not shot_taken and _args.has("--shot"):
+			var at: Vector3 = host.FirstOpenIncidentPosition()
+			rig.position = at
+			rig.distance = 60.0
+			rig.pitch = -60.0
+			rig._apply()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			get_viewport().get_texture().get_image().save_png(_args["--shot"])
+			shot_taken = true
+		if state == "none":
+			break
+	print("CRASH done cleared=%s" % (last_state == "none"))
+	get_tree().quit()
+
+
 func _click_world(camera: Camera3D, point: Vector3) -> void:
-	var screen := camera.unproject_position(point)
+	# Input events carry window coordinates; unproject_position gives viewport coordinates (the stretch mode differs).
+	var screen: Vector2 = get_viewport().get_final_transform() * camera.unproject_position(point)
 	var motion := InputEventMouseMotion.new()
 	motion.position = screen
 	Input.parse_input_event(motion)

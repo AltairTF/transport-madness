@@ -9,6 +9,7 @@ public sealed partial class Simulation
     const float HomeLaneLat = 0.5f; // from here on a vehicle no longer blocks the lane it left
     const float OncomingSightLat = 0.3f; // from here on a vehicle is a hazard for oncoming traffic
     const float LateralRate = 0.8f; // lateral fraction per second: a lane change takes 1.25 s
+    const float LaneChangeSeconds = 1f / LateralRate;
     const float MinEndMargin = 30f;
     const float StallLimit = 4f; // seconds standing still beside the target before giving up and cutting back in
     const float MinOvertakeStart = 15f; // pulling out needs the vehicle itself clear of the junction it just left
@@ -35,7 +36,6 @@ public sealed partial class Simulation
         // Not near a junction: traffic still arriving from the feeding lanes would not be seen from here.
         if (_cooldown[i] > 0 || _pos[i] < MinEndMargin || _laneLength[lane] - _pos[i] < MinEndMargin) return false;
 
-        float v = _speed[i];
         float v0 = FreeSpeed(i);
         bool hasLeader = FindLeader(i, out _, out float gap, out float leadSpeed);
         bool hindered = hasLeader && gap < 35f && leadSpeed < v0 * 0.85f && v0 - leadSpeed > 1.5f;
@@ -81,6 +81,8 @@ public sealed partial class Simulation
     bool ChangeLane(int i, int target)
     {
         int oldNextRoad = _net.GetLane(new LaneId(_nextLane[i])).Road.Value;
+        // Drawn as a gradual move: start where the old lane was (to the right if going left) and fade out.
+        _shift[i] = target == _net.GetLane(new LaneId(_lane[i])).Left.Value ? LaneWidth : -LaneWidth;
         _lane[i] = target;
         _cooldown[i] = LaneChangeCooldown;
         // Keep heading for the same road when the new lane can take it; otherwise pick a turn.

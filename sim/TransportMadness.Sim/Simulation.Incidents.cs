@@ -45,6 +45,8 @@ public sealed class Incident
     public IncidentState State { get; internal set; } = IncidentState.AwaitingCrew;
     /// <summary>Depot the crew came from, or -1 for the distant fallback service.</summary>
     public int Depot { get; internal set; } = -1;
+    /// <summary>When the crew set off (for drawing it on its way).</summary>
+    public long DispatchTick { get; internal set; }
     public long CrewArrivalTick { get; internal set; }
     public long ClearedTick { get; internal set; }
     /// <summary>Wrecks and debris that still need clearing, by vehicle id.</summary>
@@ -78,10 +80,13 @@ public sealed partial class Simulation
     const float ClearDuration = 45f;
 
     readonly List<Incident> _incidents = new();
+    readonly List<int> _openIncidents = new(); // not yet cleared, in id order
     readonly List<Depot> _depots = new();
     readonly List<(int Lane, float Position, int Incident)> _pendingDebris = new();
 
     public IReadOnlyList<Incident> Incidents => _incidents;
+    /// <summary>Ids of incidents that are not cleared yet, oldest first.</summary>
+    public IReadOnlyList<int> OpenIncidentIds => _openIncidents;
     public IReadOnlyList<Depot> Depots => _depots;
 
     /// <summary>Places a depot at a node. Its crews respond to incidents; closer depots respond faster.</summary>
@@ -104,6 +109,9 @@ public sealed partial class Simulation
         ulong h = (ulong)_incidents.Count;
         foreach (var incident in _incidents)
         {
+            h = h * 31 + (ulong)incident.Kind;
+            h = h * 31 + BitConverter.SingleToUInt32Bits(incident.Position);
+            h = h * 31 + (ulong)(incident.Depot + 1);
             h = h * 31 + (ulong)incident.State;
             h = h * 31 + (ulong)incident.CrewArrivalTick;
             h = h * 31 + (ulong)incident.ClearedTick;
@@ -115,6 +123,7 @@ public sealed partial class Simulation
     int NewIncident(IncidentKind kind, int vehicle)
     {
         _incidents.Add(new Incident(_incidents.Count, kind, Tick, new LaneId(_lane[vehicle]), _pos[vehicle]));
+        _openIncidents.Add(_incidents.Count - 1);
         return _incidents.Count - 1;
     }
 
@@ -126,10 +135,28 @@ public sealed partial class Simulation
         _accel[vehicle] = 0f;
         _incident[vehicle] = incident;
         _incidents[incident].Vehicles.Add(vehicle);
+        Block(vehicle);
+    }
+
+    /// <summary>Counts the wreck against the lane it physically blocks, so drivers can steer clear of the road.</summary>
+    void Block(int vehicle)
+    {
+        int lane = _lane[vehicle];
+        if (_lat[vehicle] >= HomeLaneLat)
+        {
+            var oncoming = _net.GetLane(new LaneId(lane)).Oncoming;
+            if (!oncoming.IsNone) lane = oncoming.Value;
+        }
+        _blockLane[vehicle] = lane;
+        _blockedCount[lane]++;
     }
 
     void RemoveVehicle(int vehicle)
     {
+        if (_blockLane[vehicle] >= 0) _blockedCount[_blockLane[vehicle]]--;
+        _blockLane[vehicle] = -1;
+        for (int i = 0; i < _count; i++)
+            if (_target[i] == vehicle) _target[i] = -1; // the slot will be reused
         _kind[vehicle] = VehicleKind.Removed;
         _lane[vehicle] = -1;
         _halted[vehicle] = true;
@@ -228,6 +255,8 @@ public sealed partial class Simulation
 
         int incident = _incident[a] >= 0 ? _incident[a] : _incident[b];
         if (incident < 0) incident = NewIncident(kind, a);
+        // A car piling into a wreck the crew is already working on adds to the job.
+        if (_incidents[incident].State == IncidentState.Clearing) _incidents[incident].CrewArrivalTick = Tick;
         if (aMoving) MakeWreck(a, incident);
         if (bMoving) MakeWreck(b, incident);
 
@@ -248,14 +277,16 @@ public sealed partial class Simulation
         _halted[id] = true;
         _incident[id] = incident;
         _incidents[incident].Vehicles.Add(id);
+        Block(id);
     }
 
     // ---- Rescue crews -------------------------------------------------------------------------------------------
 
     void UpdateCrews()
     {
-        foreach (var incident in _incidents)
+        for (int k = 0; k < _openIncidents.Count; k++)
         {
+            var incident = _incidents[_openIncidents[k]];
             switch (incident.State)
             {
                 case IncidentState.AwaitingCrew:
@@ -266,6 +297,7 @@ public sealed partial class Simulation
                     break;
                 case IncidentState.Clearing when Tick >= incident.CrewArrivalTick + Ticks(ClearDuration):
                     Clear(incident);
+                    _openIncidents.RemoveAt(k--);
                     break;
             }
         }
@@ -276,6 +308,7 @@ public sealed partial class Simulation
         if (_depots.Count == 0)
         {
             incident.State = IncidentState.CrewEnRoute;
+            incident.DispatchTick = Tick;
             incident.CrewArrivalTick = Tick + Ticks(FallbackResponse);
             return;
         }
@@ -290,10 +323,21 @@ public sealed partial class Simulation
             float distance = MathF.Sqrt((dx - x) * (dx - x) + (dz - z) * (dz - z));
             if (distance < bestDistance) { best = depot; bestDistance = distance; }
         }
-        if (best == null) return; // every crew is busy; try again next step
+        if (best == null)
+        {
+            // Every crew is busy. Keep waiting, but the distant service will not leave the road blocked forever.
+            if (Tick - incident.StartTick >= Ticks(FallbackResponse))
+            {
+                incident.State = IncidentState.CrewEnRoute;
+                incident.DispatchTick = Tick;
+                incident.CrewArrivalTick = Tick;
+            }
+            return;
+        }
 
         float response = DispatchDelay + bestDistance * RoadDetour / CrewSpeed;
         incident.State = IncidentState.CrewEnRoute;
+        incident.DispatchTick = Tick;
         if (response >= FallbackResponse)
         {
             incident.CrewArrivalTick = Tick + Ticks(FallbackResponse); // the distant service gets there first

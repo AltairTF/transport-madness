@@ -184,4 +184,66 @@ public class IncidentTests
         Assert.True(sim.GetVehicle(eastbound).Speed < 0.5f);
         Assert.True(sim.GetVehicle(westbound).Speed < 0.5f);
     }
+
+    [Fact]
+    public void WhenEveryCrewIsBusy_TheDistantServiceEventuallyTakesOver()
+    {
+        var w = new World();
+        var sim = new Simulation(w.Net, seed: 1);
+        sim.AddDepot(w.NearNode, DepotLevel.Simple); // a single crew
+        for (int k = 0; k < 8; k++) sim.Crash(sim.SpawnVehicle(w.Forward, 200f + 300f * k, 0f));
+
+        Run(sim, 400f);
+
+        Assert.Equal(8, sim.Incidents.Count);
+        Assert.All(sim.Incidents, i => Assert.Equal(IncidentState.Cleared, i.State));
+    }
+
+    [Fact]
+    public void CarCrashingIntoAWreckBeingCleared_IsNotRemovedBeforeItsOwnClearing()
+    {
+        var w = new World();
+        var sim = new Simulation(w.Net, seed: 1);
+        sim.AddDepot(w.NearNode, DepotLevel.Simple);
+        int victim = sim.SpawnVehicle(w.Forward, 1000f, 0f);
+        sim.Crash(victim);
+        while (sim.Incidents[0].State != IncidentState.Clearing) sim.Step();
+
+        int driver = sim.SpawnVehicle(w.Forward, 985f, 14f);
+        sim.SetKeepLane(driver, true);
+        Run(sim, 5f);
+        Assert.Equal(VehicleKind.Wreck, sim.GetVehicle(driver).Kind);
+
+        Run(sim, 20f);
+        Assert.Equal(VehicleKind.Wreck, sim.GetVehicle(driver).Kind); // still waiting for the crew
+        Run(sim, 40f);
+        Assert.Equal(VehicleKind.Removed, sim.GetVehicle(driver).Kind);
+    }
+
+    [Fact]
+    public void Drivers_AvoidTurningOntoARoadThatIsBlockedByAWreck()
+    {
+        var net = new RoadNetwork();
+        int a = net.AddNode(0, 0);
+        int c = net.AddNode(300, 0);
+        int blockedEnd = net.AddNode(300, -400);
+        int freeEnd = net.AddNode(300, 400);
+        var approach = net.AddRoad(a, c, RoadType.TwoLane, 14f);
+        var blocked = net.AddRoad(c, blockedEnd, RoadType.TwoLane, 14f);
+        var free = net.AddRoad(c, freeEnd, RoadType.TwoLane, 14f);
+        var sim = new Simulation(net, seed: 1);
+        sim.Crash(sim.SpawnVehicle(net.GetRoad(blocked).ForwardLanes[0], 100f, 0f));
+
+        var onBlocked = net.GetRoad(blocked).ForwardLanes[0];
+        for (int k = 0; k < 12; k++)
+        {
+            int car = sim.SpawnVehicle(net.GetRoad(approach).ForwardLanes[0], 20f, 12f);
+            sim.SetKeepLane(car, true);
+            for (int i = 0; i < 20 * 25; i++)
+            {
+                sim.Step();
+                Assert.NotEqual(onBlocked, sim.GetVehicle(car).Lane);
+            }
+        }
+    }
 }

@@ -13,9 +13,11 @@ namespace TransportMadness;
 public partial class SimHost : Node3D
 {
     const int InitialCapacity = 2048;
+    const int CrewCapacity = 256;
     const int FloatsPerInstance = 16; // 3x4 transform + RGBA colour
     const float RoadHeight = 0.1f;
     const float MedianWidth = 2f;
+    const float RoadSnapRadius = 12f;
 
     public Simulation Sim { get; private set; } = null!;
 
@@ -27,6 +29,8 @@ public partial class SimHost : Node3D
     double _simSecondsThisSecond, _realSecondsThisSecond;
 
     MultiMesh _vehicles = null!;
+    MultiMesh _crews = null!;
+    readonly float[] _crewBuffer = new float[CrewCapacity * FloatsPerInstance];
     float[] _buffer = new float[InitialCapacity * FloatsPerInstance];
     int _capacity = InitialCapacity;
     Node3D _roadRoot = null!;
@@ -61,6 +65,15 @@ public partial class SimHost : Node3D
             VisibleInstanceCount = 0,
         };
         var material = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.8f };
+        _crews = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            UseColors = true,
+            Mesh = new BoxMesh { Size = new Vector3(5.5f, 2.2f, 2.2f) },
+            InstanceCount = CrewCapacity,
+            VisibleInstanceCount = 0,
+        };
+        AddChild(new MultiMeshInstance3D { Name = "Crews", Multimesh = _crews, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         AddChild(new MultiMeshInstance3D { Name = "Vehicles", Multimesh = _vehicles, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
 
@@ -74,8 +87,8 @@ public partial class SimHost : Node3D
         var net = new RoadNetwork();
         DemoWorld.Build(net);
         Sim = new Simulation(net, (ulong)seed);
-        Sim.AddDepot(net.NodeCount / 4, DepotLevel.Workshop);
-        Sim.AddDepot(net.NodeCount * 3 / 4, DepotLevel.Simple);
+        foreach (int node in new[] { net.NodeCount / 5, net.NodeCount * 2 / 5, net.NodeCount * 3 / 5, net.NodeCount * 4 / 5 })
+            Sim.AddDepot(node, DepotLevel.Simple);
         Sim.SeedTraffic(vehicles);
         RebuildRoads();
         _accumulator = 0;
@@ -89,50 +102,52 @@ public partial class SimHost : Node3D
         _accumulator = 0;
     }
 
-    /// <summary>The existing node within <paramref name="radius"/> of a point, if any, else the point itself.</summary>
+    /// <summary>
+    /// Snaps a point to the nearest node within <paramref name="radius"/>, else to the nearest road's centre line
+    /// (a junction will be built there), else leaves it alone.
+    /// </summary>
     public Godot.Collections.Dictionary SnapToNode(float x, float z, float radius)
     {
-        int node = FindNode(x, z, radius);
-        if (node < 0) return new Godot.Collections.Dictionary { ["snapped"] = false, ["x"] = x, ["z"] = z };
-        var (nx, nz) = Sim.Network.GetNode(node);
-        return new Godot.Collections.Dictionary { ["snapped"] = true, ["x"] = nx, ["z"] = nz };
-    }
-
-    int FindNode(float x, float z, float radius)
-    {
         var net = Sim.Network;
-        int best = -1;
-        float bestDistance = radius * radius;
-        for (int n = 0; n < net.NodeCount; n++)
+        int node = net.FindNodeNear(x, z, radius);
+        if (node >= 0)
         {
-            var (nx, nz) = net.GetNode(n);
-            float d = (nx - x) * (nx - x) + (nz - z) * (nz - z);
-            if (d <= bestDistance) { best = n; bestDistance = d; }
+            var (nx, nz) = net.GetNode(node);
+            return new Godot.Collections.Dictionary { ["snapped"] = true, ["x"] = nx, ["z"] = nz };
         }
-        return best;
+
+        float bestDistance = RoadSnapRadius * RoadSnapRadius;
+        (float X, float Z)? best = null;
+        for (int r = 0; r < net.RoadCount; r++)
+        {
+            var road = net.GetRoad(new RoadId(r));
+            if (road.Retired) continue;
+            var (x0, z0) = net.GetNode(road.From);
+            var (x1, z1) = net.GetNode(road.To);
+            float ex = x1 - x0, ez = z1 - z0;
+            float length = MathF.Sqrt(ex * ex + ez * ez);
+            float along = ((x - x0) * ex + (z - z0) * ez) / length;
+            along = MathF.Round(along / 5f) * 5f;
+            if (along < RoadNetwork.MinRoadLength || along > length - RoadNetwork.MinRoadLength) continue;
+            float px = x0 + ex / length * along, pz = z0 + ez / length * along;
+            float d = (px - x) * (px - x) + (pz - z) * (pz - z);
+            if (d <= bestDistance) { best = (px, pz); bestDistance = d; }
+        }
+        if (best is { } hit) return new Godot.Collections.Dictionary { ["snapped"] = true, ["x"] = hit.X, ["z"] = hit.Z };
+        return new Godot.Collections.Dictionary { ["snapped"] = false, ["x"] = x, ["z"] = z };
     }
 
-    /// <summary>Whether a road of at least the minimum length, not duplicating an existing one, fits between the points.</summary>
-    public bool CanBuildRoad(float x0, float z0, float x1, float z1)
-    {
-        var net = Sim.Network;
-        int a = FindNode(x0, z0, 0.5f), b = FindNode(x1, z1, 0.5f);
-        if (a >= 0 && a == b) return false;
-        if (a >= 0 && b >= 0 && net.FindRoad(a, b) != null) return false;
-        float length = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
-        return length >= RoadNetwork.MinRoadLength;
-    }
+    /// <summary>Whether a road can be built between the points: long enough, not a duplicate, not crossing too close to a junction.</summary>
+    public bool CanBuildRoad(float x0, float z0, float x1, float z1) => Sim.Network.CanBuildRoad(x0, z0, x1, z1);
 
-    /// <summary>Builds a straight road, reusing nodes already at the end points. Type 0 is 2-lane, 1 is the 2x2 avenue.</summary>
+    /// <summary>
+    /// Builds a straight road. It joins existing nodes at its ends and makes a junction wherever it ends on or
+    /// crosses another road. Type 0 is 2-lane, 1 is the 2x2 avenue.
+    /// </summary>
     public bool BuildRoad(float x0, float z0, float x1, float z1, int type)
     {
-        if (!CanBuildRoad(x0, z0, x1, z1)) return false;
-        var net = Sim.Network;
-        int a = FindNode(x0, z0, 0.5f);
-        if (a < 0) a = net.AddNode(x0, z0);
-        int b = FindNode(x1, z1, 0.5f);
-        if (b < 0) b = net.AddNode(x1, z1);
-        net.AddRoad(a, b, type == 1 ? RoadType.Avenue2x2 : RoadType.TwoLane, type == 1 ? 19f : 14f);
+        var built = Sim.Network.BuildRoad(x0, z0, x1, z1, type == 1 ? RoadType.Avenue2x2 : RoadType.TwoLane, type == 1 ? 19f : 14f);
+        if (built.Count == 0) return false;
         RebuildRoads();
         return true;
     }
@@ -140,7 +155,7 @@ public partial class SimHost : Node3D
     /// <summary>Places a depot at the node nearest the point (within 60 m) that has none yet.</summary>
     public bool BuildDepot(float x, float z, int level)
     {
-        int node = FindNode(x, z, 60f);
+        int node = Sim.Network.FindNodeNear(x, z, 60f);
         if (node < 0) return false;
         foreach (var depot in Sim.Depots) if (depot.Node == node) return false;
         Sim.AddDepot(node, (DepotLevel)Math.Clamp(level, 0, 2));
@@ -168,9 +183,26 @@ public partial class SimHost : Node3D
         return -1;
     }
 
+    /// <summary>World position of the oldest open incident, or the origin when there is none.</summary>
+    public Vector3 FirstOpenIncidentPosition()
+    {
+        if (Sim.OpenIncidentIds.Count == 0) return Vector3.Zero;
+        var incident = Sim.Incidents[Sim.OpenIncidentIds[0]];
+        int lane = incident.Lane.Value;
+        return new Vector3(_laneX[lane] + _laneDx[lane] * incident.Position, 0f, _laneZ[lane] + _laneDz[lane] * incident.Position);
+    }
+
+    public string FirstOpenIncidentState() => Sim.OpenIncidentIds.Count == 0 ? "none" : Sim.Incidents[Sim.OpenIncidentIds[0]].State.ToString();
+
     public int DepotCount() => Sim.Depots.Count;
 
-    public int RoadCount() => Sim.Network.RoadCount;
+    /// <summary>Roads currently in use (a road split by a junction counts as its two halves).</summary>
+    public int RoadCount()
+    {
+        int n = 0;
+        for (int r = 0; r < Sim.Network.RoadCount; r++) if (!Sim.Network.GetRoad(new RoadId(r)).Retired) n++;
+        return n;
+    }
 
     /// <summary>Game speed multiplier: 0 pauses, then 1, 2, 4 or 8.</summary>
     public void SetSpeed(float speed) => _speed = Mathf.Max(0f, speed);
@@ -236,7 +268,9 @@ public partial class SimHost : Node3D
             _simSecondsThisSecond = _realSecondsThisSecond = 0;
         }
 
-        DrawVehicles(_speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f);
+        float fraction = _speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f;
+        DrawVehicles(fraction);
+        DrawCrews(fraction);
     }
 
     // ---- Drawing --------------------------------------------------------------------------------------------
@@ -266,7 +300,7 @@ public partial class SimHost : Node3D
             // Look a fraction of a step ahead so motion is smooth between the 20 Hz simulation steps.
             float pos = Math.Min(v.Position + v.Speed * Simulation.StepSeconds * stepFraction, _laneLength[lane]) - Simulation.VehicleLength * 0.5f;
             float dx = _laneDx[lane], dz = _laneDz[lane];
-            float side = _laneSide[lane] - Simulation.LaneWidth * v.Lateral;
+            float side = _laneSide[lane] - Simulation.LaneWidth * v.Lateral + v.Shift;
             float x = _laneX[lane] + dx * pos - dz * side;
             float z = _laneZ[lane] + dz * pos + dx * side;
 
@@ -289,6 +323,50 @@ public partial class SimHost : Node3D
         }
         _vehicles.Buffer = buf;
         _vehicles.VisibleInstanceCount = count;
+    }
+
+    /// <summary>Rescue crews as blue boxes: driving from their depot to the site, then parked beside the wreck while they work.</summary>
+    void DrawCrews(float stepFraction)
+    {
+        var buf = _crewBuffer;
+        int n = 0;
+        var net = Sim.Network;
+        foreach (int id in Sim.OpenIncidentIds)
+        {
+            if (n >= CrewCapacity) break;
+            var incident = Sim.Incidents[id];
+            if (incident.State is not (IncidentState.CrewEnRoute or IncidentState.Clearing)) continue;
+
+            int lane = incident.Lane.Value;
+            float sx = _laneX[lane] + _laneDx[lane] * incident.Position + _laneDz[lane] * 5f;
+            float sz = _laneZ[lane] + _laneDz[lane] * incident.Position - _laneDx[lane] * 5f;
+
+            float x = sx, z = sz, dx = _laneDx[lane], dz = _laneDz[lane];
+            if (incident.State == IncidentState.CrewEnRoute && incident.Depot >= 0)
+            {
+                var (fx, fz) = net.GetNode(Sim.Depots[incident.Depot].Node);
+                float span = Math.Max(1f, incident.CrewArrivalTick - incident.DispatchTick);
+                float t = Math.Clamp((Sim.Tick + stepFraction - incident.DispatchTick) / span, 0f, 1f);
+                x = fx + (sx - fx) * t;
+                z = fz + (sz - fz) * t;
+                float len = MathF.Sqrt((sx - fx) * (sx - fx) + (sz - fz) * (sz - fz));
+                if (len > 1f) { dx = (sx - fx) / len; dz = (sz - fz) / len; }
+            }
+            else if (incident.State == IncidentState.CrewEnRoute)
+            {
+                continue; // the distant service is not on the map yet
+            }
+
+            int o = n * FloatsPerInstance;
+            buf[o + 0] = dx;  buf[o + 1] = 0f; buf[o + 2] = -dz; buf[o + 3] = x;
+            buf[o + 4] = 0f;  buf[o + 5] = 1f; buf[o + 6] = 0f;  buf[o + 7] = 1.1f;
+            buf[o + 8] = dz;  buf[o + 9] = 0f; buf[o + 10] = dx; buf[o + 11] = z;
+            bool working = incident.State == IncidentState.Clearing;
+            buf[o + 12] = working ? 1f : 0.1f; buf[o + 13] = working ? 0.85f : 0.4f; buf[o + 14] = working ? 0.1f : 1f; buf[o + 15] = 1f;
+            n++;
+        }
+        _crews.Buffer = buf;
+        _crews.VisibleInstanceCount = n;
     }
 
     static Color CarColor(int id)
@@ -319,15 +397,18 @@ public partial class SimHost : Node3D
             float median = avenue ? MedianWidth : 0f;
             float width = (avenue ? 4 : 2) * Simulation.LaneWidth + median;
 
-            AddRoadBox(new Vector3((x0 + x1) * 0.5f, 0f, (z0 + z1) * 0.5f), length, width, RoadHeight, MathF.Atan2(-dz, dx), _roadMaterial);
-            AddRoadBox(new Vector3((x0 + x1) * 0.5f, RoadHeight * 0.5f + 0.01f, (z0 + z1) * 0.5f), length, avenue ? median : 0.25f, 0.04f, MathF.Atan2(-dz, dx), avenue ? _medianMaterial : _lineMaterial);
-
+            // Tables for every road: retired lanes may still be referred to by finished incidents.
             SetLaneTable(net, road.ForwardLanes, x0, z0, dx, dz, length, median);
             SetLaneTable(net, road.BackwardLanes, x1, z1, -dx, -dz, length, median);
+            if (road.Retired) continue;
+
+            AddRoadBox(new Vector3((x0 + x1) * 0.5f, 0f, (z0 + z1) * 0.5f), length, width, RoadHeight, MathF.Atan2(-dz, dx), _roadMaterial);
+            AddRoadBox(new Vector3((x0 + x1) * 0.5f, RoadHeight * 0.5f + 0.01f, (z0 + z1) * 0.5f), length, avenue ? median : 0.25f, 0.04f, MathF.Atan2(-dz, dx), avenue ? _medianMaterial : _lineMaterial);
         }
 
         for (int n = 0; n < net.NodeCount; n++)
         {
+            if (net.IncomingLanes(n).Count == 0) continue; // a node whose roads were all replaced
             var (x, z) = net.GetNode(n);
             var disc = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 8.5f, BottomRadius = 8.5f, Height = RoadHeight, RadialSegments = 24 }, MaterialOverride = _roadMaterial };
             disc.Position = new Vector3(x, 0f, z);
@@ -352,7 +433,8 @@ public partial class SimHost : Node3D
             _laneX[i] = startX; _laneZ[i] = startZ;
             _laneDx[i] = dx; _laneDz[i] = dz;
             _laneLength[i] = length;
-            _laneSide[i] = median * 0.5f + (lane.Index + 0.5f) * Simulation.LaneWidth; // to the driver's right of the centre line
+            // To the driver's right of the centre line. Lane 0 is the right-most, so it is furthest out.
+            _laneSide[i] = median * 0.5f + (lanes.Length - 1 - lane.Index + 0.5f) * Simulation.LaneWidth;
         }
     }
 

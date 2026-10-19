@@ -48,12 +48,21 @@ public sealed class Lane
     public LaneId Right { get; internal set; } = LaneId.None;
     public LaneId Oncoming { get; internal set; } = LaneId.None;
     public LaneId[] Next { get; internal set; } = Array.Empty<LaneId>();
+
+    /// <summary>The road was split by a junction; vehicles on it move to <see cref="SplitFirst"/> / <see cref="SplitSecond"/>.</summary>
+    public bool Retired { get; internal set; }
+    /// <summary>Replacement covering the first <see cref="SplitDistance"/> metres of this lane.</summary>
+    public LaneId SplitFirst { get; internal set; } = LaneId.None;
+    /// <summary>Replacement covering the rest.</summary>
+    public LaneId SplitSecond { get; internal set; } = LaneId.None;
+    public float SplitDistance { get; internal set; }
 }
 
 public sealed class Road
 {
-    internal Road(RoadId id, int from, int to, RoadType type, LaneId[] forward, LaneId[] backward)
+    internal Road(RoadId id, int from, int to, RoadType type, float speedLimit, LaneId[] forward, LaneId[] backward)
     {
+        SpeedLimit = speedLimit;
         Id = id;
         From = from;
         To = to;
@@ -66,6 +75,9 @@ public sealed class Road
     public int From { get; }
     public int To { get; }
     public RoadType Type { get; }
+    public float SpeedLimit { get; }
+    /// <summary>Replaced by two shorter roads when a junction was built in its middle.</summary>
+    public bool Retired { get; internal set; }
     /// <summary>Lanes running From to To, right-most first.</summary>
     public LaneId[] ForwardLanes { get; }
     /// <summary>Lanes running To to From, right-most first.</summary>
@@ -139,6 +151,143 @@ public sealed class RoadNetwork
         return angle < 0f ? angle + MathF.Tau : angle;
     }
 
+    /// <summary>The nearest node within <paramref name="radius"/> of a point, or -1.</summary>
+    public int FindNodeNear(float x, float z, float radius)
+    {
+        int best = -1;
+        float bestDistance = radius * radius;
+        for (int n = 0; n < _nodes.Count; n++)
+        {
+            float d = (_nodes[n].X - x) * (_nodes[n].X - x) + (_nodes[n].Z - z) * (_nodes[n].Z - z);
+            if (d <= bestDistance) { best = n; bestDistance = d; }
+        }
+        return best;
+    }
+
+    /// <summary>One place along a planned road where it meets the network: an existing node, or a point inside a road to split.</summary>
+    readonly record struct Meeting(float Along, int Node, RoadId Road, float RoadDistance, float X, float Z);
+
+    /// <summary>
+    /// Builds a straight road, joining the network wherever it touches it: at existing nodes, and by splitting any road it
+    /// ends on or crosses so that a junction forms there. Returns the new road pieces, or none if it cannot be built
+    /// (too short, a duplicate, or crossing within <see cref="MinRoadLength"/> of another junction).
+    /// </summary>
+    public IReadOnlyList<RoadId> BuildRoad(float x0, float z0, float x1, float z1, RoadType type, float speedLimit)
+    {
+        var plan = Plan(x0, z0, x1, z1);
+        if (plan == null) return Array.Empty<RoadId>();
+
+        var nodes = new List<int>(plan.Count);
+        foreach (var m in plan)
+        {
+            if (m.Node >= 0) nodes.Add(m.Node);
+            else if (m.Road.Value >= 0) nodes.Add(SplitRoad(m.Road, m.RoadDistance));
+            else nodes.Add(AddNode(m.X, m.Z));
+        }
+        var built = new List<RoadId>();
+        for (int i = 0; i + 1 < nodes.Count; i++) built.Add(AddRoad(nodes[i], nodes[i + 1], type, speedLimit));
+        return built;
+    }
+
+    public bool CanBuildRoad(float x0, float z0, float x1, float z1) => Plan(x0, z0, x1, z1) != null;
+
+    /// <summary>The meetings along the planned road, start to end, or null when it cannot be built.</summary>
+    List<Meeting>? Plan(float x0, float z0, float x1, float z1)
+    {
+        const float onNode = 0.5f;
+        float dx = x1 - x0, dz = z1 - z0;
+        float length = MathF.Sqrt(dx * dx + dz * dz);
+        if (length < MinRoadLength) return null;
+
+        var meetings = new List<Meeting>();
+        int a = FindNodeNear(x0, z0, onNode), b = FindNodeNear(x1, z1, onNode);
+        if (a >= 0 && b >= 0 && FindRoad(a, b) != null) return null;
+
+        for (int r = 0; r < _roads.Count; r++)
+        {
+            var road = _roads[r];
+            if (road.Retired) continue;
+            var (rx0, rz0) = _nodes[road.From];
+            var (rx1, rz1) = _nodes[road.To];
+            float ex = rx1 - rx0, ez = rz1 - rz0;
+            float roadLength = MathF.Sqrt(ex * ex + ez * ez);
+
+            float cross = dx * ez - dz * ex;
+            if (MathF.Abs(cross) < 1e-3f * length * roadLength) continue; // parallel
+            float s = ((rx0 - x0) * ez - (rz0 - z0) * ex) / cross; // along the new road, 0..1
+            float u = ((rx0 - x0) * dz - (rz0 - z0) * dx) / cross; // along the existing road, 0..1
+            float slack = 0.5f / length, roadSlack = 0.5f / roadLength;
+            if (s < -slack || s > 1f + slack || u < -roadSlack || u > 1f + roadSlack) continue;
+
+            float hx = x0 + dx * s, hz = z0 + dz * s;
+            float along = u * roadLength;
+            if (along <= 0.5f || along >= roadLength - 0.5f)
+            {
+                // Touches the road at one of its ends.
+                int node = along <= 0.5f ? road.From : road.To;
+                if (!meetings.Exists(m => m.Node == node)) meetings.Add(new Meeting(s * length, node, new RoadId(-1), 0f, _nodes[node].X, _nodes[node].Z));
+                continue;
+            }
+            if (along < MinRoadLength || along > roadLength - MinRoadLength) return null; // too close to its junction
+            meetings.Add(new Meeting(s * length, -1, road.Id, along, hx, hz));
+        }
+
+        // Make sure both ends are part of the plan.
+        if (!meetings.Exists(m => m.Along <= onNode)) meetings.Add(new Meeting(0f, a, new RoadId(-1), 0f, x0, z0));
+        if (!meetings.Exists(m => m.Along >= length - onNode)) meetings.Add(new Meeting(length, b, new RoadId(-1), 0f, x1, z1));
+        meetings.Sort((p, q) => p.Along.CompareTo(q.Along));
+
+        for (int i = 0; i + 1 < meetings.Count; i++)
+        {
+            if (meetings[i + 1].Along - meetings[i].Along < MinRoadLength) return null;
+            int na = meetings[i].Node, nb = meetings[i + 1].Node;
+            if (na >= 0 && nb >= 0 && FindRoad(na, nb) != null) return null;
+        }
+        return meetings;
+    }
+
+    /// <summary>
+    /// Replaces a road by two roads meeting at a new node <paramref name="distance"/> metres from its start.
+    /// The old road and its lanes are retired; each old lane records its replacements so vehicles can move over.
+    /// </summary>
+    public int SplitRoad(RoadId id, float distance)
+    {
+        var road = _roads[id.Value];
+        if (road.Retired) throw new InvalidOperationException("Road is already replaced.");
+        float length = _lanes[road.ForwardLanes[0].Value].Length;
+        if (distance < MinRoadLength || distance > length - MinRoadLength) throw new ArgumentOutOfRangeException(nameof(distance));
+
+        var (x0, z0) = _nodes[road.From];
+        var (x1, z1) = _nodes[road.To];
+        float t = distance / length;
+        int middle = AddNode(x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
+
+        road.Retired = true;
+        foreach (var lane in road.ForwardLanes.Concat(road.BackwardLanes))
+        {
+            _lanes[lane.Value].Retired = true;
+            _incoming[_lanes[lane.Value].EndNode].Remove(lane);
+        }
+        _nodeRoads[road.From].Remove(id);
+        _nodeRoads[road.To].Remove(id);
+
+        var first = _roads[AddRoad(road.From, middle, road.Type, road.SpeedLimit).Value];
+        var second = _roads[AddRoad(middle, road.To, road.Type, road.SpeedLimit).Value];
+        for (int i = 0; i < road.ForwardLanes.Length; i++)
+            Replace(road.ForwardLanes[i], first.ForwardLanes[i], second.ForwardLanes[i], distance);
+        for (int i = 0; i < road.BackwardLanes.Length; i++)
+            Replace(road.BackwardLanes[i], second.BackwardLanes[i], first.BackwardLanes[i], length - distance);
+        return middle;
+    }
+
+    void Replace(LaneId old, LaneId first, LaneId second, float firstLength)
+    {
+        var lane = _lanes[old.Value];
+        lane.SplitFirst = first;
+        lane.SplitSecond = second;
+        lane.SplitDistance = firstLength;
+    }
+
     public RoadId AddRoad(int from, int to, RoadType type, float speedLimit)
     {
         if (from == to) throw new ArgumentException("A road needs two distinct nodes.");
@@ -160,7 +309,7 @@ public sealed class RoadNetwork
             _lanes[backward[0].Value].Oncoming = forward[0];
         }
 
-        _roads.Add(new Road(id, from, to, type, forward, backward));
+        _roads.Add(new Road(id, from, to, type, speedLimit, forward, backward));
         _nodeRoads[from].Add(id);
         _nodeRoads[to].Add(id);
         RebuildJunction(from);

@@ -77,4 +77,23 @@ public class LaneChangeTests
             }
         }
     }
+
+    [Fact]
+    public void LaneChange_ShowsAsASidewaysShiftThatFadesOut()
+    {
+        var (net, right, left) = Avenue(5000f);
+        var sim = new Simulation(net, seed: 1);
+        int slow = sim.SpawnVehicle(right, position: 80f, speed: 4f);
+        sim.SetDesiredSpeed(slow, 4f);
+        int fast = sim.SpawnVehicle(right, position: 40f, speed: 12f);
+
+        while (sim.GetVehicle(fast).Lane != left) sim.Step();
+        // Moving to the left lane, the car starts out 3.5 m to the right of where its new lane is.
+        Assert.InRange(sim.GetVehicle(fast).Shift, Simulation.LaneWidth - 0.2f, Simulation.LaneWidth);
+
+        Run(sim, 0.6f);
+        Assert.InRange(sim.GetVehicle(fast).Shift, 0.5f, Simulation.LaneWidth - 0.5f);
+        Run(sim, 1.5f);
+        Assert.Equal(0f, sim.GetVehicle(fast).Shift);
+    }
 }
