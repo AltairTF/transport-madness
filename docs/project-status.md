@@ -96,6 +96,7 @@ Player actions are commands (`SimCommand`: `BuildRoadCommand`, `RemoveRoadComman
 - `AddRoad(..., sweep)`; `BuildRoad(..., sweep)`. Limits: radius at least 25 m (`MinRadius`), total sweep at most 2.8 rad. Curve speed limit is `sqrt(3 * radius)` (about 8.7 m/s at 25 m, 17 m/s at 100 m), combined with the grade factor. Splitting an arc splits its sweep in proportion.
 - `Plan` intersects straight against straight analytically as before; any arc involved uses 3 m polylines with a bounding box test, then the same rules (ends within 0.5 m snap to nodes, no junction within 10 m of an end).
 - The tool draws a curve from three clicks: start, a point on it, end (`RoadGeometry.SweepThrough`). Terrain carving follows the polyline of the arc (`Terrain.CarvePath`).
+- Terrain is never restored: removing or moving a road keeps its cut and fill, as a real demolition would.
 - `RemoveRoad(id)` retires the road's lanes with no replacement; the simulation removes vehicles on them (wrecks included, taking them out of their incident) and rebuilds the junctions at both ends, so a node left with one road becomes a dead end. Cost is `10 per metre` demolition; the terrain keeps its cut and fill.
 - `UpgradeRoad(id, speed)` turns a two-lane road into an avenue on the same centre line; vehicles move to the matching new lane. Cost is the avenue price minus half the two-lane price, plus earthworks for the extra width. Only two-lane roads can be upgraded.
 - `DowngradeRoad(id, speed)` narrows an avenue to a two-lane road on the same centre line (`DowngradeCostPerMetre`; the ground keeps its earthworks). Right-lane vehicles carry on in the new lane; left-lane vehicles are moved into it as well, and one that lands within a vehicle length of another is removed (`Lane.SplitMerges`, checked in `SyncNetwork`).
@@ -164,7 +165,7 @@ Behaviour:
 - Only tier 0 fidelity exists (ADR 0002 tiers 1 and 2 are not built); 1000 vehicles are all fully simulated.
 - Accident causes are limited to overtaking, rear-ending and junction merges; no curves, weather, signals, level crossings or condition.
 - Crews are abstract (a straight line from the depot, no road travel, no return trip); depot level only sets crews (Complex has 2).
-- Removal and moving leave terrain scars; moving a node straightens curved roads and drops the vehicles on them; no money exists yet, costs are only numbers.
+- Removal and moving leave the terrain as it was carved, on purpose: demolishing a road does not rebuild the hill (decision, not a gap); moving a node straightens curved roads and drops the vehicles on them; no money exists yet, costs are only numbers.
 - Junction paths decide conflicts and are used to draw turns, but the simulation still moves vehicles across the node in one step (so conflict checks use lane speeds, not real closing speeds), and the lane length is the centre-line length for every lane of a curve.
 - An overtaker alongside its target at a lane end can reappear overlapping it.
 - Tiny dense networks (a few roads, dozens of cars) still produce occasional pile-ups at junctions.
@@ -195,7 +196,6 @@ Open:
 - Bridges and tunnels do not exist: a road crossing a valley is a long fill.
 - Rivers and water (needed before towns in M3).
 - Vehicles still cross the node in one step; following the junction path in the simulation (a position inside the junction) would let `MovesConflict` use real closing speeds.
-- Terrain scars: removing or moving a road leaves its cut and fill (needs the original heights kept per carve).
 - Moving a node keeps no curves and loses the vehicles on its roads; a node cannot be dragged across another road.
 
 **M2: stations, lines, player vehicles, basic economy**
