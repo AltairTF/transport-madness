@@ -1,6 +1,6 @@
 # M3 plan: towns, industries, cargo chains, trip flows
 
-Status: designed (grilled and agreed 2026-10-19). M3a is built (see `project-status.md` section 5.11); M3b to M3d are not started. Done when (game-plan.md): a town grows only when it is supplied and connected.
+Status: designed (grilled and agreed 2026-10-19). M3a and M3b are built (see `project-status.md` sections 5.11 and 5.12); M3c and M3d are not started. Done when (game-plan.md): a town grows only when it is supplied and connected.
 
 M3 is built in four vertical slices; each leaves a playable, tested game. Numbers named here live in `data/tuning.json` (every key required), not in code. Vocabulary is in `/CONTEXT.md`.
 
@@ -20,7 +20,7 @@ M3 is built in four vertical slices; each leaves a playable, tested game. Number
 - UI: Town window replaces the HUD placeholder (name, population, buildings by type, satisfaction). Greybox buildings. Coverage circle on the station preview.
 - Tests: generation is deterministic per seed and leaves old seeds untouched; towns are on flat land and respect spacing; station coverage picks the right buildings; demolition cost and refusal; abandonment timeline and recovery; calendar maths.
 
-### M3b: industries, chains, cargo acceptance
+### M3b: industries, chains, cargo acceptance (built)
 - Eight cargo types: passengers, wood, planks, stone, building materials, grain, food, goods. Chains:
   - wood (forest) to planks (sawmill)
   - stone (quarry) to building materials (cement works)
@@ -30,7 +30,7 @@ M3 is built in four vertical slices; each leaves a playable, tested game. Number
 - Output goes to every station that covers the industry, split evenly, and waits there (capped like other cargo). A station accepts a cargo only when some covered building or industry uses it; processors receive inputs the same way.
 - Town needs (per building tier, in tuning). Sustain, monthly: homes need food and goods; commerce needs goods; light industry needs planks. Construction (for growth in M3d): building materials and planks.
 - Delivery: units are split among the covered buildings that need that cargo, weighted by need, within the unloading station's `coverageRadius`. Each building holds its own sustain stock and construction stock; no town-level stock. A sustain shortfall lowers satisfaction.
-- Industry window replaces the placeholder.
+- Industry window replaces the placeholder (built, with a Stations window showing waiting cargo and acceptance). Trucks became one `freight` model that takes the cargo the next stop accepts, so no model per cargo is needed.
 - Tests: a chain runs end to end with a truck line at each hop; acceptance follows coverage; delivery splits by need; shortfall lowers satisfaction.
 
 ### M3c: trip groups

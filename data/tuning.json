@@ -151,14 +151,14 @@
   // Pay is quantity times distance (straight line between the stations) times the rate, reduced when the trip took long.
   // supplyPerDay is only for maps with neither towns nor industries: there every station produces that much of the cargo.
   "cargo": [
-    { "id": "passengers", "payPerUnitKm": 40.0, "freeSeconds": 240.0, "zeroSeconds": 1200.0, "minPayShare": 0.3, "supplyPerDay": 240.0, "maxWaiting": 120.0 },
-    { "id": "goods", "payPerUnitKm": 55.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 140.0, "maxWaiting": 80.0 },
-    { "id": "wood", "payPerUnitKm": 30.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "planks", "payPerUnitKm": 40.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "stone", "payPerUnitKm": 25.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "materials", "payPerUnitKm": 45.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "grain", "payPerUnitKm": 28.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "food", "payPerUnitKm": 50.0, "freeSeconds": 400.0, "zeroSeconds": 2000.0, "minPayShare": 0.2, "supplyPerDay": 0.0, "maxWaiting": 200.0 }
+    { "id": "passengers", "name": "Passengers", "payPerUnitKm": 40.0, "freeSeconds": 240.0, "zeroSeconds": 1200.0, "minPayShare": 0.3, "supplyPerDay": 240.0, "maxWaiting": 120.0 },
+    { "id": "goods", "name": "Goods", "payPerUnitKm": 55.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 140.0, "maxWaiting": 80.0 },
+    { "id": "wood", "name": "Wood", "payPerUnitKm": 30.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "planks", "name": "Planks", "payPerUnitKm": 40.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "stone", "name": "Stone", "payPerUnitKm": 25.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "materials", "name": "Building materials", "payPerUnitKm": 45.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "grain", "name": "Grain", "payPerUnitKm": 28.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "food", "name": "Food", "payPerUnitKm": 50.0, "freeSeconds": 400.0, "zeroSeconds": 2000.0, "minPayShare": 0.2, "supplyPerDay": 0.0, "maxWaiting": 200.0 }
   ],
 
 

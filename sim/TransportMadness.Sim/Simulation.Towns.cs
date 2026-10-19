@@ -311,6 +311,10 @@ public sealed partial class Simulation
         return BuildingsNear(x, z, _stationTuning.CoverageRadius).Where(id => _buildings[id].State == BuildingState.Active).ToList();
     }
 
+    /// <summary>The industries whose middle lies within <paramref name="radius"/> of a point, by id.</summary>
+    public List<int> IndustriesNear(float x, float z, float radius) =>
+        _industries.Where(i => (i.X - x) * (i.X - x) + (i.Z - z) * (i.Z - z) <= radius * radius).Select(i => i.Id).ToList();
+
     /// <summary>The industries within the coverage radius of a station, by id.</summary>
     public IReadOnlyList<int> IndustriesCoveredBy(Station station)
     {

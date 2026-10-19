@@ -241,6 +241,7 @@ public sealed record StationTuning
 public sealed record CargoTuning
 {
     public required string Id { get; init; }
+    public required string Name { get; init; }
     public required float PayPerUnitKm { get; init; }
     public required float FreeSeconds { get; init; }
     public required float ZeroSeconds { get; init; }

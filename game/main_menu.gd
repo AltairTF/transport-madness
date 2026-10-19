@@ -15,6 +15,8 @@ var _seed: SpinBox
 var _towns_row: Control
 var _towns_value: Label
 var _towns_slider: HSlider
+var _industries_row: Control
+var _industries_buttons: Array[Button] = []
 
 
 func _ready() -> void:
@@ -151,6 +153,22 @@ func _build_new_game_page() -> Control:
 	_towns_row.add_child(_towns_value)
 	_on_towns_changed(Session.towns)
 
+	_industries_row = HBoxContainer.new()
+	column.add_child(_industries_row)
+	var industries_label := Label.new()
+	industries_label.text = "Industries"
+	industries_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_industries_row.add_child(industries_label)
+	for i in 3:
+		var button := Button.new()
+		button.text = ["Few", "Normal", "Many"][i]
+		button.toggle_mode = true
+		button.custom_minimum_size = Vector2(90, 0)
+		button.pressed.connect(_on_industries_changed.bind(i))
+		_industries_row.add_child(button)
+		_industries_buttons.append(button)
+	_on_industries_changed(Session.industries)
+
 	var buttons := HBoxContainer.new()
 	column.add_child(buttons)
 	var back := _button(buttons, "Back", func() -> void: _show(_main_page))
@@ -170,6 +188,13 @@ func _select_map(id: String) -> void:
 		if map["id"] == id:
 			_map_text.text = map["text"]
 			_towns_row.visible = map.get("towns", false)
+			_industries_row.visible = map.get("towns", false)
+
+
+func _on_industries_changed(setting: int) -> void:
+	Session.industries = setting
+	for i in _industries_buttons.size():
+		_industries_buttons[i].set_pressed_no_signal(i == setting)
 
 
 func _on_towns_changed(value: float) -> void:

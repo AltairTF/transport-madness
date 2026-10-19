@@ -157,13 +157,14 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>
-    /// Starts a map of generated hills with towns. Returns how many towns were placed; fewer than <paramref name="towns"/>
-    /// when the land ran out. A few ambient cars are put on the streets.
+    /// Starts a map of generated hills with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many).
+    /// Returns how many towns were placed; fewer than <paramref name="towns"/> when the land ran out. A few ambient cars
+    /// are put on the streets.
     /// </summary>
-    public int NewTownsWorld(long seed, int towns)
+    public int NewTownsWorld(long seed, int towns, int industries)
     {
         var net = new RoadNetwork(Terrain.Generate((ulong)seed));
-        var plan = TownGenerator.Generate(net, (ulong)seed, towns);
+        var plan = IndustryGenerator.Generate(net, (ulong)seed, TownGenerator.Generate(net, (ulong)seed, towns), (IndustryAmount)Math.Clamp(industries, 0, 2));
         Sim = new Simulation(net, (ulong)seed);
         Sim.AddTowns(plan);
         Sim.Execute(new SeedTrafficCommand(TownTrafficPerTown * Math.Max(1, plan.Towns.Count)));
@@ -476,6 +477,7 @@ public partial class SimHost : Node3D
             ["affordable"] = Sim.CanAfford(Sim.StationPrice),
             ["radius"] = Sim.Network.Tuning.Stations.CoverageRadius,
             ["covered"] = CoveredCount(site.X, site.Z),
+            ["industries"] = Sim.IndustriesNear(site.X, site.Z, Sim.Network.Tuning.Stations.CoverageRadius).Count,
         };
     }
 
@@ -582,7 +584,7 @@ public partial class SimHost : Node3D
         return lines;
     }
 
-    /// <summary>Open stations: for each {id, name, x, y, z, waiting} where waiting is the units of each cargo, in the order of the tuning file.</summary>
+    /// <summary>Open stations: for each {id, name, x, y, z, waiting, accepts} where waiting is the units of each cargo and accepts whether the station takes it, in the order of <see cref="GetCargoNames"/>.</summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetStations()
     {
         var stations = new Godot.Collections.Array<Godot.Collections.Dictionary>();
@@ -591,15 +593,53 @@ public partial class SimHost : Node3D
             if (!station.Active) continue;
             var waiting = new Godot.Collections.Array<int>();
             foreach (float w in station.Waiting) waiting.Add((int)w);
+            var accepts = new Godot.Collections.Array<bool>();
+            for (int c = 0; c < Sim.CargoTypes.Count; c++) accepts.Add(Sim.Accepts(station, c));
             var p = StationPosition(station.Id);
-            stations.Add(new Godot.Collections.Dictionary { ["id"] = station.Id, ["name"] = $"S{station.Id + 1}", ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["waiting"] = waiting });
+            stations.Add(new Godot.Collections.Dictionary { ["id"] = station.Id, ["name"] = $"S{station.Id + 1}", ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["waiting"] = waiting, ["accepts"] = accepts });
         }
         return stations;
     }
 
+    /// <summary>The names of the cargo types, in the order of the tuning file.</summary>
+    public Godot.Collections.Array<string> GetCargoNames()
+    {
+        var names = new Godot.Collections.Array<string>();
+        foreach (var c in Sim.CargoTypes) names.Add(c.Name);
+        return names;
+    }
+
+    /// <summary>
+    /// The industries: for each {id, name, x, y, z, output (cargo name), stock (waiting to be collected), produced, inputs}
+    /// where inputs lists {cargo, stock, max} for the cargo it uses.
+    /// </summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> GetIndustries()
+    {
+        var list = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        var types = Sim.IndustryTuning.Types;
+        foreach (var industry in Sim.Industries)
+        {
+            var type = types[industry.Type];
+            var inputs = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+            foreach (var input in type.Inputs)
+            {
+                int c = -1;
+                for (int k = 0; k < Sim.CargoTypes.Count; k++) if (Sim.CargoTypes[k].Id == input.Cargo) c = k;
+                inputs.Add(new Godot.Collections.Dictionary { ["cargo"] = Sim.CargoTypes[c].Name, ["stock"] = industry.Input[c], ["max"] = type.MaxInput });
+            }
+            list.Add(new Godot.Collections.Dictionary
+            {
+                ["id"] = industry.Id, ["name"] = type.Name, ["x"] = industry.X, ["y"] = HeightAt(industry.X, industry.Z), ["z"] = industry.Z,
+                ["output"] = Sim.CargoTypes[Sim.OutputOf(industry.Type)].Name, ["stock"] = industry.Output, ["max_output"] = type.MaxOutput,
+                ["produced"] = industry.Produced, ["inputs"] = inputs,
+            });
+        }
+        return list;
+    }
+
     /// <summary>
     /// The towns: for each {id, name, x, y, z, satisfaction, population, jobs, homes, commerce, industry, inactive,
-    /// abandoned} (the last six are counts of buildings, inactive and abandoned ones apart).
+    /// abandoned, unmet} (counts of buildings, inactive and abandoned ones apart; unmet is the share of last month's needs that were not met, 0 to 1).
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetTowns()
     {
@@ -613,7 +653,7 @@ public partial class SimHost : Node3D
                 ["satisfaction"] = town.Satisfaction,
                 ["population"] = s.Population, ["jobs"] = s.Jobs,
                 ["homes"] = s.Homes, ["commerce"] = s.Commerce, ["industry"] = s.Industry,
-                ["inactive"] = s.Inactive, ["abandoned"] = s.Abandoned,
+                ["inactive"] = s.Inactive, ["abandoned"] = s.Abandoned, ["unmet"] = town.UnmetShare,
             });
         }
         return towns;
@@ -967,11 +1007,23 @@ public partial class SimHost : Node3D
     {
         _buildingsVersion = Sim.BuildingsVersion;
         var tuning = Sim.TownTuning;
-        int n = 0;
+        int n = Sim.Industries.Count;
         foreach (var b in Sim.Buildings) if (b.State != BuildingState.Demolished) n++;
         _buildings.InstanceCount = n;
         var buf = new float[n * FloatsPerInstance];
         int k = 0;
+        foreach (var industry in Sim.Industries)
+        {
+            var type = Sim.IndustryTuning.Types[industry.Type];
+            float side = type.Size * 2f;
+            float fx = MathF.Cos(industry.Angle), fz = MathF.Sin(industry.Angle);
+            float y = Math.Max(_terrain.HeightAt(industry.X, industry.Z), _terrain.WaterSurfaceAt(industry.X, industry.Z)) - 0.3f + type.Height * 0.5f;
+            int o = k++ * FloatsPerInstance;
+            buf[o + 0] = fx * side;  buf[o + 1] = 0f;          buf[o + 2] = -fz * side; buf[o + 3] = industry.X;
+            buf[o + 4] = 0f;         buf[o + 5] = type.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
+            buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = industry.Z;
+            buf[o + 12] = type.Color[0]; buf[o + 13] = type.Color[1]; buf[o + 14] = type.Color[2]; buf[o + 15] = 1f;
+        }
         foreach (var b in Sim.Buildings)
         {
             if (b.State == BuildingState.Demolished) continue;
@@ -1007,6 +1059,21 @@ public partial class SimHost : Node3D
                 OutlineSize = 10,
                 NoDepthTest = true,
                 Position = new Vector3(town.X, HeightAt(town.X, town.Z) + 70f, town.Z),
+            });
+        }
+        foreach (var industry in Sim.Industries)
+        {
+            _townLabels.AddChild(new Label3D
+            {
+                Text = Sim.IndustryTuning.Types[industry.Type].Name,
+                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+                FixedSize = true,
+                PixelSize = 0.0011f,
+                FontSize = 30,
+                OutlineSize = 8,
+                NoDepthTest = true,
+                Modulate = new Color(0.9f, 0.95f, 0.8f),
+                Position = new Vector3(industry.X, HeightAt(industry.X, industry.Z) + 40f, industry.Z),
             });
         }
     }

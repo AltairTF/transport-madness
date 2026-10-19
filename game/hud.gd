@@ -37,9 +37,9 @@ const WINDOWS := [
 	["Company", "company", ""],
 	["Lines", "lines", ""],
 	["Vehicles", "vehicles", "The whole fleet in one list: condition, age, where each vehicle is, sell and replace. Planned."],
-	["Stations", "stations", "Every station with its waiting cargo and ratings. Planned."],
+	["Stations", "stations", ""],
 	["Towns", "towns", ""],
-	["Industries", "industries", "Industries and the cargo chains between them. Arrives with M3."],
+	["Industries", "industries", ""],
 ]
 const MESSAGE_SECONDS := 8.0
 
@@ -64,6 +64,13 @@ var _lines_box: VBoxContainer
 var _lines_empty: Label
 var _line_rows: Dictionary = {} # line id -> {"row": Control, "label": Label, "separator": Control}
 var _models: Array = []
+var _cargo_names: Array = []
+var _industries_box: VBoxContainer
+var _industries_empty: Label
+var _industry_rows: Dictionary = {} # industry id -> {"row": Control, "label": Label, "separator": Control}
+var _stations_box: VBoxContainer
+var _stations_empty: Label
+var _station_rows: Dictionary = {} # station id -> {"row": Control, "label": Label, "separator": Control}
 var _towns_box: VBoxContainer
 var _towns_empty: Label
 var _town_rows: Dictionary = {} # town id -> {"row": Control, "label": Label, "bar": ProgressBar}
@@ -182,6 +189,10 @@ func _build_window_panel() -> void:
 				page = _build_lines_page()
 			"towns":
 				page = _build_towns_page()
+			"industries":
+				page = _build_industries_page()
+			"stations":
+				page = _build_stations_page()
 			_:
 				page = _placeholder(entry[2])
 		page.visible = false
@@ -221,6 +232,26 @@ func _build_towns_page() -> Control:
 	_towns_empty.text = "There are no towns on this map. Start a new game on the Towns map."
 	_towns_box.add_child(_towns_empty)
 	return _towns_box
+
+
+func _build_industries_page() -> Control:
+	_industries_box = VBoxContainer.new()
+	_industries_empty = Label.new()
+	_industries_empty.theme_type_variation = "Dim"
+	_industries_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_industries_empty.text = "There are no industries on this map."
+	_industries_box.add_child(_industries_empty)
+	return _industries_box
+
+
+func _build_stations_page() -> Control:
+	_stations_box = VBoxContainer.new()
+	_stations_empty = Label.new()
+	_stations_empty.theme_type_variation = "Dim"
+	_stations_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_stations_empty.text = "No stations yet. Build one on a road beside a town or an industry."
+	_stations_box.add_child(_stations_empty)
+	return _stations_box
 
 
 func _placeholder(text: String) -> Control:
@@ -398,6 +429,86 @@ func _date_text(company: Dictionary) -> String:
 	return "%d %s, year %d   %02d:%02d" % [company["day_of_month"], MONTHS[(company["month"] - 1) % 12], company["year"], int(hour), int(fmod(hour, 1.0) * 60.0)]
 
 
+func set_cargo_names(names: Array) -> void:
+	_cargo_names = names
+
+
+## One row per industry: what it makes and holds, with a button that takes the camera there.
+func show_industries(industries: Array) -> void:
+	var seen := {}
+	for industry in industries:
+		var id: int = industry["id"]
+		seen[id] = true
+		if not _industry_rows.has(id):
+			_add_industry_row(id, industry)
+		var text := "%s %d\nmakes %s   %d of %d waiting for a truck   %d made so far" % [
+			industry["name"], id + 1, industry["output"], industry["stock"], industry["max_output"], industry["produced"]]
+		for input in industry["inputs"]:
+			text += "\nneeds %s   %d of %d in stock" % [input["cargo"], input["stock"], input["max"]]
+		_industry_rows[id]["label"].text = text
+	for id in _industry_rows.keys():
+		if not seen.has(id):
+			_industry_rows[id]["row"].queue_free()
+			_industry_rows[id]["separator"].queue_free()
+			_industry_rows.erase(id)
+	_industries_empty.visible = _industry_rows.is_empty()
+
+
+func _add_industry_row(id: int, industry: Dictionary) -> void:
+	var row := VBoxContainer.new()
+	var label := Label.new()
+	row.add_child(label)
+	var go := Button.new()
+	go.text = "Go to"
+	go.pressed.connect(func() -> void: town_focus.emit(industry["x"], industry["z"]))
+	row.add_child(go)
+	var separator := HSeparator.new()
+	_industries_box.add_child(row)
+	_industries_box.add_child(separator)
+	_industry_rows[id] = {"row": row, "label": label, "separator": separator}
+
+
+## One row per station: the cargo waiting there and what it accepts.
+func show_stations(stations: Array) -> void:
+	var seen := {}
+	for station in stations:
+		var id: int = station["id"]
+		seen[id] = true
+		if not _station_rows.has(id):
+			_add_station_row(id, station)
+		var waiting := ""
+		var accepts := ""
+		for c in _cargo_names.size():
+			if station["waiting"][c] > 0:
+				waiting += ("" if waiting.is_empty() else ", ") + "%d %s" % [station["waiting"][c], _cargo_names[c].to_lower()]
+			if station["accepts"][c]:
+				accepts += ("" if accepts.is_empty() else ", ") + _cargo_names[c].to_lower()
+		_station_rows[id]["label"].text = "%s\nwaiting   %s\naccepts   %s" % [
+			station["name"], "nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
+	for id in _station_rows.keys():
+		if not seen.has(id):
+			_station_rows[id]["row"].queue_free()
+			_station_rows[id]["separator"].queue_free()
+			_station_rows.erase(id)
+	_stations_empty.visible = _station_rows.is_empty()
+
+
+func _add_station_row(id: int, station: Dictionary) -> void:
+	var row := VBoxContainer.new()
+	var label := Label.new()
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	var go := Button.new()
+	go.text = "Go to"
+	go.pressed.connect(func() -> void: town_focus.emit(station["x"], station["z"]))
+	row.add_child(go)
+	var separator := HSeparator.new()
+	_stations_box.add_child(row)
+	_stations_box.add_child(separator)
+	_station_rows[id] = {"row": row, "label": label, "separator": separator}
+
+
 ## One row per town: its name and numbers, a satisfaction bar and a button that takes the camera there.
 func show_towns(towns: Array) -> void:
 	var seen := {}
@@ -412,6 +523,7 @@ func show_towns(towns: Array) -> void:
 			town["name"], town["population"], town["jobs"], town["homes"], town["commerce"], town["industry"]]
 		if town["inactive"] > 0 or town["abandoned"] > 0:
 			label.text += "\n%d cut off from the roads   %d abandoned" % [town["inactive"], town["abandoned"]]
+		label.text += "\nNeeds met last month   %d%%" % roundi(100.0 * (1.0 - town["unmet"]))
 		var bar: ProgressBar = entry["bar"]
 		bar.value = town["satisfaction"]
 		bar.tooltip_text = "Satisfaction %d of 100. It falls when buildings are demolished or abandoned, and slowly recovers." % roundi(town["satisfaction"])

@@ -58,6 +58,7 @@ func _ready() -> void:
 	add_child(hud)
 	hud.speed_selected.connect(func(speed: float) -> void: host.SetSpeed(speed))
 	hud.set_models(host.GetVehicleModels())
+	hud.set_cargo_names(host.GetCargoNames())
 	hud.line_action.connect(_on_line_action)
 	hud.town_focus.connect(rig.focus_on)
 	if _world_note != "":
@@ -103,6 +104,8 @@ func _process(delta: float) -> void:
 		hud.show_company(host.GetCompany())
 		hud.show_lines(host.GetLines())
 		hud.show_towns(host.GetTowns())
+		hud.show_industries(host.GetIndustries())
+		hud.show_stations(host.GetStations())
 
 	if _args.has("--shot") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
@@ -128,7 +131,7 @@ func _leave_to_menu() -> void:
 func _new_world(map: String) -> void:
 	match map:
 		"towns":
-			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns)
+			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns, Session.industries)
 			_world_note = "" if placed >= Session.towns else "Only %d of %d towns fit on this map" % [placed, Session.towns]
 			if hud != null and _world_note != "":
 				hud.show_message(_world_note)

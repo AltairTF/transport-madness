@@ -328,7 +328,7 @@ func _hover_station(screen: Vector2) -> void:
 	_preview.mesh.size = Vector3(14, 4, 10)
 	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"] - 24.0, site["y"] + 2.0, site["z"] - 24.0))
 	_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
-	message.emit("Station: cost %s   serves %d buildings within %d m" % [_money(site["price"]), site["covered"], site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
+	message.emit("Station: cost %s   serves %d buildings and %d industries within %d m" % [_money(site["price"]), site["covered"], site["industries"], site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
 
 
 ## Line tool: the station under the mouse is added to the line being drawn.

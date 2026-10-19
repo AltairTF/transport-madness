@@ -16,10 +16,10 @@ A home, a commerce building or a light industry building on a lot beside a stree
 _Avoid_: House (a Building is not always a home)
 
 **Industry**:
-A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm) produce at a fixed rate; processors (sawmill, cement works, food plant, factory) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods.
+A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm) produce at a fixed rate; processors (sawmill, cement works, food plant, factory) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods. Its output goes to the Stations that cover it, shared evenly; its inputs are filled by deliveries to those Stations.
 
 **Cargo**:
-Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods.
+Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 
 **Satisfaction**:
 A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold the Town stops growing. Has no effect on money before M5.
@@ -93,7 +93,7 @@ A vehicle kept past its Era. It has no permanent wear limit, but it burns more f
 A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, create or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
 
 **Company vehicle**:
-A bus or truck the Company owns, bought at a Depot for a Line. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.
+A bus or truck the Company owns, bought at a Depot for a Line. A bus takes passengers; a truck takes whichever freight Cargo is waiting at a stop and wanted at the next one. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.
 _Avoid_: "player vehicle" (ambiguous with the camera), "fleet car"
 
 **Pay**:
