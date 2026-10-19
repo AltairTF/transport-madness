@@ -66,6 +66,12 @@ public sealed partial class Simulation
     int[] _nodeMoveCount = Array.Empty<int>();
     int[] _nodeMatrixStart = new int[1];
     byte[] _conflictTable = Array.Empty<byte>(); // 0 unknown, 1 no conflict, 2 conflict
+    float[] _zoneIn = Array.Empty<float>();      // for a conflict: the stretch of the first move's path where it meets the second's
+    float[] _zoneOut = Array.Empty<float>();
+    // The same for pairs in which one vehicle is longer than a car.
+    byte[] _wideConflictTable = Array.Empty<byte>();
+    float[] _wideZoneIn = Array.Empty<float>();
+    float[] _wideZoneOut = Array.Empty<float>();
 
     int _count; // slots in use, including removed ones
     int _active; // vehicles that currently exist
@@ -99,6 +105,7 @@ public sealed partial class Simulation
     float[] _extraSpeed = new float[64]; // ... and its speed as seen by us (negative: coming at us)
     float[] _oncGap = new float[64]; // nearest oncoming vehicle ahead of an overtaker
     float[] _oncSpeed = new float[64];
+    float[] _length = new float[64]; // vehicle length: the roster's for company vehicles, VehicleLength for ambient traffic
 
     // Vehicles grouped by lane, ascending position within a lane. Rebuilt each step.
     int[] _order = new int[64];
@@ -119,6 +126,13 @@ public sealed partial class Simulation
         _laneChange = tuning.LaneChange;
         _overtake = tuning.Overtake;
         _crew = tuning.Crews;
+        _economy = tuning.Economy;
+        _stationTuning = tuning.Stations;
+        _cargo = tuning.Cargo;
+        _models = tuning.Vehicles;
+        _modelCargo = ResolveModelCargo(tuning);
+        _ticksPerDay = (long)MathF.Round(_economy.DayLength / StepSeconds);
+        Company = new Company(_economy.StartingMoney);
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;
         _rng = new SimRandom(seed);
@@ -195,6 +209,11 @@ public sealed partial class Simulation
             Mix((_halted[i] ? 1UL : 0UL) | (_aborting[i] ? 2UL : 0UL) | (_keepLane[i] ? 4UL : 0UL));
         }
         Mix(IncidentHash());
+        Mix(StationHash());
+        Mix(FleetHash());
+        Mix((ulong)Company.Money);
+        Mix((ulong)Company.Loan);
+        Mix((ulong)(Company.Bankrupt ? Company.InsolventDays + 1 : Company.InsolventDays));
         Mix((ulong)_net.Version);
         Mix((ulong)_net.LaneCount);
         foreach (var depot in _depots)
@@ -241,6 +260,7 @@ public sealed partial class Simulation
         _kind[id] = VehicleKind.Car;
         _incident[id] = -1;
         _prevLane[id] = -1;
+        ResetFleetSlot(id);
         _nextLane[id] = ChooseNextLane(lane.Value);
         RebuildOrder();
         return id;
@@ -315,6 +335,8 @@ public sealed partial class Simulation
         SyncNetwork();
         DecideManoeuvres();
         PrepareOvertakes();
+        GenerateCargo();
+        UpdateFleet();
         for (int i = 0; i < _count; i++)
         {
             if (_halted[i]) continue;
@@ -330,6 +352,7 @@ public sealed partial class Simulation
             if (_extraGap[i] < float.MaxValue)
                 interaction = MathF.Max(interaction, Interaction(v, _extraGap[i], _extraSpeed[i]));
             interaction = MathF.Max(interaction, JunctionInteraction(i, v));
+            if (_line[i] >= 0) interaction = MathF.Max(interaction, StopInteraction(i, v));
 
             float wanted = MathF.Max(-_drive.MaxBraking, _drive.MaxAccel * (1f - ratio * ratio * ratio * ratio - interaction));
             _accel[i] = MathF.Max(wanted, _accel[i] - _drive.BrakeJerk * StepSeconds);
@@ -344,6 +367,7 @@ public sealed partial class Simulation
         }
         RebuildOrder();
         DetectIncidents();
+        if ((Tick + 1) % _ticksPerDay == 0) CloseDay();
         Tick++;
     }
 
@@ -403,7 +427,7 @@ public sealed partial class Simulation
                 int j = _order[r];
                 if (_lat[j] < HomeLaneLat) continue;
                 leader = j;
-                gap = _pos[j] - VehicleLength - _pos[i];
+                gap = _pos[j] - _length[j] - _pos[i];
                 leadSpeed = _speed[j];
                 found = true;
                 break;
@@ -412,7 +436,7 @@ public sealed partial class Simulation
             int t = _target[i];
             if (_aborting[i] && t >= 0 && _lane[t] == lane)
             {
-                float g = _pos[t] - VehicleLength - _pos[i];
+                float g = _pos[t] - _length[t] - _pos[i];
                 if (!found || g < gap)
                 {
                     leader = t;
@@ -430,7 +454,7 @@ public sealed partial class Simulation
             int j = _order[r];
             if (_lat[j] >= HomeLaneLat) continue;
             leader = j;
-            gap = _pos[j] - VehicleLength - _pos[i];
+            gap = _pos[j] - _length[j] - _pos[i];
             leadSpeed = _speed[j];
             return true;
         }
@@ -441,7 +465,7 @@ public sealed partial class Simulation
             int j = _order[r];
             if (_lat[j] >= HomeLaneLat) continue;
             leader = j;
-            gap = GapAcrossJunction(lane, next, _pos[i], _pos[j]);
+            gap = GapAcrossJunction(lane, next, _pos[i], _pos[j], _length[j]);
             leadSpeed = _speed[j];
             return true;
         }
@@ -456,8 +480,8 @@ public sealed partial class Simulation
     }
 
     /// <summary>Bumper to bumper distance from a vehicle at <paramref name="followerPos"/> on <paramref name="lane"/> to one at <paramref name="leaderPos"/> on <paramref name="next"/>, going through the junction.</summary>
-    float GapAcrossJunction(int lane, int next, float followerPos, float leaderPos) =>
-        ZoneEnd(lane, next) - followerPos + leaderPos - _laneReach[next] - VehicleLength;
+    float GapAcrossJunction(int lane, int next, float followerPos, float leaderPos, float leaderLength) =>
+        ZoneEnd(lane, next) - followerPos + leaderPos - _laneReach[next] - leaderLength;
 
     /// <summary>
     /// Picks up roads built since the last call. Vehicles whose planned turn no longer exists (a dead end that
@@ -512,9 +536,10 @@ public sealed partial class Simulation
                 RemoveVehicle(i);
                 continue;
             }
-            if (!CanEnter(_lane[i], _nextLane[i])) _nextLane[i] = ChooseNextLane(_lane[i]);
+            if (!CanEnter(_lane[i], _nextLane[i])) _nextLane[i] = NextLaneFor(i, _lane[i]);
         }
         CloseOrphanedDepots();
+        CloseOrphanedStations();
         RebuildOrder();
     }
 
@@ -544,6 +569,7 @@ public sealed partial class Simulation
         }
         _nextStart[lanes] = n;
         SyncConflictTables();
+        SyncReverseLinks();
     }
 
     bool CanEnter(int lane, int next)
@@ -557,16 +583,31 @@ public sealed partial class Simulation
     bool OnDemolishedLane(int i)
     {
         var lane = _net.GetLane(new LaneId(_lane[i]));
+        float pos = _pos[i];
         while (lane.Retired)
         {
-            var next = _pos[i] < lane.SplitDistance ? lane.SplitFirst : lane.SplitSecond;
+            var next = Successor(lane, ref pos);
             if (next.IsNone) return true;
             lane = _net.GetLane(next);
         }
         return false;
     }
 
-    /// <summary>A junction was built in the middle of the road this vehicle is on: carry on from the same spot on the new piece.</summary>
+    /// <summary>The lane that takes over a retired lane's vehicle at <paramref name="position"/>, which becomes its position on that lane. None when the road was torn down.</summary>
+    static LaneId Successor(Lane lane, ref float position)
+    {
+        if (lane.Remap is { } remap)
+        {
+            var (next, along) = remap.Resolve(position);
+            position = along;
+            return next;
+        }
+        if (position < lane.SplitDistance) return lane.SplitFirst;
+        position -= lane.SplitDistance;
+        return lane.SplitSecond;
+    }
+
+    /// <summary>A junction was built in the middle of the road this vehicle is on, or the road was rebuilt: carry on from the same spot on the new piece.</summary>
     bool MoveOffRetiredLane(int i)
     {
         var lane = _net.GetLane(new LaneId(_lane[i]));
@@ -576,12 +617,7 @@ public sealed partial class Simulation
         while (lane.Retired)
         {
             merged |= lane.SplitMerges;
-            if (_pos[i] < lane.SplitDistance) _lane[i] = lane.SplitFirst.Value;
-            else
-            {
-                _pos[i] -= lane.SplitDistance;
-                _lane[i] = lane.SplitSecond.Value;
-            }
+            _lane[i] = Successor(lane, ref _pos[i]).Value;
             lane = _net.GetLane(new LaneId(_lane[i]));
         }
         // Any manoeuvre was planned against the old geometry.
@@ -597,7 +633,7 @@ public sealed partial class Simulation
     bool LandedOnAnother(int i)
     {
         for (int j = 0; j < _count; j++)
-            if (j != i && _lane[j] == _lane[i] && MathF.Abs(_pos[j] - _pos[i]) < VehicleLength) return true;
+            if (j != i && _lane[j] == _lane[i] && MathF.Abs(_pos[j] - _pos[i]) < (_pos[j] > _pos[i] ? _length[j] : _length[i])) return true;
         return false;
     }
 
@@ -626,7 +662,7 @@ public sealed partial class Simulation
             _pos[i] += _laneReach[_nextLane[i]] - ZoneEnd(_lane[i], _nextLane[i]);
             _prevLane[i] = _lane[i];
             _lane[i] = _nextLane[i];
-            _nextLane[i] = ChooseNextLane(_lane[i]);
+            _nextLane[i] = NextLaneFor(i, _lane[i]);
             // A manoeuvre cannot span a junction; the vehicle is simply back in its lane.
             _phase[i] = 0;
             _lat[i] = 0f;
@@ -728,6 +764,7 @@ public sealed partial class Simulation
         Array.Resize(ref _extraSpeed, n);
         Array.Resize(ref _oncGap, n);
         Array.Resize(ref _oncSpeed, n);
+        GrowFleetArrays(n);
         Array.Resize(ref _order, n);
         Array.Resize(ref _rankInOrder, n);
     }

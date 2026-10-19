@@ -26,6 +26,10 @@ public sealed record Tuning
     public required OvertakeTuning Overtake { get; init; }
     public required CrewTuning Crews { get; init; }
     public required RoadTuning Roads { get; init; }
+    public required EconomyTuning Economy { get; init; }
+    public required StationTuning Stations { get; init; }
+    public required IReadOnlyList<CargoTuning> Cargo { get; init; }
+    public required IReadOnlyList<VehicleModelTuning> Vehicles { get; init; }
 
     /// <summary>The shipped tuning: a fresh copy of <c>data/tuning.json</c>.</summary>
     public static Tuning Load()
@@ -52,7 +56,11 @@ public sealed record DrivingTuning
     public required float JunctionRange { get; init; }
     public required float TurnLateralAcceleration { get; init; }
     public required float MinTurnSpeed { get; init; }
-    public required float JunctionMargin { get; init; }
+    public required float ConflictDistance { get; init; }
+    public required float CrossingSafetyTime { get; init; }
+    public required float ExitQueueSpeed { get; init; }
+    public required float WideConflictDistance { get; init; }
+    public required float WideBodyClearance { get; init; }
 }
 
 public sealed record TrafficTuning
@@ -171,6 +179,7 @@ public sealed record RoadTuning
     public required float MaxFillDepth { get; init; }
     public required float MaxCutDepth { get; init; }
     public required float StructureMargin { get; init; }
+    public required float CrossingClearance { get; init; }
     public required float BridgeCostPerMetre { get; init; }
     public required float TunnelCostPerMetre { get; init; }
     public required float AvenueStructureFactor { get; init; }
@@ -180,4 +189,67 @@ public sealed record RoadTuning
         (structure == RoadStructure.Tunnel ? TunnelCostPerMetre : BridgeCostPerMetre) * (type == RoadType.Avenue2x2 ? AvenueStructureFactor : 1f);
 
     public RoadTypeTuning Of(RoadType type) => type == RoadType.Avenue2x2 ? Avenue : TwoLane;
+}
+
+public sealed record EconomyTuning
+{
+    public required long StartingMoney { get; init; }
+    public required long MaxLoan { get; init; }
+    public required float DayLength { get; init; }
+    public required float InterestPerDay { get; init; }
+    public required long DebtLimit { get; init; }
+    public required int BankruptcyDays { get; init; }
+    public required float SellRefundShare { get; init; }
+    public required DepotPrices DepotPrice { get; init; }
+}
+
+/// <summary>What a depot costs, by its level.</summary>
+public sealed record DepotPrices
+{
+    public required long Simple { get; init; }
+    public required long Workshop { get; init; }
+    public required long Complex { get; init; }
+
+    public long For(DepotLevel level) => level switch
+    {
+        DepotLevel.Simple => Simple,
+        DepotLevel.Workshop => Workshop,
+        _ => Complex,
+    };
+}
+
+public sealed record StationTuning
+{
+    public required long Price { get; init; }
+    public required float UpkeepPerDay { get; init; }
+    public required float CoverageRadius { get; init; }
+    public required float MinApproach { get; init; }
+    public required float StopMargin { get; init; }
+    public required float ArrivalGap { get; init; }
+    public required float ArrivalSpeed { get; init; }
+}
+
+public sealed record CargoTuning
+{
+    public required string Id { get; init; }
+    public required float PayPerUnitKm { get; init; }
+    public required float FreeSeconds { get; init; }
+    public required float ZeroSeconds { get; init; }
+    public required float MinPayShare { get; init; }
+    public required float SupplyPerDay { get; init; }
+    public required float MaxWaiting { get; init; }
+}
+
+public sealed record VehicleModelTuning
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Cargo { get; init; }
+    public required int Capacity { get; init; }
+    public required float Length { get; init; }
+    public required float MaxSpeed { get; init; }
+    public required long Price { get; init; }
+    public required float UpkeepPerDay { get; init; }
+    public required float DwellSeconds { get; init; }
+    public required float SecondsPerUnit { get; init; }
 }

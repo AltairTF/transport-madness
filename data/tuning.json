@@ -1,6 +1,6 @@
 // Simulation tuning and prices. This file is embedded in the simulation assembly (the sim project references it from
 // here) and is the only place these numbers live: every key is required, unknown keys are rejected. Distances in
-// metres, times in seconds, speeds in m/s, money in the placeholder currency until the economy exists (M2).
+// metres, times in seconds, speeds in m/s, money in whole currency units.
 {
   // Intelligent Driver Model, shared by every driver. Driver traits only change when to overtake.
   "driving": {
@@ -12,9 +12,13 @@
     "brakeJerk": 15.0,          // braking builds up at most this fast (m/s^3): drivers need a moment to react
     "minInteractionGap": 0.01,  // gaps are clamped to this before the IDM division
     "junctionRange": 40.0,      // within this distance of a junction a vehicle yields to conflicting traffic
-    "junctionMargin": 2.0,      // extra clearance on top of a vehicle length when yielding to conflicting traffic
+    "conflictDistance": 5.0,    // two vehicles on crossing paths can touch while their centres are this close: that stretch of each path is where one waits for the other
+    "crossingSafetyTime": 1.0,  // a vehicle that would arrive second still goes first when it is through the shared stretch this many seconds before the other gets to it
+    "exitQueueSpeed": 3.0,      // a vehicle crawling slower than this at the start of an exit lane is a queue: the junction is not entered while it leaves no room
     "turnLateralAcceleration": 4.0, // m/s^2 a driver accepts when turning: sets the speed through a junction from the radius of the turn
-    "minTurnSpeed": 3.0         // never slower than this because of a turn
+    "minTurnSpeed": 3.0,        // never slower than this because of a turn
+    "wideConflictDistance": 8.0, // conflictDistance and the path clearance (3.3 m) for a pair in which one vehicle is longer than a car: a bus reaches 5 m ahead of its path
+    "wideBodyClearance": 6.1
   },
 
   // Ambient traffic placed by SeedTraffic.
@@ -112,8 +116,44 @@
     "maxFillDepth": 6.0,            // metres of embankment before a bridge takes over
     "maxCutDepth": 8.0,             // metres of cutting before a tunnel takes over
     "structureMargin": 8.0,         // a structure starts this far before the ground that calls for it, and ends this far after
+    "crossingClearance": 5.5,       // a road passes over or under another (no junction) when their surfaces are this far apart, with a bridge above or a tunnel below
     "bridgeCostPerMetre": 320.0,    // two-lane; replaces the road and earthwork price
     "tunnelCostPerMetre": 520.0,
     "avenueStructureFactor": 1.6    // an avenue on a bridge or in a tunnel costs this much more
-  }
+  },
+
+  // The company's money. One day is dayLength seconds of simulated time: upkeep and interest are charged daily.
+  "economy": {
+    "startingMoney": 1000000,
+    "maxLoan": 1000000,
+    "dayLength": 60.0,
+    "interestPerDay": 0.0004,       // share of the loan, charged every day
+    "debtLimit": 100000,            // net worth (money minus loan) below minus this counts as insolvent
+    "bankruptcyDays": 730,          // consecutive insolvent days before the company goes bankrupt (the game goes on in sandbox)
+    "sellRefundShare": 0.6,         // of the price, paid when a vehicle is sold
+    "depotPrice": { "simple": 15000, "workshop": 40000, "complex": 90000 }
+  },
+
+  // Stations stand at a road node. Until towns exist (M3) every station simply produces each cargo at a fixed rate.
+  "stations": {
+    "price": 8000,
+    "upkeepPerDay": 15.0,
+    "coverageRadius": 90.0,         // buildings within this distance of the station are served (used from M3)
+    "minApproach": 30.0,            // a stop lane shorter than this is not used, and a road is not split closer than this to its end
+    "stopMargin": 3.0,              // a vehicle halts this far before the junction edge
+    "arrivalGap": 3.5,              // the vehicle counts as arrived when its gap to the stop is this small ...
+    "arrivalSpeed": 0.5             // ... and it is slower than this
+  },
+
+  // Pay is quantity times distance (straight line between the stations) times the rate, reduced when the trip took long.
+  "cargo": [
+    { "id": "passengers", "payPerUnitKm": 40.0, "freeSeconds": 240.0, "zeroSeconds": 1200.0, "minPayShare": 0.3, "supplyPerDay": 24.0, "maxWaiting": 120.0 },
+    { "id": "goods", "payPerUnitKm": 55.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 14.0, "maxWaiting": 80.0 }
+  ],
+
+  // The vehicles the company can buy at a depot.
+  "vehicles": [
+    { "id": "bus", "name": "Bus", "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 40.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
+    { "id": "truck", "name": "Truck", "cargo": "goods", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 45.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 }
+  ]
 }

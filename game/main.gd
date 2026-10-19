@@ -6,6 +6,7 @@ extends Node3D
 ##   --hills                      start on an empty generated-hills map instead of the demo grid
 ##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
+##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
 const VEHICLES := 1000
@@ -50,6 +51,8 @@ func _ready() -> void:
 	hud = load("res://game/hud.gd").new()
 	add_child(hud)
 	hud.speed_selected.connect(func(speed: float) -> void: host.SetSpeed(speed))
+	hud.set_models(host.GetVehicleModels())
+	hud.line_action.connect(_on_line_action)
 
 	build_tool = load("res://game/build_tool.gd").new()
 	add_child(build_tool)
@@ -67,6 +70,8 @@ func _ready() -> void:
 		_selftest_crash()
 	if _args.has("--selftest-hills"):
 		_selftest_hills()
+	if _args.has("--selftest-lines"):
+		_selftest_lines()
 
 	if _args.has("--bench"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -80,6 +85,8 @@ func _process(delta: float) -> void:
 	if _stats_timer > 0.25:
 		_stats_timer = 0.0
 		hud.show_stats(host.GetStats())
+		hud.show_company(host.GetCompany())
+		hud.show_lines(host.GetLines())
 
 	if _args.has("--shot") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
@@ -96,12 +103,26 @@ func _on_action(action: String) -> void:
 		"crash":
 			var victim: int = host.CrashSomeone()
 			hud.show_message("Vehicle %d crashed" % victim if victim >= 0 else "No moving car to crash")
+		"loan":
+			hud.show_message("Borrowed 100,000" if host.TakeLoan(100000) else "The loan limit is reached")
+		"repay":
+			hud.show_message("Repaid 100,000" if host.RepayLoan(100000) else "Nothing to repay, or not enough money")
 		"empty":
 			host.NewEmptyWorld(SEED)
 		"hills":
 			host.NewHillsWorld(SEED)
 		"demo":
 			host.NewDemoWorld(SEED, VEHICLES)
+
+
+## Buys a vehicle for a line, or deletes the line (selling its vehicles): the buttons of the Lines panel.
+func _on_line_action(kind: String, line: int, model: String) -> void:
+	match kind:
+		"buy":
+			var id: int = host.BuyVehicle(model, line)
+			hud.show_message("Bought a %s for line %d" % [model, line + 1] if id >= 0 else "Can't buy that: not enough money, or no depot with room (is the road at a depot busy?)")
+		"delete":
+			hud.show_message("Line %d deleted, its vehicles sold" % (line + 1) if host.DeleteLine(line) else "No such line")
 
 
 ## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.
@@ -147,6 +168,32 @@ func _selftest_build() -> void:
 	await get_tree().create_timer(10.0).timeout
 	stats = host.GetStats()
 	print("SELFTEST vehicles=%d mean_speed=%.1f tick=%d incidents=%d" % [stats["vehicles"], stats["mean_speed"], stats["tick"], stats["incidents"]])
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	get_tree().quit()
+
+
+## Builds a road, a depot, two stations, a bus line and a truck line through the host API, runs them for 30 days and prints the books.
+func _selftest_lines() -> void:
+	host.NewEmptyWorld(SEED)
+	await get_tree().process_frame
+	print("SELFTEST lines: road built=%s depot=%s" % [host.BuildRoad(0, 0, 1200, 0, 0), host.BuildDepot(0, 0, 0)])
+	var a: int = host.BuildStation(150, 0)
+	var b: int = host.BuildStation(1050, 0)
+	var bus_line: int = host.CreateLine(PackedInt32Array([a, b]))
+	var truck_line: int = host.CreateLine(PackedInt32Array([b, a]))
+	print("SELFTEST lines: stations %d %d, lines %d %d" % [a, b, bus_line, truck_line])
+	print("SELFTEST lines: bus %d" % host.BuyVehicle("bus", bus_line))
+	host.StepFor(20.0)
+	print("SELFTEST lines: truck %d" % host.BuyVehicle("truck", truck_line))
+	host.StepFor(30.0 * 60.0)
+	var company: Dictionary = host.GetCompany()
+	print("SELFTEST lines: day %d money %d loan %d income %d upkeep %d" % [company["day"], company["money"], company["loan"], company["income"], company["upkeep"]])
+	for line in host.GetLines():
+		print("SELFTEST lines: line %d vehicles %d delivered %d income %d upkeep %d profit %d" % [line["id"], line["vehicles"], line["delivered"], line["income"], line["upkeep"], line["profit"]])
+	hud.show_company(company)
+	hud.show_lines(host.GetLines())
+	await get_tree().process_frame
 	if _args.has("--shot"):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
 	get_tree().quit()

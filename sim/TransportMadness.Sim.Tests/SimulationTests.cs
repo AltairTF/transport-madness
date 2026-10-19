@@ -121,8 +121,9 @@ public class SimulationTests
         var w = sim.GetVehicle(wreck);
         var s = sim.GetVehicle(car);
         Assert.Equal(net.GetRoad(ab).ForwardLanes[0], s.Lane); // still queued before the junction
-        float gap = 200f - s.Position + w.Position - Simulation.VehicleLength;
-        Assert.InRange(gap, 0.5f, 6f);
+        // The wreck leaves no room at the start of the exit lane, so the car waits at the edge of the junction instead of standing in it.
+        Assert.True(s.Position <= 200f - RoadNetwork.JunctionReach(200f), $"stopped at {s.Position}, inside the junction");
+        Assert.InRange(200f - RoadNetwork.JunctionReach(200f) - s.Position, 0.5f, 6f);
     }
 
     [Fact]

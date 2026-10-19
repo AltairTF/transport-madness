@@ -41,7 +41,7 @@ public partial class SimHost : Node3D
     Terrain _terrain = null!, _terrainSource = null!;
     MeshInstance3D _water = null!;
     StandardMaterial3D _waterMaterial = null!, _deckMaterial = null!, _tunnelMaterial = null!, _tunnelHintMaterial = null!;
-    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!;
+    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!;
 
     // Per-lane drawing data: start point, unit direction and sideways offset of the lane centre (to the driver's right).
     float[] _laneX = Array.Empty<float>(), _laneZ = Array.Empty<float>();
@@ -57,6 +57,7 @@ public partial class SimHost : Node3D
         _roadMaterial = Flat(new Color(0.23f, 0.24f, 0.26f));
         _medianMaterial = Flat(new Color(0.35f, 0.5f, 0.3f));
         _depotMaterial = Flat(new Color(0.85f, 0.25f, 0.2f));
+        _stationMaterial = Flat(new Color(0.2f, 0.45f, 0.85f));
         _lineMaterial = Flat(new Color(0.8f, 0.78f, 0.6f));
         _deckMaterial = Flat(new Color(0.55f, 0.55f, 0.58f));
         _tunnelMaterial = Flat(new Color(0.32f, 0.3f, 0.3f));
@@ -85,7 +86,8 @@ public partial class SimHost : Node3D
         _terrainRoot = new Node3D { Name = "Terrain", Position = new Vector3(0, -TerrainSink, 0) };
         AddChild(_terrainRoot);
 
-        var box = new BoxMesh { Size = new Vector3(Simulation.VehicleLength, 1.5f, Simulation.VehicleWidth) };
+        // A unit-length box: every instance is stretched to its vehicle's length.
+        var box = new BoxMesh { Size = new Vector3(1f, 1.5f, Simulation.VehicleWidth) };
         _vehicles = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
@@ -142,7 +144,7 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>Height of what is seen at a point: the ground, or the water surface over it.</summary>
-    public float HeightAt(float x, float z) => Math.Max(_terrain.HeightAt(x, z), Terrain.WaterLevel);
+    public float HeightAt(float x, float z) => Math.Max(_terrain.HeightAt(x, z), _terrain.WaterSurfaceAt(x, z));
 
     /// <summary>
     /// Where a camera ray first meets the terrain: {hit, x, y, z}. Marches in 4 m steps, then bisects the last step.
@@ -340,29 +342,38 @@ public partial class SimHost : Node3D
         return new Godot.Collections.Dictionary { ["found"] = true, ["node"] = node, ["x"] = nx, ["y"] = net.GetNodeHeight(node), ["z"] = nz };
     }
 
-    /// <summary>What dragging a node to a point costs: {valid, length, cut, fill, money}.</summary>
+    /// <summary>What dragging a node to a point costs: {valid, length, cut, fill, money, bridge, tunnel}.</summary>
     public Godot.Collections.Dictionary EstimateMoveNode(int node, float x, float z)
     {
         if (Sim.Network.EstimateMoveNode(node, x, z) is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
-        return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money };
+        return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money, ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength };
     }
 
-    /// <summary>The other end of every road at a node, on the ground (to draw where its roads would run).</summary>
-    public Vector3[] NodeNeighbours(int node)
+    /// <summary>
+    /// The roads at a node, to draw where they would run when it moves: for each {end, sweep, starts_here}, the other end
+    /// on the ground, the bend of the road from its start to its end, and whether it starts at this node.
+    /// </summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> NodeRoadShapes(int node)
     {
         var net = Sim.Network;
-        var ends = new System.Collections.Generic.List<Vector3>();
+        var shapes = new Godot.Collections.Array<Godot.Collections.Dictionary>();
         foreach (var id in net.RoadsAt(node))
         {
             var road = net.GetRoad(id);
-            int other = road.From == node ? road.To : road.From;
+            bool startsHere = road.From == node;
+            int other = startsHere ? road.To : road.From;
             var (x, z) = net.GetNode(other);
-            ends.Add(new Vector3(x, net.GetNodeHeight(other), z));
+            shapes.Add(new Godot.Collections.Dictionary
+            {
+                ["end"] = new Vector3(x, net.GetNodeHeight(other), z),
+                ["sweep"] = road.Geometry.Sweep,
+                ["starts_here"] = startsHere,
+            });
         }
-        return ends.ToArray();
+        return shapes;
     }
 
-    /// <summary>Drags a node to a point; the roads at it are rebuilt straight and vehicles on them disappear.</summary>
+    /// <summary>Drags a node to a point; the roads at it are rebuilt there (same bend, bridges and tunnels worked out again) and vehicles on them carry on.</summary>
     public bool MoveNode(int node, float x, float z)
     {
         if (Sim.Execute(new MoveNodeCommand(node, x, z)) == 0) return false;
@@ -378,6 +389,160 @@ public partial class SimHost : Node3D
         if (Sim.Execute(new AddDepotCommand(node, (DepotLevel)Math.Clamp(level, 0, 2))) < 0) return false;
         RebuildRoads();
         return true;
+    }
+
+    // ---- Company, stations and lines ----------------------------------------------------------------------
+
+    /// <summary>The company: {money, loan, max_loan, net_worth, day, bankrupt, income, upkeep, interest} (the last three are totals so far, income positive, the others spending as negatives).</summary>
+    public Godot.Collections.Dictionary GetCompany()
+    {
+        var c = Sim.Company;
+        return new Godot.Collections.Dictionary
+        {
+            ["money"] = c.Money,
+            ["loan"] = c.Loan,
+            ["max_loan"] = Sim.Network.Tuning.Economy.MaxLoan,
+            ["net_worth"] = c.NetWorth,
+            ["day"] = Sim.Day,
+            ["bankrupt"] = c.Bankrupt,
+            ["income"] = c.Total(LedgerEntry.Income),
+            ["upkeep"] = c.Total(LedgerEntry.Upkeep),
+            ["interest"] = c.Total(LedgerEntry.Interest),
+        };
+    }
+
+    public bool TakeLoan(long amount) => Sim.Execute(new TakeLoanCommand(amount)) == 1;
+
+    public bool RepayLoan(long amount) => Sim.Execute(new RepayLoanCommand(amount)) == 1;
+
+    /// <summary>Where a station clicked at (x, z) would stand: {valid, x, y, z, price, affordable, radius}.</summary>
+    public Godot.Collections.Dictionary StationPreview(float x, float z)
+    {
+        if (Sim.FindStationSite(x, z) is not { } site) return new Godot.Collections.Dictionary { ["valid"] = false };
+        return new Godot.Collections.Dictionary
+        {
+            ["valid"] = true,
+            ["x"] = site.X, ["y"] = site.Y, ["z"] = site.Z,
+            ["price"] = Sim.StationPrice,
+            ["affordable"] = Sim.CanAfford(Sim.StationPrice),
+            ["radius"] = Sim.Network.Tuning.Stations.CoverageRadius,
+        };
+    }
+
+    /// <summary>Builds a station at the node or road point near (x, z). Returns its id, -1 when refused.</summary>
+    public int BuildStation(float x, float z)
+    {
+        int id = Sim.Execute(new BuildStationCommand(x, z));
+        if (id >= 0) RebuildRoads();
+        return id;
+    }
+
+    /// <summary>The open station nearest to a point within <paramref name="radius"/>, or -1.</summary>
+    public int StationNear(float x, float z, float radius)
+    {
+        int best = -1;
+        float bestDistance = radius * radius;
+        foreach (var station in Sim.Stations)
+        {
+            if (!station.Active) continue;
+            var (sx, sz) = Sim.Network.GetNode(station.Node);
+            float d = (sx - x) * (sx - x) + (sz - z) * (sz - z);
+            if (d <= bestDistance) { best = station.Id; bestDistance = d; }
+        }
+        return best;
+    }
+
+    /// <summary>A station's place on the ground.</summary>
+    public Vector3 StationPosition(int station)
+    {
+        var node = Sim.Stations[station].Node;
+        var (x, z) = Sim.Network.GetNode(node);
+        return new Vector3(x, Sim.Network.GetNodeHeight(node), z);
+    }
+
+    /// <summary>Creates a line through the stations in order. Returns its id, -1 when refused.</summary>
+    public int CreateLine(int[] stations) => Sim.Execute(new CreateLineCommand(stations));
+
+    public bool DeleteLine(int line) => Sim.Execute(new DeleteLineCommand(line)) == 1;
+
+    /// <summary>The vehicles the company can buy: for each {id, name, price, capacity, upkeep, cargo}.</summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> GetVehicleModels()
+    {
+        var models = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var m in Sim.VehicleModels)
+            models.Add(new Godot.Collections.Dictionary { ["id"] = m.Id, ["name"] = m.Name, ["price"] = m.Price, ["capacity"] = m.Capacity, ["upkeep"] = m.UpkeepPerDay, ["cargo"] = m.Cargo });
+        return models;
+    }
+
+    /// <summary>
+    /// Buys a vehicle of a model for a line at the first depot with room for it. Returns the vehicle id, -1 when no
+    /// depot can take it or the company cannot pay.
+    /// </summary>
+    public int BuyVehicle(string model, int line)
+    {
+        foreach (var depot in Sim.Depots)
+        {
+            if (!depot.Active) continue;
+            int id = Sim.Execute(new BuyVehicleCommand(depot.Id, model, line));
+            if (id >= 0) return id;
+        }
+        return -1;
+    }
+
+    /// <summary>The open lines: for each {id, color, stations (names), income, upkeep, profit, delivered, vehicles, loading}.</summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> GetLines()
+    {
+        var vehicles = new int[Sim.Lines.Count];
+        var loading = new int[Sim.Lines.Count];
+        for (int v = 0; v < Sim.VehicleCount; v++)
+        {
+            if (!Sim.IsCompanyVehicle(v)) continue;
+            var info = Sim.GetFleetInfo(v);
+            vehicles[info.Line]++;
+            if (info.Loading) loading[info.Line]++;
+        }
+        var lines = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var line in Sim.Lines)
+        {
+            if (!line.Active) continue;
+            var names = new Godot.Collections.Array<string>();
+            foreach (int s in line.Stops) names.Add($"S{s + 1}");
+            lines.Add(new Godot.Collections.Dictionary
+            {
+                ["id"] = line.Id,
+                ["color"] = LineColor(line.Id),
+                ["stations"] = names,
+                ["income"] = line.Income,
+                ["upkeep"] = line.Upkeep,
+                ["profit"] = line.Profit,
+                ["delivered"] = line.Delivered,
+                ["vehicles"] = vehicles[line.Id],
+                ["loading"] = loading[line.Id],
+            });
+        }
+        return lines;
+    }
+
+    /// <summary>Open stations: for each {id, name, x, y, z, waiting} where waiting is the units of each cargo, in the order of the tuning file.</summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> GetStations()
+    {
+        var stations = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var station in Sim.Stations)
+        {
+            if (!station.Active) continue;
+            var waiting = new Godot.Collections.Array<int>();
+            foreach (float w in station.Waiting) waiting.Add((int)w);
+            var p = StationPosition(station.Id);
+            stations.Add(new Godot.Collections.Dictionary { ["id"] = station.Id, ["name"] = $"S{station.Id + 1}", ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["waiting"] = waiting });
+        }
+        return stations;
+    }
+
+    /// <summary>Runs the simulation for this many simulated seconds right now, without drawing (for the self-tests).</summary>
+    public void StepFor(double seconds)
+    {
+        long steps = (long)Math.Ceiling(seconds / Simulation.StepSeconds);
+        for (long i = 0; i < steps; i++) Sim.Step();
     }
 
     /// <summary>Adds up to <paramref name="count"/> ambient vehicles; returns how many fit.</summary>
@@ -532,7 +697,8 @@ public partial class SimHost : Node3D
 
             int lane = v.Lane.Value;
             // Look a fraction of a step ahead so motion is smooth between the 20 Hz simulation steps.
-            float pos = v.Position + v.Speed * Simulation.StepSeconds * stepFraction - Simulation.VehicleLength * 0.5f;
+            float length = Sim.LengthOf(i);
+            float pos = v.Position + v.Speed * Simulation.StepSeconds * stepFraction - length * 0.5f;
             float side = -Simulation.LaneWidth * v.Lateral + v.Shift;
             float cx, cz, dx, dz, baseY;
             if (TurnPose(i, pos, out cx, out cz, out float heading, out baseY))
@@ -556,15 +722,18 @@ public partial class SimHost : Node3D
 
             // Pitched to follow the grade of the lane.
             float grade = _laneGrade[lane], tilt = 1f / MathF.Sqrt(1f + grade * grade), rise = grade * tilt;
-            float y = baseY + 0.8f;
-            buf[o + 0] = fx * tilt;  buf[o + 1] = -fx * rise; buf[o + 2] = -fz; buf[o + 3] = x;
-            buf[o + 4] = rise;       buf[o + 5] = tilt;       buf[o + 6] = 0f;  buf[o + 7] = y;
-            buf[o + 8] = fz * tilt;  buf[o + 9] = -fz * rise; buf[o + 10] = fx; buf[o + 11] = z;
+            bool company = Sim.IsCompanyVehicle(i);
+            float tall = company ? 1.6f : 1f; // buses and trucks stand taller
+            float y = baseY + 0.8f * tall;
+            buf[o + 0] = fx * tilt * length;  buf[o + 1] = -fx * rise * tall; buf[o + 2] = -fz; buf[o + 3] = x;
+            buf[o + 4] = rise * length;       buf[o + 5] = tilt * tall;       buf[o + 6] = 0f;  buf[o + 7] = y;
+            buf[o + 8] = fz * tilt * length;  buf[o + 9] = -fz * rise * tall; buf[o + 10] = fx; buf[o + 11] = z;
 
             Color c = v.Kind switch
             {
                 VehicleKind.Wreck => new Color(0.8f, 0.1f, 0.08f),
                 VehicleKind.Debris => new Color(0.9f, 0.55f, 0.1f),
+                _ when company => LineColor(Sim.GetFleetInfo(i).Line),
                 _ => v.Overtake != OvertakePhase.None ? new Color(1f, 0.9f, 0.2f) : CarColor(i),
             };
             buf[o + 12] = c.R; buf[o + 13] = c.G; buf[o + 14] = c.B; buf[o + 15] = 1f;
@@ -617,6 +786,9 @@ public partial class SimHost : Node3D
         _crews.Buffer = buf;
         _crews.VisibleInstanceCount = n;
     }
+
+    /// <summary>A strong colour per line, shared by its vehicles and the line list.</summary>
+    static Color LineColor(int line) => Color.FromHsv(((line * 0.381966f) % 1f), 0.85f, 0.95f);
 
     static Color CarColor(int id)
     {
@@ -679,6 +851,15 @@ public partial class SimHost : Node3D
             var disc = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 8.5f, BottomRadius = 8.5f, Height = RoadHeight, RadialSegments = 24 }, MaterialOverride = _roadMaterial };
             disc.Position = new Vector3(x, net.GetNodeHeight(n), z);
             _roadRoot.AddChild(disc);
+        }
+
+        foreach (var station in Sim.Stations)
+        {
+            if (!station.Active) continue;
+            var (x, z) = net.GetNode(station.Node);
+            var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(14f, 4f, 10f) }, MaterialOverride = _stationMaterial };
+            platform.Position = new Vector3(x - 24f, _terrain.HeightAt(x - 24f, z - 24f) + 2f, z - 24f);
+            _roadRoot.AddChild(platform);
         }
 
         foreach (var depot in Sim.Depots)
@@ -845,8 +1026,8 @@ public partial class SimHost : Node3D
         if (_terrainSource != _terrain || _terrainChunks.Length != side * side)
         {
             _terrainSource = _terrain;
-            _water.Mesh = new PlaneMesh { Size = new Vector2(_terrain.HalfSize * 2f, _terrain.HalfSize * 2f) };
-            _water.Position = new Vector3(0f, Terrain.WaterLevel - TerrainSink - 0.01f, 0f); // just under level ground, which is drawn TerrainSink lower
+            _water.Mesh = WaterMesh();
+            _water.Position = Vector3.Zero;
             foreach (var child in _terrainRoot.GetChildren()) child.QueueFree();
             _terrainChunks = new MeshInstance3D?[side * side];
             _terrain.TakeChangedChunks(); // everything is built below
@@ -854,6 +1035,28 @@ public partial class SimHost : Node3D
             return;
         }
         foreach (int c in _terrain.TakeChangedChunks()) BuildTerrainChunk(c);
+    }
+
+    /// <summary>One quad over the whole map at the height of the water surface, which tilts with the fall toward the sea.</summary>
+    ArrayMesh WaterMesh()
+    {
+        float half = _terrain.HalfSize;
+        var corners = new[] { (-half, -half), (half, -half), (-half, half), (half, half) };
+        var vertices = new Vector3[4];
+        for (int k = 0; k < 4; k++)
+        {
+            var (x, z) = corners[k];
+            // just under level ground, which is drawn TerrainSink lower
+            vertices[k] = new Vector3(x, _terrain.WaterSurfaceAt(x, z) - TerrainSink - 0.01f, z);
+        }
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = new[] { Vector3.Up, Vector3.Up, Vector3.Up, Vector3.Up };
+        arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 1, 3, 2 };
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        return mesh;
     }
 
     void BuildTerrainChunk(int chunk)
@@ -875,7 +1078,7 @@ public partial class SimHost : Node3D
                 float gx = _terrain.GetSample(i + 1, j) - _terrain.GetSample(i - 1, j);
                 float gz = _terrain.GetSample(i, j + 1) - _terrain.GetSample(i, j - 1);
                 normals[k] = new Vector3(-gx, 2f * cell, -gz).Normalized();
-                colors[k] = TerrainColor(height, normals[k].Y, NearWater(i, j)).SrgbToLinear(); // vertex colours are read as linear
+                colors[k] = TerrainColor(height, _terrain.WaterSurfaceAtSample(i, j), normals[k].Y, NearWater(i, j)).SrgbToLinear(); // vertex colours are read as linear
             }
         var indices = new int[(w - 1) * (h - 1) * 6];
         int t = 0;
@@ -909,23 +1112,26 @@ public partial class SimHost : Node3D
     /// <summary>Whether a sample is dry but within two samples of water, which is where the shore is sand.</summary>
     bool NearWater(int i, int j)
     {
-        if (_terrain.GetSample(i, j) < Terrain.WaterLevel) return false;
+        if (Wet(i, j)) return false;
         for (int d = 1; d <= 2; d++)
-            if (_terrain.GetSample(i + d, j) < Terrain.WaterLevel || _terrain.GetSample(i - d, j) < Terrain.WaterLevel
-                || _terrain.GetSample(i, j + d) < Terrain.WaterLevel || _terrain.GetSample(i, j - d) < Terrain.WaterLevel) return true;
+            if (Wet(i + d, j) || Wet(i - d, j) || Wet(i, j + d) || Wet(i, j - d)) return true;
         return false;
     }
 
-    static Color TerrainColor(float height, float normalY, bool nearWater)
+    bool Wet(int i, int j) => _terrain.GetSample(i, j) < _terrain.WaterSurfaceAtSample(i, j);
+
+    static Color TerrainColor(float ground, float surface, float normalY, bool nearWater)
     {
+        float height = ground; // above sea level, for the colour bands
+        float depth = ground - surface; // above the water
         var grass = new Color(0.42f, 0.58f, 0.34f);
         var upland = new Color(0.5f, 0.55f, 0.32f);
         var rock = new Color(0.52f, 0.48f, 0.43f);
         var snow = new Color(0.9f, 0.92f, 0.95f);
         var bed = new Color(0.45f, 0.42f, 0.32f);
         var shore = new Color(0.74f, 0.69f, 0.5f);
-        if (height < Terrain.WaterLevel) return bed.Lerp(shore, Mathf.Clamp(1f + height / 3f, 0f, 1f)); // sand at the edge, mud in the deep
-        if (nearWater && height < Terrain.WaterLevel + 1.5f) return shore.Lerp(grass, (height - Terrain.WaterLevel) / 1.5f);
+        if (depth < 0f) return bed.Lerp(shore, Mathf.Clamp(1f + depth / 3f, 0f, 1f)); // sand at the edge, mud in the deep
+        if (nearWater && depth < 1.5f) return shore.Lerp(grass, depth / 1.5f);
         Color c = height < 40f ? grass.Lerp(upland, height / 40f) : upland.Lerp(rock, Mathf.Clamp((height - 40f) / 40f, 0f, 1f));
         if (height > 85f) c = c.Lerp(snow, Mathf.Clamp((height - 85f) / 25f, 0f, 1f));
         return c.Lerp(rock, Mathf.Clamp((0.9f - normalY) * 4f, 0f, 0.8f)); // steep ground shows rock

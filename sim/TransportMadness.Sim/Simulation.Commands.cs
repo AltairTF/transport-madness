@@ -21,22 +21,63 @@ public sealed partial class Simulation
         switch (command)
         {
             case BuildRoadCommand c:
-                return _net.BuildRoad(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.SpeedLimit, c.Sweep).Count;
+            {
+                var cost = _net.EstimateCost(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.Sweep);
+                if (cost == null || !CanAfford(cost.Value.Money)) return 0;
+                int built = _net.BuildRoad(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.SpeedLimit, c.Sweep).Count;
+                if (built > 0) Charge(Price(cost.Value.Money), LedgerEntry.Construction);
+                return built;
+            }
             case RemoveRoadCommand c:
-                return _net.RemoveRoad(new RoadId(c.Road)) ? 1 : 0;
+                if (!IsLiveRoad(c.Road) || !CanAfford(_net.DemolitionCost(new RoadId(c.Road)))) return 0;
+                return Paid(_net.DemolitionCost(new RoadId(c.Road)), _net.RemoveRoad(new RoadId(c.Road)));
             case UpgradeRoadCommand c:
-                return _net.UpgradeRoad(new RoadId(c.Road), c.SpeedLimit) == null ? 0 : 1;
+            {
+                if (!IsLiveRoad(c.Road) || _net.EstimateUpgrade(new RoadId(c.Road)) is not { } cost || !CanAfford(cost.Money)) return 0;
+                return Paid(cost.Money, _net.UpgradeRoad(new RoadId(c.Road), c.SpeedLimit) != null);
+            }
             case DowngradeRoadCommand c:
-                return _net.DowngradeRoad(new RoadId(c.Road), c.SpeedLimit) == null ? 0 : 1;
+            {
+                if (!IsLiveRoad(c.Road) || _net.DowngradeCost(new RoadId(c.Road)) is not { } cost || !CanAfford(cost)) return 0;
+                return Paid(cost, _net.DowngradeRoad(new RoadId(c.Road), c.SpeedLimit) != null);
+            }
             case SetSpeedLimitCommand c:
-                return _net.SetSpeedLimit(new RoadId(c.Road), c.SpeedLimit) == null ? 0 : 1;
+            {
+                if (!IsLiveRoad(c.Road) || _net.SpeedLimitChangeCost(new RoadId(c.Road)) is not { } cost || !CanAfford(cost)) return 0;
+                return Paid(cost, _net.SetSpeedLimit(new RoadId(c.Road), c.SpeedLimit) != null);
+            }
             case MoveNodeCommand c:
-                return c.Node >= 0 && c.Node < _net.NodeCount && _net.MoveNode(c.Node, c.X, c.Z) ? 1 : 0;
+            {
+                if (c.Node < 0 || c.Node >= _net.NodeCount) return 0;
+                if (_net.EstimateMoveNode(c.Node, c.X, c.Z) is not { } cost || !CanAfford(cost.Money)) return 0;
+                if (!_net.MoveNode(c.Node, c.X, c.Z, out int moved)) return 0;
+                Charge(Price(cost.Money), LedgerEntry.Construction);
+                foreach (var depot in _depots)
+                    if (depot.Active && depot.Node == c.Node) depot.Node = moved; // the depot goes with its node
+                foreach (var station in _stations)
+                    if (station.Active && station.Node == c.Node) station.Node = moved; // and so does a station
+                return 1;
+            }
             case AddDepotCommand c:
                 if (c.Node < 0 || c.Node >= _net.NodeCount || _net.RoadsAt(c.Node).Count == 0) return -1;
                 foreach (var depot in _depots)
                     if (depot.Active && depot.Node == c.Node) return -1;
+                if (!TrySpend(_economy.DepotPrice.For(c.Level), LedgerEntry.Depots)) return -1;
                 return AddDepot(c.Node, c.Level);
+            case BuildStationCommand c:
+                return BuildStation(c.X, c.Z);
+            case CreateLineCommand c:
+                return CreateLine(c.Stations);
+            case DeleteLineCommand c:
+                return DeleteLine(c.Line);
+            case BuyVehicleCommand c:
+                return BuyVehicle(c.Depot, c.Model, c.Line);
+            case SellVehicleCommand c:
+                return SellVehicle(c.Vehicle);
+            case TakeLoanCommand c:
+                return TakeLoan(c.Amount);
+            case RepayLoanCommand c:
+                return RepayLoan(c.Amount);
             case SeedTrafficCommand c:
                 return SeedTraffic(c.Count);
             case CrashSomeoneCommand:
@@ -44,6 +85,16 @@ public sealed partial class Simulation
             default:
                 throw new ArgumentException($"Unknown command {command.GetType().Name}", nameof(command));
         }
+    }
+
+    bool IsLiveRoad(int road) => road >= 0 && road < _net.RoadCount && !_net.GetRoad(new RoadId(road)).Retired;
+
+    /// <summary>Charges the construction price when the work was done. Returns 1 or 0 for the command's result.</summary>
+    int Paid(float cost, bool done)
+    {
+        if (!done) return 0;
+        Charge(Price(cost), LedgerEntry.Construction);
+        return 1;
     }
 
     /// <summary>Wrecks the first moving car found scanning from a slot chosen by the current tick.</summary>

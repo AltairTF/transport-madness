@@ -56,13 +56,13 @@ public sealed partial class Simulation
         }
         if (ahead >= 0)
         {
-            frontGap = _pos[ahead] - VehicleLength - pos;
+            frontGap = _pos[ahead] - _length[ahead] - pos;
             frontSpeed = _speed[ahead];
             if (frontGap < _laneChange.FrontGapBase + _laneChange.FrontGapPerSpeed * v || (frontGap < _laneChange.ClosingGap && frontSpeed < v - _laneChange.ClosingSpeedDelta)) return false;
         }
         if (behind >= 0)
         {
-            float rearGap = pos - VehicleLength - _pos[behind];
+            float rearGap = pos - _length[i] - _pos[behind];
             if (rearGap < _laneChange.RearGapBase + MathF.Max(0f, _speed[behind] - v) * _laneChange.RearGapPerSpeedDifference) return false;
         }
         return true;
@@ -113,7 +113,7 @@ public sealed partial class Simulation
         float passSpeed = v0 * OvertakeBoost(i);
         float meanSpeed = 0.5f * (_speed[i] + passSpeed);
         float relative = MathF.Max(meanSpeed - leadSpeed, _overtake.MinRelativeSpeed);
-        float passTime = (gap + 2f * VehicleLength + _overtake.PassLengthPad) / relative + 1f / _manoeuvre.LateralRate;
+        float passTime = (gap + _length[i] + _length[lead] + _overtake.PassLengthPad) / relative + 1f / _manoeuvre.LateralRate;
         if (_laneLength[lane] - _pos[i] < passSpeed * passTime + _overtake.EndAbortMargin + _overtake.EndRoom) return;
 
         if (NearestOncoming(lane, oncoming, _pos[i], out _, out float onGap, out float onSpeed))
@@ -268,7 +268,7 @@ public sealed partial class Simulation
 
         int t = _target[o];
         bool targetHere = t >= 0 && _lane[t] == _lane[o];
-        if (targetHere && _pos[o] <= _pos[t] - VehicleLength)
+        if (targetHere && _pos[o] <= _pos[t] - _length[t])
         {
             _aborting[o] = true;
             _phase[o] = (byte)OvertakePhase.Returning;
@@ -286,7 +286,7 @@ public sealed partial class Simulation
     bool TargetPassed(int o)
     {
         int t = _target[o];
-        return t < 0 || _lane[t] != _lane[o] || _pos[o] - VehicleLength > _pos[t];
+        return t < 0 || _lane[t] != _lane[o] || _pos[o] - _length[o] > _pos[t];
     }
 
     /// <summary>The vehicle is clear of everything alongside it, with room ahead and behind to pull back in.</summary>
@@ -294,18 +294,18 @@ public sealed partial class Simulation
     {
         int lane = _lane[o];
         float front = _pos[o];
-        float rear = _pos[o] - VehicleLength;
+        float rear = _pos[o] - _length[o];
         int ahead = -1, behind = -1;
         for (int r = _laneStart[lane]; r < _laneStart[lane + 1]; r++)
         {
             int j = _order[r];
             if (j == o || _lat[j] >= HomeLaneLat) continue;
             if (_pos[j] < rear) { behind = j; continue; }                    // entirely behind us
-            if (_pos[j] - VehicleLength > front) { if (ahead < 0) ahead = j; continue; } // entirely ahead
+            if (_pos[j] - _length[j] > front) { if (ahead < 0) ahead = j; continue; } // entirely ahead
             return false;                                                    // alongside
         }
         if (behind >= 0 && rear - _pos[behind] < _overtake.ReturnBehindBase + MathF.Max(0f, _speed[behind] - _speed[o]) * _overtake.ReturnBehindPerSpeed) return false;
-        if (ahead >= 0 && _pos[ahead] - VehicleLength - front < _overtake.ReturnAheadBase + MathF.Max(0f, _speed[o] - _speed[ahead]) * _overtake.ReturnAheadPerSpeed) return false;
+        if (ahead >= 0 && _pos[ahead] - _length[ahead] - front < _overtake.ReturnAheadBase + MathF.Max(0f, _speed[o] - _speed[ahead]) * _overtake.ReturnAheadPerSpeed) return false;
         return true;
     }
 

@@ -10,6 +10,8 @@ public enum IncidentKind
     HeadOn,
     /// <summary>An overtaker hit a vehicle in its own lane while pulling out or in.</summary>
     Sideswipe,
+    /// <summary>Two vehicles on crossing or merging paths met inside a junction.</summary>
+    Junction,
 }
 
 public enum IncidentState
@@ -64,7 +66,8 @@ public sealed class Depot
     }
 
     public int Id { get; }
-    public int Node { get; }
+    /// <summary>The node it stands at; follows the node when that is moved.</summary>
+    public int Node { get; internal set; }
     public DepotLevel Level { get; }
     public int Crews { get; }
     public int BusyCrews { get; internal set; }
@@ -76,6 +79,7 @@ public sealed partial class Simulation
 {
     readonly List<Incident> _incidents = new();
     readonly List<int> _openIncidents = new(); // not yet cleared, in id order
+    readonly List<(int Vehicle, JunctionPose Pose)> _inJunction = new();
     readonly List<Depot> _depots = new();
     readonly List<(int Lane, float Position, int Incident)> _pendingDebris = new();
 
@@ -177,6 +181,9 @@ public sealed partial class Simulation
         for (int i = 0; i < _count; i++)
             if (_target[i] == vehicle) _target[i] = -1; // the slot will be reused
         _kind[vehicle] = VehicleKind.Removed;
+        _line[vehicle] = -1;
+        _dwell[vehicle] = 0;
+        _load[vehicle] = 0;
         _lane[vehicle] = -1;
         _halted[vehicle] = true;
         _speed[vehicle] = 0f;
@@ -194,6 +201,7 @@ public sealed partial class Simulation
     {
         DetectFollowingCollisions();
         DetectOvertakeCollisions();
+        DetectJunctionCollisions();
         foreach (var (lane, position, incident) in _pendingDebris) SpawnDebris(lane, position, incident);
         _pendingDebris.Clear();
         UpdateCrews();
@@ -210,7 +218,7 @@ public sealed partial class Simulation
             {
                 int j = _order[r];
                 if (_lat[j] >= HomeLaneLat) continue;
-                if (follower >= 0 && _pos[j] - VehicleLength < _pos[follower])
+                if (follower >= 0 && _pos[j] - _length[j] < _pos[follower])
                     Collide(follower, j, IncidentKind.RearEnd);
                 follower = j;
             }
@@ -222,7 +230,7 @@ public sealed partial class Simulation
             {
                 int j = _order[r];
                 if (_lat[j] >= HomeLaneLat) continue;
-                if (GapAcrossJunction(lane, next, _pos[follower], _pos[j]) < 0f)
+                if (GapAcrossJunction(lane, next, _pos[follower], _pos[j], _length[j]) < 0f)
                     Collide(follower, j, IncidentKind.RearEnd);
                 break;
             }
@@ -240,13 +248,13 @@ public sealed partial class Simulation
             if (_kind[o] == VehicleKind.Removed) continue;
             int lane = _lane[o];
             float y = LaneWidth * _lat[o];
-            float rear = _pos[o] - VehicleLength, front = _pos[o];
+            float rear = _pos[o] - _length[o], front = _pos[o];
 
             for (int r = _laneStart[lane]; r < _laneStart[lane + 1]; r++)
             {
                 int j = _order[r];
                 if (j == o) continue;
-                if (BoxesOverlap(rear, front, y, _pos[j] - VehicleLength, _pos[j], LaneWidth * _lat[j]))
+                if (BoxesOverlap(rear, front, y, _pos[j] - _length[j], _pos[j], LaneWidth * _lat[j]))
                     Collide(o, j, IncidentKind.Sideswipe);
             }
 
@@ -256,11 +264,63 @@ public sealed partial class Simulation
             for (int r = _laneStart[oncoming]; r < _laneStart[oncoming + 1]; r++)
             {
                 int j = _order[r];
-                float jRear = length - _pos[j], jFront = jRear + VehicleLength;
+                float jRear = length - _pos[j], jFront = jRear + _length[j];
                 if (BoxesOverlap(rear, front, y, jRear, jFront, LaneWidth * (1f - _lat[j])))
                     Collide(o, j, IncidentKind.HeadOn);
             }
         }
+    }
+
+    /// <summary>
+    /// Vehicles inside a junction are checked as rotated boxes against each other, on the paths they are driving. Two on
+    /// the same path (one behind the other) are the following check's business.
+    /// </summary>
+    void DetectJunctionCollisions()
+    {
+        _inJunction.Clear();
+        for (int i = 0; i < _count; i++)
+        {
+            int lane = _lane[i];
+            if (lane < 0 || _lat[i] >= HomeLaneLat) continue;
+            float centre = _pos[i] - _length[i] * 0.5f;
+            bool inTail = centre > _laneZoneStart[lane];
+            if (!inTail && !(centre < _laneReach[lane] && _prevLane[i] >= 0)) continue;
+            if (JunctionPoseOf(i, centre) is not { } pose) continue;
+            _inJunction.Add((i, pose));
+        }
+        for (int a = 0; a < _inJunction.Count; a++)
+            for (int b = a + 1; b < _inJunction.Count; b++)
+            {
+                var (i, p) = _inJunction[a];
+                var (j, q) = _inJunction[b];
+                if (p.From == q.From && p.To == q.To) continue;
+                if (_kind[i] != VehicleKind.Car && _kind[j] != VehicleKind.Car) continue;
+                float dx = q.X - p.X, dz = q.Z - p.Z;
+                float reach = 0.5f * (_length[i] + _length[j]);
+                if (dx * dx + dz * dz > reach * reach) continue;
+                if (OrientedBoxesOverlap(p.X, p.Z, p.Heading, _length[i], q.X, q.Z, q.Heading, _length[j])) Collide(i, j, IncidentKind.Junction);
+            }
+    }
+
+    /// <summary>Separating axis test for two vehicle-sized boxes given by centre and heading.</summary>
+    static bool OrientedBoxesOverlap(float ax, float az, float ha, float la, float bx, float bz, float hb, float lb)
+    {
+        float dx = bx - ax, dz = bz - az;
+        Span<float> axes = stackalloc float[4] { ha, ha + MathF.PI * 0.5f, hb, hb + MathF.PI * 0.5f };
+        for (int k = 0; k < 4; k++)
+        {
+            float ux = MathF.Cos(axes[k]), uz = MathF.Sin(axes[k]);
+            float ra = Extent(ha, la, ux, uz), rb = Extent(hb, lb, ux, uz);
+            if (MathF.Abs(dx * ux + dz * uz) > ra + rb) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Half the width of a vehicle box, heading <paramref name="heading"/>, projected on the axis (ux, uz).</summary>
+    static float Extent(float heading, float length, float ux, float uz)
+    {
+        float fx = MathF.Cos(heading), fz = MathF.Sin(heading);
+        return MathF.Abs(fx * ux + fz * uz) * length * 0.5f + MathF.Abs(-fz * ux + fx * uz) * VehicleWidth * 0.5f;
     }
 
     static bool BoxesOverlap(float rearA, float frontA, float yA, float rearB, float frontB, float yB) =>
@@ -289,7 +349,7 @@ public sealed partial class Simulation
         for (int r = _laneStart[lane]; r < _laneStart[lane + 1]; r++)
         {
             int j = _order[r];
-            if (_lat[j] < HomeLaneLat && MathF.Abs(_pos[j] - position) < VehicleLength) return; // already blocked by a vehicle
+            if (_lat[j] < HomeLaneLat && MathF.Abs(_pos[j] - position) < _length[j]) return; // already blocked by a vehicle
         }
         int id = SpawnVehicle(new LaneId(lane), position, 0f);
         _kind[id] = VehicleKind.Debris;

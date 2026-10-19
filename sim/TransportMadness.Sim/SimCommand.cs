@@ -24,7 +24,7 @@ public sealed record SetSpeedLimitCommand(int Road, float SpeedLimit) : SimComma
 /// <summary>Drags a node to a new place, rebuilding the roads at it. Result: 1 when moved, 0 when refused.</summary>
 public sealed record MoveNodeCommand(int Node, float X, float Z) : SimCommand;
 
-/// <summary>Places a depot at a node. Result: the depot id, -1 when refused (the node has no road, or already has a depot).</summary>
+/// <summary>Places a depot at a node. Result: the depot id, -1 when refused (the node has no road, it already has a depot, or not enough money).</summary>
 public sealed record AddDepotCommand(int Node, DepotLevel Level) : SimCommand;
 
 /// <summary>Adds ambient vehicles at random free spots. Result: how many were placed.</summary>
@@ -32,6 +32,27 @@ public sealed record SeedTrafficCommand(int Count) : SimCommand;
 
 /// <summary>Breaks down a moving car, picked from the current tick so the choice replays. Result: the vehicle id, -1 when none qualifies.</summary>
 public sealed record CrashSomeoneCommand : SimCommand;
+
+/// <summary>Builds a station at the node near (X, Z), or on the road there. Result: the station id, -1 when refused.</summary>
+public sealed record BuildStationCommand(float X, float Z) : SimCommand;
+
+/// <summary>Creates a line through stations (ids, in order; the line returns to the first after the last). Result: the line id, -1 when refused.</summary>
+public sealed record CreateLineCommand(int[] Stations) : SimCommand;
+
+/// <summary>Closes a line and sells its vehicles. Result: 1, 0 when there is no such line.</summary>
+public sealed record DeleteLineCommand(int Line) : SimCommand;
+
+/// <summary>Buys a vehicle (by its id in the tuning file, for example "bus") at a depot and puts it on a line. Result: the vehicle id, -1 when refused.</summary>
+public sealed record BuyVehicleCommand(int Depot, string Model, int Line) : SimCommand;
+
+/// <summary>Sells a company vehicle for part of its price. Result: the vehicle id, -1 when refused.</summary>
+public sealed record SellVehicleCommand(int Vehicle) : SimCommand;
+
+/// <summary>Borrows money, up to the loan limit. Result: 1, 0 when refused.</summary>
+public sealed record TakeLoanCommand(long Amount) : SimCommand;
+
+/// <summary>Pays back part of the loan. Result: 1, 0 when refused (more than is owed or than the company has).</summary>
+public sealed record RepayLoanCommand(long Amount) : SimCommand;
 
 /// <summary>A command and the tick it was applied at, i.e. the number of steps that had run before it.</summary>
 public readonly record struct LoggedCommand(long Tick, SimCommand Command);

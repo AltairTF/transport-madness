@@ -18,6 +18,28 @@ public class TuningTests
     }
 
     [Fact]
+    public void ShippedFile_HasTheEconomyAndTheVehicleRoster()
+    {
+        var t = Tuning.Load();
+
+        Assert.Equal(60f, t.Economy.DayLength);
+        Assert.Equal(1000000, t.Economy.StartingMoney);
+        Assert.Equal(new[] { "bus", "truck" }, t.Vehicles.Select(v => v.Id));
+        Assert.Equal(new[] { "passengers", "goods" }, t.Cargo.Select(c => c.Id));
+        Assert.All(t.Vehicles, v => Assert.Contains(t.Cargo, c => c.Id == v.Cargo));
+        Assert.True(t.Economy.DepotPrice.For(DepotLevel.Complex) > t.Economy.DepotPrice.For(DepotLevel.Simple));
+    }
+
+    [Fact]
+    public void AVehicleThatCarriesUnknownCargo_IsRejectedWhenTheSimulationStarts()
+    {
+        var shipped = Tuning.Load();
+        var broken = shipped with { Vehicles = new[] { shipped.Vehicles[0] with { Cargo = "gold" } } };
+
+        Assert.Throws<ArgumentException>(() => new Simulation(new RoadNetwork(Terrain.Flat(), broken), 1));
+    }
+
+    [Fact]
     public void FromJson_RejectsAMissingKey()
     {
         var text = ShippedText().Replace("\"maxAccel\"", "\"maxAccelX\"");

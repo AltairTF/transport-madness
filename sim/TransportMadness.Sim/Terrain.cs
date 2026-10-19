@@ -17,8 +17,17 @@ public sealed class Terrain
     /// <summary>Changes whenever any height changes.</summary>
     public int Version { get; private set; }
 
-    /// <summary>Height of the water surface: ground below it is under water (lakes, rivers, sea).</summary>
+    /// <summary>
+    /// Height of the water surface at the middle of the map: ground below the surface is under water (lakes, rivers,
+    /// sea). The surface falls steadily toward one side of the map (<see cref="WaterSlopeX"/>, <see cref="WaterSlopeZ"/>),
+    /// so rivers run downhill to the sea and the water is not at one height everywhere; see <see cref="WaterSurfaceAt"/>.
+    /// </summary>
     public const float WaterLevel = 0f;
+
+    /// <summary>Change of the water surface height per metre along x (negative: it falls toward +x).</summary>
+    public float WaterSlopeX { get; }
+    /// <summary>Change of the water surface height per metre along z.</summary>
+    public float WaterSlopeZ { get; }
 
     /// <summary>Side of a chunk, in cells: a renderer can rebuild the meshes of just the chunks that changed.</summary>
     public const int ChunkCells = 32;
@@ -28,39 +37,51 @@ public sealed class Terrain
     readonly float[] _heights;
     readonly HashSet<int> _changedChunks = new();
 
-    Terrain(int cells, float cellSize)
+    Terrain(int cells, float cellSize, float waterSlopeX = 0f, float waterSlopeZ = 0f)
     {
         if (cells < 1) throw new ArgumentOutOfRangeException(nameof(cells));
         if (!(cellSize > 0f)) throw new ArgumentOutOfRangeException(nameof(cellSize));
         Cells = cells;
         CellSize = cellSize;
+        WaterSlopeX = waterSlopeX;
+        WaterSlopeZ = waterSlopeZ;
         _heights = new float[(cells + 1) * (cells + 1)];
     }
 
     /// <summary>A level map at height zero.</summary>
     public static Terrain Flat(int cells = 512, float cellSize = 8f) => new(cells, cellSize);
 
-    /// <summary>A map whose height at each sample is <paramref name="shape"/>(x, z), for scenarios and tests.</summary>
-    public static Terrain Create(int cells, float cellSize, Func<float, float, float> shape)
+    /// <summary>A map whose height at each sample is <paramref name="shape"/>(x, z), for scenarios and tests; the water surface is level unless a slope is given.</summary>
+    public static Terrain Create(int cells, float cellSize, Func<float, float, float> shape, float waterSlopeX = 0f, float waterSlopeZ = 0f)
     {
-        var terrain = new Terrain(cells, cellSize);
+        var terrain = new Terrain(cells, cellSize, waterSlopeX, waterSlopeZ);
         for (int j = 0; j <= cells; j++)
             for (int i = 0; i <= cells; i++)
                 terrain._heights[j * terrain.Samples + i] = shape((i - cells * 0.5f) * cellSize, (j - cells * 0.5f) * cellSize);
         return terrain;
     }
 
+    /// <summary>Height of the water surface above a point (where there is water, and where there would be if the ground were lower).</summary>
+    public float WaterSurfaceAt(float x, float z) => WaterLevel + WaterSlopeX * x + WaterSlopeZ * z;
+
+    /// <summary>Height of the water surface at a height sample.</summary>
+    public float WaterSurfaceAtSample(int i, int j) => WaterSurfaceAt((i - Cells * 0.5f) * CellSize, (j - Cells * 0.5f) * CellSize);
+
     /// <summary>Whether the ground at a point lies under water.</summary>
-    public bool IsWater(float x, float z) => HeightAt(x, z) < WaterLevel;
+    public bool IsWater(float x, float z) => HeightAt(x, z) < WaterSurfaceAt(x, z);
 
     /// <summary>
     /// Rolling hills with flat plains between them, up to about <paramref name="amplitude"/> metres high. With
-    /// <paramref name="water"/>, lakes and rivers are cut into the lowlands: ground there dips below
-    /// <see cref="WaterLevel"/>; the plains themselves sit a little above it.
+    /// <paramref name="water"/>, the water surface falls toward one side of the map (a direction drawn from the seed),
+    /// the land there is cut into a sea, and lakes and rivers are cut into the lowlands along the way: ground dips
+    /// below the surface there; the plains themselves sit a little above it.
     /// </summary>
     public static Terrain Generate(ulong seed, int cells = 512, float cellSize = 8f, float amplitude = 70f, bool water = true)
     {
-        var terrain = new Terrain(cells, cellSize);
+        float downhill = Lattice(seed, 20, 0, 0) * MathF.Tau; // direction in which the water surface falls
+        float dx = MathF.Cos(downhill), dz = MathF.Sin(downhill);
+        var terrain = water ? new Terrain(cells, cellSize, -WaterFall * dx, -WaterFall * dz) : new Terrain(cells, cellSize);
+        float half = cells * cellSize * 0.5f;
         const float baseWavelength = 1400f;
         for (int j = 0; j <= cells; j++)
             for (int i = 0; i <= cells; i++)
@@ -80,20 +101,38 @@ public sealed class Terrain
                 float land = amplitude * shaped * shaped * 1.6f;
                 if (water)
                 {
-                    land += PlainsHeight;
+                    float surface = terrain.WaterSurfaceAt(x, z);
+                    land += surface + PlainsHeight;
                     // Rivers follow the middle of a noise band, lakes sit in its highs; neither cuts through hills.
                     float river = MathF.Abs(ValueNoise(seed, 8, x / RiverWavelength, z / RiverWavelength) - 0.5f) * 2f;
                     float riverMask = 1f - Smooth(0.02f, 0.06f, river);
                     float lakeMask = Smooth(0.74f, 0.84f, ValueNoise(seed, 9, x / LakeWavelength, z / LakeWavelength));
-                    float lowland = 1f - Smooth(PlainsHeight + 2f, PlainsHeight + 10f, land);
+                    float lowland = 1f - Smooth(surface + PlainsHeight + 2f, surface + PlainsHeight + 10f, land);
                     float mask = MathF.Max(riverMask, lakeMask) * lowland;
-                    land += (WaterLevel - WaterDepth - land) * mask;
+                    // The sea takes the stretch along each edge the water runs toward (the more squarely, the wider), hills or not.
+                    mask = MathF.Max(mask, Sea(half - x, dx));
+                    mask = MathF.Max(mask, Sea(half + x, -dx));
+                    mask = MathF.Max(mask, Sea(half - z, dz));
+                    mask = MathF.Max(mask, Sea(half + z, -dz));
+                    land += (surface - WaterDepth - land) * mask;
                 }
                 terrain._heights[j * terrain.Samples + i] = land;
             }
         return terrain;
     }
 
+    /// <summary>How much of the ground at <paramref name="inland"/> metres from an edge is sea, when the water runs toward that edge at the angle whose cosine is <paramref name="toward"/>.</summary>
+    static float Sea(float inland, float toward)
+    {
+        if (toward < SeaMinimumApproach) return 0f;
+        float width = SeaWidth * toward;
+        return 1f - Smooth(width - SeaShore, width, inland);
+    }
+
+    const float SeaMinimumApproach = 0.3f; // an edge the water runs toward at a shallower angle than this has no sea
+    const float WaterFall = 0.0012f;   // metres the water surface falls per metre toward the sea
+    const float SeaWidth = 400f;       // the sea reaches this far in from the edge of the map
+    const float SeaShore = 120f;       // and its shore slopes over this distance
     const float PlainsHeight = 2.5f;   // land starts this far above the water
     const float WaterDepth = 4f;       // how far the middle of a lake or river lies below the surface
     const float RiverWavelength = 1100f;

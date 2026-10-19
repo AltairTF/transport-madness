@@ -53,7 +53,7 @@ public class MoveNodeTests
     }
 
     [Fact]
-    public void MoveNode_RefusesAMoveThatWouldCrossAnotherRoad()
+    public void MoveNode_CanDragAcrossAnotherRoad_WhichThenJoinsTheMovedRoad()
     {
         var net = new RoadNetwork();
         int a = net.AddNode(0, 0), b = net.AddNode(-100, -200);
@@ -61,10 +61,59 @@ public class MoveNodeTests
         int c = net.AddNode(-300, 0), d = net.AddNode(300, 0);
         net.AddRoad(c, d, RoadType.TwoLane, 14f);
         int e = net.AddNode(-150, 100), f = net.AddNode(150, 100);
-        net.AddRoad(e, f, RoadType.TwoLane, 14f);
+        var crossed = net.AddRoad(e, f, RoadType.TwoLane, 14f);
 
-        Assert.False(net.MoveNode(a, 0f, 250f)); // the road to b would cross the road e-f
-        Assert.True(net.MoveNode(a, 0f, -50f));
+        Assert.NotNull(net.EstimateMoveNode(a, 0f, 250f));
+        Assert.True(net.MoveNode(a, 0f, 250f)); // the road to b now crosses the road e-f
+
+        Assert.True(net.GetRoad(crossed).Retired);
+        int junction = net.FindNodeNear(-100f * 150f / 450f, 100f, 5f);
+        Assert.True(junction >= 0, "a junction forms where the dragged road crosses");
+        Assert.Equal(4, net.RoadsAt(junction).Count);
+        Assert.True(net.FindNodeNear(-100f * 250f / 450f, 0f, 5f) >= 0, "and where it crosses the road c-d");
+    }
+
+    [Fact]
+    public void MoveNode_StillRefusesAMoveIntoWater_OrOntoAnotherRoadsEnd()
+    {
+        var terrain = Terrain.Create(128, 8f, (x, z) => x > 100f ? -5f : 10f);
+        var net = new RoadNetwork(terrain);
+        int a = net.AddNode(0, 0), b = net.AddNode(-100, 0), c = net.AddNode(0, 100);
+        net.AddRoad(a, b, RoadType.TwoLane, 14f);
+        net.AddRoad(a, c, RoadType.TwoLane, 14f);
+
+        Assert.False(net.MoveNode(a, 150f, 0f));
+        Assert.Null(net.EstimateMoveNode(a, 150f, 0f));
+        Assert.True(net.MoveNode(a, 40f, 30f));
+    }
+
+    [Fact]
+    public void MovedCurves_KeepTheirBend()
+    {
+        var net = new RoadNetwork();
+        int a = net.AddNode(0, 0), b = net.AddNode(200, 0), c = net.AddNode(0, 200);
+        net.AddRoad(a, b, RoadType.TwoLane, 14f, 0.8f);
+        net.AddRoad(c, a, RoadType.TwoLane, 14f, -0.5f);
+
+        Assert.True(net.MoveNode(a, 20f, 30f, out int moved));
+
+        var toB = net.GetRoad(net.FindRoad(moved, b)!.Value);
+        var fromC = net.GetRoad(net.FindRoad(c, moved)!.Value);
+        Assert.Equal(0.8f, toB.Geometry.Sweep, 3);
+        Assert.Equal(-0.5f, fromC.Geometry.Sweep, 3);
+        Assert.Equal(moved, toB.From);
+        Assert.Equal(moved, fromC.To);
+    }
+
+    [Fact]
+    public void MovingANode_ThatMakesACurveTooTight_IsRefused()
+    {
+        var net = new RoadNetwork();
+        int a = net.AddNode(0, 0), b = net.AddNode(200, 0);
+        net.AddRoad(a, b, RoadType.TwoLane, 14f, 2.0f); // radius about 119 m
+
+        Assert.False(net.MoveNode(a, 170f, 0f)); // chord of 30 m with the same bend: radius 18 m
+        Assert.True(net.MoveNode(a, 100f, 0f));
     }
 
     [Fact]
@@ -83,7 +132,36 @@ public class MoveNodeTests
     }
 
     [Fact]
-    public void VehiclesOnTheMovedRoads_Vanish_OthersCarryOn_AndADepotThereCloses()
+    public void VehiclesOnTheMovedRoads_CarryOnInProportion_AndADepotFollowsItsNode()
+    {
+        var (net, centre, west, east, _) = Tee();
+        var sim = new Simulation(net, 8);
+        sim.Execute(new AddDepotCommand(centre, DepotLevel.Simple));
+        var eastRoad = net.GetRoad(net.FindRoad(centre, east)!.Value);
+        // On the east arm: 50 m along the way out, and 50 m along the way in.
+        int outbound = sim.SpawnVehicle(eastRoad.ForwardLanes[0], 50f, 0f);
+        int inbound = sim.SpawnVehicle(eastRoad.BackwardLanes[0], 50f, 0f);
+        sim.SetHalted(outbound, true);
+        sim.SetHalted(inbound, true);
+
+        Assert.Equal(1, sim.Execute(new MoveNodeCommand(centre, 0f, 60f)));
+        sim.Step();
+
+        int moved = net.FindNodeNear(0f, 60f, 0.5f);
+        Assert.True(sim.Depots[0].Active);
+        Assert.Equal(moved, sim.Depots[0].Node);
+        var newEast = net.GetRoad(net.FindRoad(moved, east)!.Value);
+        float scale = newEast.Length / eastRoad.Length;
+        var vo = sim.GetVehicle(outbound);
+        var vi = sim.GetVehicle(inbound);
+        Assert.Equal(newEast.ForwardLanes[0], vo.Lane);
+        Assert.Equal(newEast.BackwardLanes[0], vi.Lane);
+        Assert.Equal(50f * scale, vo.Position, 0.1f);
+        Assert.Equal(50f * scale, vi.Position, 0.1f);
+    }
+
+    [Fact]
+    public void TrafficSurvivesAMove_NothingStandsOnATornDownLane_AndRunsOn()
     {
         var (net, centre, west, east, _) = Tee();
         int far = net.AddNode(-600, 0);
@@ -92,11 +170,12 @@ public class MoveNodeTests
         sim.Execute(new AddDepotCommand(centre, DepotLevel.Simple));
         sim.SeedTraffic(40);
         for (int i = 0; i < 200; i++) sim.Step();
+        int before = 0;
+        for (int i = 0; i < sim.VehicleCount; i++) if (sim.GetVehicle(i).Kind != VehicleKind.Removed) before++;
 
         Assert.Equal(1, sim.Execute(new MoveNodeCommand(centre, 0f, 60f)));
         sim.Step();
 
-        Assert.False(sim.Depots[0].Active);
         int alive = 0;
         for (int i = 0; i < sim.VehicleCount; i++)
         {
@@ -105,7 +184,7 @@ public class MoveNodeTests
             alive++;
             Assert.False(net.GetLane(v.Lane).Retired);
         }
-        Assert.True(alive > 0);
+        Assert.True(alive >= before - 4, $"{alive} of {before} vehicles kept"); // only those packed onto each other by a shorter road are lost
         for (int i = 0; i < 1000; i++) sim.Step();
     }
 

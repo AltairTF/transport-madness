@@ -77,6 +77,24 @@ public sealed class Lane
     public float SplitDistance { get; internal set; }
     /// <summary>The replacement is a lane that other lanes of the old road also move into (an avenue narrowed to two lanes), so vehicles may end up on top of each other.</summary>
     public bool SplitMerges { get; internal set; }
+    /// <summary>Set when the road was rebuilt between other nodes (a node moved): vehicles move to the pieces of the rebuilt road, in proportion.</summary>
+    public LaneRemap? Remap { get; internal set; }
+}
+
+/// <summary>Where the vehicles of a retired lane go when its road is rebuilt in another place.</summary>
+/// <param name="Pieces">The lanes of the rebuilt road, in the direction of travel.</param>
+/// <param name="Starts">Distance along the rebuilt road at which each piece starts.</param>
+/// <param name="Scale">New length over old length: a position on the old lane is multiplied by it.</param>
+public sealed record LaneRemap(LaneId[] Pieces, float[] Starts, float Scale)
+{
+    /// <summary>The piece a vehicle <paramref name="position"/> metres along the old lane moves to, and its position on it.</summary>
+    public (LaneId Lane, float Position) Resolve(float position)
+    {
+        float along = position * Scale;
+        int k = Pieces.Length - 1;
+        while (k > 0 && along < Starts[k]) k--;
+        return (Pieces[k], along - Starts[k]);
+    }
 }
 
 public sealed class Road
@@ -114,6 +132,9 @@ public sealed class Road
 
 /// <summary>What building a road would take: its length and how much earth it moves.</summary>
 public readonly record struct RoadCost(float Length, float CutVolume, float FillVolume, float Money, float BridgeLength = 0f, float TunnelLength = 0f);
+
+/// <summary>Stretches of two junction paths where vehicles on them can touch, as distances from where each path starts (see <see cref="RoadNetwork.GetConflictZone"/>).</summary>
+public readonly record struct ConflictZone(float InA, float OutA, float InB, float OutB);
 
 /// <summary>A point on a road's centre line.</summary>
 public readonly record struct RoadPoint(RoadId Road, float Along, float X, float Y, float Z);
@@ -165,6 +186,7 @@ public sealed class RoadNetwork
     // Lane geometry never changes, so what is derived from a pair of moves never goes stale.
     readonly Dictionary<(int, int), (float X, float Z)[]> _movePaths = new();
     readonly Dictionary<(int, int, int, int), bool> _conflicts = new();
+    readonly Dictionary<(int, int, int, int), bool> _wideConflicts = new(); // for pairs with a long vehicle (see DrivingTuning.WideBodyClearance)
 
     /// <summary>Increases whenever roads or lanes are added or removed, so a simulation knows to pick up the change.</summary>
     public int Version { get; private set; }
@@ -231,19 +253,72 @@ public sealed class RoadNetwork
 
     /// <summary>
     /// True when a vehicle going <paramref name="inA"/> to <paramref name="outA"/> through a junction can meet one going
-    /// <paramref name="inB"/> to <paramref name="outB"/>: they merge into the same lane, or their paths cross.
+    /// <paramref name="inB"/> to <paramref name="outB"/>: they merge into the same lane, their paths cross, or they run
+    /// closer than a vehicle is wide.
     /// A path runs from the end of the incoming lane to the start of the outgoing one along a smooth curve that
     /// keeps the heading of each lane at its end, so lane offsets and the width of the junction are taken into account.
     /// </summary>
-    public bool MovesConflict(LaneId inA, LaneId outA, LaneId inB, LaneId outB)
+    public bool MovesConflict(LaneId inA, LaneId outA, LaneId inB, LaneId outB, bool wide = false)
     {
         if (outA == outB) return inA != inB;
         if (inA == inB) return false;
         var key = (inA.Value, outA.Value, inB.Value, outB.Value);
-        if (_conflicts.TryGetValue(key, out bool known)) return known;
-        bool result = PathsCross(MovePath(inA, outA), MovePath(inB, outB));
-        _conflicts[key] = result;
+        var cache = wide ? _wideConflicts : _conflicts;
+        if (cache.TryGetValue(key, out bool known)) return known;
+        var pa = MovePath(inA, outA);
+        var pb = MovePath(inB, outB);
+        bool result = PathsCross(pa, pb) || PathsTouch(pa, pb, wide ? Tuning.Driving.WideBodyClearance : BodyClearance);
+        cache[key] = result;
         return result;
+    }
+
+    /// <summary>
+    /// Where two conflicting moves meet, as stretches of their paths: a vehicle whose centre is inside its stretch can be
+    /// touching one whose centre is inside the other's. A stretch runs from the first to the last point of its path (as a
+    /// distance from where the path starts) that lies within <paramref name="distance"/> of the other path; two moves
+    /// into the same lane stay in conflict to the end of their paths. Null when the moves do not conflict.
+    /// </summary>
+    public ConflictZone? GetConflictZone(LaneId inA, LaneId outA, LaneId inB, LaneId outB, float distance, bool wide = false)
+    {
+        if (!MovesConflict(inA, outA, inB, outB, wide)) return null;
+        var a = Resample(MovePath(inA, outA));
+        var b = Resample(MovePath(inB, outB));
+        float aIn = float.MaxValue, aOut = float.MinValue, bIn = float.MaxValue, bOut = float.MinValue;
+        foreach (var (ax, az, sa) in a)
+            foreach (var (bx, bz, sb) in b)
+            {
+                if ((ax - bx) * (ax - bx) + (az - bz) * (az - bz) >= distance * distance) continue;
+                aIn = MathF.Min(aIn, sa); aOut = MathF.Max(aOut, sa);
+                bIn = MathF.Min(bIn, sb); bOut = MathF.Max(bOut, sb);
+            }
+        float lengthA = a[^1].S, lengthB = b[^1].S;
+        if (aOut < aIn)
+        {
+            // Paths cross between samples or merge without coming that close: take the last stretch.
+            aIn = MathF.Max(0f, lengthA - 1f); aOut = lengthA;
+            bIn = MathF.Max(0f, lengthB - 1f); bOut = lengthB;
+        }
+        if (outA == outB) { aOut = lengthA; bOut = lengthB; }
+        return new ConflictZone(aIn, aOut, bIn, bOut);
+    }
+
+    /// <summary>A path cut into pieces about half a metre long, each point with its distance along the path.</summary>
+    static List<(float X, float Z, float S)> Resample((float X, float Z)[] path)
+    {
+        var points = new List<(float, float, float)> { (path[0].X, path[0].Z, 0f) };
+        float travelled = 0f;
+        for (int i = 0; i + 1 < path.Length; i++)
+        {
+            float length = Distance(path[i], path[i + 1]);
+            int pieces = Math.Max(1, (int)MathF.Ceiling(length / 0.5f));
+            for (int k = 1; k <= pieces; k++)
+            {
+                float t = k / (float)pieces;
+                points.Add((path[i].X + (path[i + 1].X - path[i].X) * t, path[i].Z + (path[i + 1].Z - path[i].Z) * t, travelled + length * t));
+            }
+            travelled += length;
+        }
+        return points;
     }
 
     /// <summary>How far into a lane of the given length a junction path reaches (from its end, or from its start).</summary>
@@ -339,6 +414,19 @@ public sealed class RoadNetwork
         return path;
     }
 
+    /// <summary>A vehicle reaches half its length ahead of its path and half its width to the side: paths that never cross but run closer than the two together (3.2 m) still bring vehicles together.</summary>
+    const float BodyClearance = 3.3f;
+
+    static bool PathsTouch((float X, float Z)[] p, (float X, float Z)[] q, float clearance)
+    {
+        var a = Resample(p);
+        var b = Resample(q);
+        foreach (var (ax, az, _) in a)
+            foreach (var (bx, bz, _) in b)
+                if ((ax - bx) * (ax - bx) + (az - bz) * (az - bz) < clearance * clearance) return true;
+        return false;
+    }
+
     static bool PathsCross((float X, float Z)[] p, (float X, float Z)[] q)
     {
         for (int i = 0; i + 1 < p.Length; i++)
@@ -423,14 +511,17 @@ public sealed class RoadNetwork
 
     /// <summary>One place along a planned road where it meets the network: an existing node, or a point inside a road to split.</summary>
     /// <param name="After">What the planned road is from here to the next meeting.</param>
-    readonly record struct Meeting(float Along, int Node, RoadId Road, float RoadDistance, float X, float Z, float Y, RoadStructure After = RoadStructure.None);
+    /// <param name="Tight">The meeting is inside a road too close to one of its ends for a junction: it only works if the planned road passes over or under that road instead.</param>
+    readonly record struct Meeting(float Along, int Node, RoadId Road, float RoadDistance, float X, float Z, float Y, RoadStructure After = RoadStructure.None, bool Tight = false);
 
     /// <summary>
     /// Builds a road, straight or bending by <paramref name="sweep"/> radians, joining the network wherever it touches
     /// it: at existing nodes, and by splitting any road it ends on or crosses so that a junction forms there. Returns
     /// the new road pieces, or none if it cannot be built (too short, too steep, too tight a curve, a duplicate, or
-    /// crossing within <see cref="MinRoadLength"/> of another junction, an end in water, or crossing an existing bridge or tunnel).
+    /// crossing within <see cref="MinRoadLength"/> of another junction, or an end in water).
     /// Stretches that would need a deep fill or cut, or that cross water, are built as bridges or tunnels (see <see cref="RoadStructure"/>).
+    /// Where the new road meets another one at a different height (at least <c>crossingClearance</c> apart, with a bridge
+    /// above or a tunnel below) it passes over or under it and no junction forms.
     /// </summary>
     public IReadOnlyList<RoadId> BuildRoad(float x0, float z0, float x1, float z1, RoadType type, float speedLimit, float sweep = 0f)
     {
@@ -439,10 +530,22 @@ public sealed class RoadNetwork
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
 
         var nodes = new List<int>(plan.Count);
+        var splits = new Dictionary<int, (RoadId First, RoadId Second, float At)>(); // a bending road can meet the same road more than once
         foreach (var m in plan)
         {
             if (m.Node >= 0) nodes.Add(m.Node);
-            else if (m.Road.Value >= 0) nodes.Add(SplitRoad(m.Road, m.RoadDistance));
+            else if (m.Road.Value >= 0)
+            {
+                var road = m.Road;
+                float distance = m.RoadDistance;
+                while (splits.TryGetValue(road.Value, out var split))
+                {
+                    if (distance < split.At) road = split.First;
+                    else { distance -= split.At; road = split.Second; }
+                }
+                nodes.Add(SplitRoad(road, distance, out var first, out var second));
+                splits[road.Value] = (first, second, _roads[first.Value].Length);
+            }
             else nodes.Add(AddNode(m.X, m.Z, m.Y));
         }
         var built = new List<RoadId>();
@@ -536,12 +639,85 @@ public sealed class RoadNetwork
     List<Meeting>? Plan(float x0, float z0, float x1, float z1, float sweep)
     {
         var meetings = PlanJunctions(x0, z0, x1, z1, sweep);
-        if (meetings == null || Terrain == null) return meetings;
-        // Both ends stand on dry land.
-        if (meetings[0].Node < 0 && meetings[0].Road.Value < 0 && Terrain.IsWater(meetings[0].X, meetings[0].Z)) return null;
-        var last = meetings[^1];
-        if (last.Node < 0 && last.Road.Value < 0 && Terrain.IsWater(last.X, last.Z)) return null;
-        return InsertStructures(meetings, RoadGeometry.FromChord(x0, z0, x1, z1, sweep));
+        if (meetings == null) return null;
+        var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
+        if (Terrain != null)
+        {
+            // Both ends stand on dry land.
+            if (meetings[0].Node < 0 && meetings[0].Road.Value < 0 && Terrain.IsWater(meetings[0].X, meetings[0].Z)) return null;
+            var last = meetings[^1];
+            if (last.Node < 0 && last.Road.Value < 0 && Terrain.IsWater(last.X, last.Z)) return null;
+            meetings = SeparateCrossings(meetings, geometry);
+            if (meetings == null) return null;
+        }
+        if (!PiecesAllowed(meetings)) return null;
+        return Terrain == null ? meetings : InsertStructures(meetings, geometry);
+    }
+
+    /// <summary>Whether every piece between two meetings can be a road: long enough, not a duplicate, not too steep, and no junction left in a road too close to its end.</summary>
+    bool PiecesAllowed(List<Meeting> meetings)
+    {
+        foreach (var m in meetings)
+            if (m.Tight) return false;
+        for (int i = 0; i + 1 < meetings.Count; i++)
+        {
+            float run = meetings[i + 1].Along - meetings[i].Along;
+            if (run < MinRoadLength) return false;
+            int na = meetings[i].Node, nb = meetings[i + 1].Node;
+            if (na >= 0 && nb >= 0 && FindRoad(na, nb) != null) return false;
+            if (meetings[i].Node < 0 && meetings[i + 1].Node < 0 && meetings[i].Road.Value >= 0 && meetings[i].Road == meetings[i + 1].Road
+                && MathF.Abs(meetings[i + 1].RoadDistance - meetings[i].RoadDistance) < MinRoadLength) return false; // two junctions too close on one road
+            if (MathF.Abs(meetings[i + 1].Y - meetings[i].Y) > MaxGrade * run) return false; // too steep
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Drops the junctions where the planned road would pass over or under the road it meets: they are at least
+    /// <c>crossingClearance</c> apart in height, with a bridge above or a tunnel below. Null when the plan cannot be built.
+    /// </summary>
+    List<Meeting>? SeparateCrossings(List<Meeting> meetings, RoadGeometry geometry)
+    {
+        var kept = new List<Meeting>(meetings);
+        var dropped = new List<Meeting>();
+        for (int k = 0; k < kept.Count;)
+        {
+            var m = kept[k];
+            if (m.Node >= 0 || m.Road.Value < 0 || k == 0 || k == kept.Count - 1) { k++; continue; } // the ends of the road stay
+            var without = new List<Meeting>(kept);
+            without.RemoveAt(k);
+            if (!PassesOver(m, without, geometry)) { k++; continue; }
+            kept = without;
+            dropped.Add(m);
+        }
+        // Dropping one crossing moves the profile at the others, so check them all against the final plan.
+        foreach (var m in dropped)
+            if (!PassesOver(m, kept, geometry)) return null;
+        return kept;
+    }
+
+    /// <summary>Whether a planned road with the given other meetings would clear the road at <paramref name="crossing"/> by enough, on a structure.</summary>
+    bool PassesOver(Meeting crossing, List<Meeting> others, RoadGeometry geometry)
+    {
+        int i = 0;
+        while (i + 2 < others.Count && others[i + 1].Along < crossing.Along) i++;
+        float span = others[i + 1].Along - others[i].Along;
+        float t = span > 1e-6f ? Math.Clamp((crossing.Along - others[i].Along) / span, 0f, 1f) : 0f;
+        float height = others[i].Y + (others[i + 1].Y - others[i].Y) * t;
+        float gap = height - crossing.Y;
+        float clearance = Tuning.Roads.CrossingClearance;
+        if (MathF.Abs(gap) < clearance) return false;
+
+        var plan = InsertStructures(others, geometry);
+        bool bridge = false, tunnel = false;
+        for (int k = 0; k + 1 < plan.Count; k++)
+        {
+            if (plan[k].Along > crossing.Along || plan[k + 1].Along < crossing.Along) continue;
+            bridge |= plan[k].After == RoadStructure.Bridge;
+            tunnel |= plan[k].After == RoadStructure.Tunnel;
+        }
+        var old = _roads[crossing.Road.Value].Structure;
+        return gap > 0f ? bridge || old == RoadStructure.Tunnel : old == RoadStructure.Bridge || tunnel;
     }
 
     const float StructureSampleSpacing = 4f;
@@ -673,7 +849,7 @@ public sealed class RoadNetwork
                 float u = ((rx0 - x0) * dz - (rz0 - z0) * dx) / cross; // along the existing road, 0..1
                 float slack = 0.5f / length, roadSlack = 0.5f / roadLength;
                 if (s < -slack || s > 1f + slack || u < -roadSlack || u > 1f + roadSlack) continue;
-                if (!Touch(meetings, road, s * length, u * roadLength, x0 + dx * s, z0 + dz * s)) return null;
+                Touch(meetings, road, s * length, u * roadLength, x0 + dx * s, z0 + dz * s);
                 continue;
             }
 
@@ -690,7 +866,7 @@ public sealed class RoadNetwork
                     if (MathF.Abs(along - lastHit) < 1f) continue; // the same crossing seen from the next segment
                     lastHit = along;
                     float px = samples[i].X + (samples[i + 1].X - samples[i].X) * t, pz = samples[i].Z + (samples[i + 1].Z - samples[i].Z) * t;
-                    if (!Touch(meetings, road, along, (j + u) * stepOld, px, pz)) return null;
+                    Touch(meetings, road, along, (j + u) * stepOld, px, pz);
                 }
         }
 
@@ -698,23 +874,14 @@ public sealed class RoadNetwork
         if (!meetings.Exists(m => m.Along <= onNode)) meetings.Add(new Meeting(0f, a, new RoadId(-1), 0f, x0, z0, a >= 0 ? _nodeHeights[a] : GroundHeight(x0, z0)));
         if (!meetings.Exists(m => m.Along >= length - onNode)) meetings.Add(new Meeting(length, b, new RoadId(-1), 0f, x1, z1, b >= 0 ? _nodeHeights[b] : GroundHeight(x1, z1)));
         meetings.Sort((p, q) => p.Along.CompareTo(q.Along));
-
-        for (int i = 0; i + 1 < meetings.Count; i++)
-        {
-            if (meetings[i + 1].Along - meetings[i].Along < MinRoadLength) return null;
-            int na = meetings[i].Node, nb = meetings[i + 1].Node;
-            if (na >= 0 && nb >= 0 && FindRoad(na, nb) != null) return null;
-            float run = meetings[i + 1].Along - meetings[i].Along;
-            if (MathF.Abs(meetings[i + 1].Y - meetings[i].Y) > MaxGrade * run) return null; // too steep
-        }
         return meetings;
     }
 
     /// <summary>
-    /// Records where the planned road touches <paramref name="road"/>: at one of its end nodes, or inside it (a junction).
-    /// False when it touches too close to the road's end to build a junction there.
+    /// Records where the planned road touches <paramref name="road"/>: at one of its end nodes, or inside it (a junction,
+    /// or a crossing where the planned road passes over or under it, see <see cref="SeparateCrossings"/>).
     /// </summary>
-    bool Touch(List<Meeting> meetings, Road road, float along, float roadAlong, float x, float z)
+    void Touch(List<Meeting> meetings, Road road, float along, float roadAlong, float x, float z)
     {
         const float onNode = 0.5f;
         float roadLength = road.Length;
@@ -722,12 +889,10 @@ public sealed class RoadNetwork
         {
             int node = roadAlong <= onNode ? road.From : road.To;
             if (!meetings.Exists(m => m.Node == node)) meetings.Add(new Meeting(along, node, new RoadId(-1), 0f, _nodes[node].X, _nodes[node].Z, _nodeHeights[node]));
-            return true;
+            return;
         }
-        if (roadAlong < MinRoadLength || roadAlong > roadLength - MinRoadLength) return false;
-        if (road.Structure != RoadStructure.None) return false; // no junction on a bridge or in a tunnel, and no crossing under or over one
-        meetings.Add(new Meeting(along, -1, road.Id, roadAlong, x, z, RoadHeightAt(road.Id, roadAlong)));
-        return true;
+        bool tight = roadAlong < MinRoadLength || roadAlong > roadLength - MinRoadLength;
+        meetings.Add(new Meeting(along, -1, road.Id, roadAlong, x, z, RoadHeightAt(road.Id, roadAlong), Tight: tight));
     }
 
     static (float X, float Z)[] Sample(RoadGeometry g)
@@ -870,63 +1035,90 @@ public sealed class RoadNetwork
 
     // ---- Moving a node ----------------------------------------------------------------------------------------
 
-    /// <summary>One road to rebuild when a node moves: the new road's ends, geometry and plan.</summary>
-    sealed record MovedRoad(Road Old, int From, int To, float X0, float Z0, float X1, float Z1, RoadGeometry Geometry, List<Meeting> Plan);
+    /// <summary>One road to rebuild when a node moves: the new road's ends, bend and plan.</summary>
+    sealed record MovedRoad(Road Old, float X0, float Z0, float X1, float Z1, float Sweep, RoadGeometry Geometry, List<Meeting> Plan);
 
     /// <summary>
     /// What it costs to drag a node to a new place, or null if it cannot be moved there. Every road at the node is torn
-    /// down and rebuilt straight from the moved node to its other end, so the price is their demolition plus new
-    /// construction. Refused when: the node has no roads, the target is within a metre of where it is or on another
-    /// node, or any rebuilt road would be too short, too steep, or cross another road.
+    /// down and rebuilt from the moved node to its other end with the same bend (total turn), so the price is their
+    /// demolition plus new construction. A rebuilt road joins the roads it ends on or crosses and becomes a bridge or
+    /// tunnel where the ground calls for one, like any new road. Refused when: the node has no roads, the target is
+    /// within a metre of where it is, on another node or in water, or any rebuilt road would be too short, too steep,
+    /// too tightly curved, or cross another rebuilt road.
     /// </summary>
     public RoadCost? EstimateMoveNode(int node, float x, float z)
     {
         var moved = PlanMove(node, x, z);
         if (moved == null) return null;
-        float length = 0f, cut = 0f, fill = 0f, money = 0f;
+        float length = 0f, cut = 0f, fill = 0f, money = 0f, bridge = 0f, tunnel = 0f;
         foreach (var m in moved)
         {
             var cost = Price(m.Plan, m.Geometry, m.Old.Type);
-            length += cost.Length; cut += cost.CutVolume; fill += cost.FillVolume;
+            length += cost.Length; cut += cost.CutVolume; fill += cost.FillVolume; bridge += cost.BridgeLength; tunnel += cost.TunnelLength;
             money += cost.Money + DemolitionCost(m.Old.Id);
         }
-        return new RoadCost(length, cut, fill, money);
+        return new RoadCost(length, cut, fill, money, bridge, tunnel);
     }
 
     /// <summary>
-    /// Drags a node to a new place (see <see cref="EstimateMoveNode"/>). Vehicles on the roads at the node disappear with
-    /// them, and a depot at the old place closes. Returns false when the node cannot be moved there.
+    /// Drags a node to a new place (see <see cref="EstimateMoveNode"/>). Vehicles on the roads at the node carry on, in
+    /// proportion, on the rebuilt roads. Returns false when the node cannot be moved there.
     /// </summary>
-    public bool MoveNode(int node, float x, float z)
+    public bool MoveNode(int node, float x, float z) => MoveNode(node, x, z, out _);
+
+    /// <summary>As <see cref="MoveNode(int, float, float)"/>; <paramref name="newNode"/> is the node now standing at the target (-1 when refused).</summary>
+    public bool MoveNode(int node, float x, float z, out int newNode)
     {
+        newNode = -1;
         var moved = PlanMove(node, x, z);
         if (moved == null) return false;
         foreach (var m in moved) Retire(m.Old);
-        int target = AddNode(x, z, GroundHeight(x, z));
+        newNode = AddNode(x, z, GroundHeight(x, z));
         foreach (var m in moved)
         {
-            int from = m.From == node ? target : m.From, to = m.To == node ? target : m.To;
-            AddRoad(from, to, m.Old.Type, m.Old.SpeedLimit);
-            Terrain?.CarvePath(Profile(m.Geometry, m.Plan[0], m.Plan[1]), HalfWidth(m.Old.Type), Shoulder);
+            // Planned again: an earlier rebuilt road may have split a road this one meets. It always works, because
+            // PlanMove refused rebuilt roads that cross each other.
+            var built = BuildRoad(m.X0, m.Z0, m.X1, m.Z1, m.Old.Type, m.Old.SpeedLimit, m.Sweep);
+            if (built.Count == 0) throw new InvalidOperationException("A planned move could not be built.");
+            HandOverMoved(m.Old, built);
         }
-        RebuildJunction(node);
         Version++;
         return true;
+    }
+
+    /// <summary>Points every lane of a road that was torn down for a move at the matching lane(s) of its rebuilt pieces.</summary>
+    void HandOverMoved(Road old, IReadOnlyList<RoadId> built)
+    {
+        var pieces = built.Select(id => _roads[id.Value]).ToList();
+        float total = pieces.Sum(p => p.Length);
+        float scale = total / old.Length;
+        Remap(old.ForwardLanes, pieces.Select(p => p.ForwardLanes).ToList(), pieces.Select(p => p.Length).ToList(), scale);
+        pieces.Reverse();
+        Remap(old.BackwardLanes, pieces.Select(p => p.BackwardLanes).ToList(), pieces.Select(p => p.Length).ToList(), scale);
+    }
+
+    void Remap(LaneId[] oldLanes, List<LaneId[]> pieceLanes, List<float> lengths, float scale)
+    {
+        var starts = new float[lengths.Count];
+        for (int k = 1; k < starts.Length; k++) starts[k] = starts[k - 1] + lengths[k - 1];
+        for (int i = 0; i < oldLanes.Length; i++)
+        {
+            var lane = _lanes[oldLanes[i].Value];
+            lane.Remap = new LaneRemap(pieceLanes.Select(p => p[Math.Min(i, p.Length - 1)]).ToArray(), starts, scale);
+            lane.SplitMerges = scale < 1f; // a shorter road packs its vehicles closer together
+        }
     }
 
     const float MinAngleBetweenRoads = 0.05f; // radians
 
     /// <summary>Direction, as an angle, in which a rebuilt road leaves the moved node.</summary>
-    float AngleFrom(MovedRoad m, int node, float x, float z)
-    {
-        var (fx, fz) = _nodes[m.From == node ? m.To : m.From];
-        return MathF.Atan2(fz - z, fx - x);
-    }
+    static float DepartureAngle(MovedRoad m, bool startsHere) =>
+        startsHere ? m.Geometry.Heading0 : m.Geometry.HeadingAt(m.Geometry.Length) + MathF.PI;
 
     List<MovedRoad>? PlanMove(int node, float x, float z)
     {
         var roads = _nodeRoads[node].Select(id => _roads[id.Value]).ToList();
-        if (roads.Count == 0 || roads.Exists(r => r.Structure != RoadStructure.None)) return null; // a bridge or tunnel stays where it is
+        if (roads.Count == 0) return null;
         var (nx, nz) = _nodes[node];
         if ((nx - x) * (nx - x) + (nz - z) * (nz - z) < 1f) return null;
         int near = FindNodeNear(x, z, 0.5f);
@@ -941,24 +1133,41 @@ public sealed class RoadNetwork
                 bool startsHere = road.From == node;
                 var (fx, fz) = _nodes[startsHere ? road.To : road.From];
                 var (x0, z0, x1, z1) = startsHere ? (x, z, fx, fz) : (fx, fz, x, z);
-                var plan = Plan(x0, z0, x1, z1, 0f);
-                if (plan == null || plan.Count != 2 || plan[0].After != RoadStructure.None) return null; // refused, would cross another road, or would need a bridge or tunnel
-                moved.Add(new MovedRoad(road, road.From, road.To, x0, z0, x1, z1, RoadGeometry.FromChord(x0, z0, x1, z1, 0f), plan));
+                float sweep = road.Geometry.Sweep;
+                var plan = Plan(x0, z0, x1, z1, sweep);
+                if (plan == null) return null; // refused: too short, too steep, too tight, or an end in water
+                moved.Add(new MovedRoad(road, x0, z0, x1, z1, sweep, RoadGeometry.FromChord(x0, z0, x1, z1, sweep), plan));
             }
         }
         finally
         {
             foreach (var road in roads) road.Retired = false;
         }
-        // Two roads leaving the node the same way would lie on top of each other.
+        // Two roads leaving the node the same way would lie on top of each other, and rebuilt roads must not cross.
         for (int i = 0; i < moved.Count; i++)
             for (int j = i + 1; j < moved.Count; j++)
             {
-                float ai = AngleFrom(moved[i], node, x, z), aj = AngleFrom(moved[j], node, x, z);
-                float between = MathF.Abs(ai - aj);
+                float between = MathF.Abs(DepartureAngle(moved[i], moved[i].Old.From == node) - DepartureAngle(moved[j], moved[j].Old.From == node));
+                between %= MathF.Tau;
                 if (MathF.Min(between, MathF.Tau - between) < MinAngleBetweenRoads) return null;
+                if (RebuiltRoadsCross(moved[i], moved[j], x, z)) return null;
             }
         return moved;
+    }
+
+    /// <summary>Whether two roads rebuilt from the same moved node meet anywhere but at it.</summary>
+    static bool RebuiltRoadsCross(MovedRoad a, MovedRoad b, float nodeX, float nodeZ)
+    {
+        var p = Sample(a.Geometry);
+        var q = Sample(b.Geometry);
+        for (int i = 0; i + 1 < p.Length; i++)
+            for (int j = 0; j + 1 < q.Length; j++)
+            {
+                if (!SegmentsIntersect(p[i], p[i + 1], q[j], q[j + 1], 0f, out float t, out _)) continue;
+                float px = p[i].X + (p[i + 1].X - p[i].X) * t, pz = p[i].Z + (p[i + 1].Z - p[i].Z) * t;
+                if ((px - nodeX) * (px - nodeX) + (pz - nodeZ) * (pz - nodeZ) > 1f) return true;
+            }
+        return false;
     }
 
     /// <summary>Whether an avenue can be narrowed to a two-lane road.</summary>
@@ -1014,11 +1223,12 @@ public sealed class RoadNetwork
     /// Replaces a road by two roads meeting at a new node <paramref name="distance"/> metres from its start.
     /// The old road and its lanes are retired; each old lane records its replacements so vehicles can move over.
     /// </summary>
-    public int SplitRoad(RoadId id, float distance)
+    public int SplitRoad(RoadId id, float distance) => SplitRoad(id, distance, out _, out _);
+
+    int SplitRoad(RoadId id, float distance, out RoadId firstId, out RoadId secondId)
     {
         var road = _roads[id.Value];
         if (road.Retired) throw new InvalidOperationException("Road is already replaced.");
-        if (road.Structure != RoadStructure.None) throw new InvalidOperationException("A bridge or tunnel cannot take a junction.");
         float length = road.Length;
         if (distance < MinRoadLength || distance > length - MinRoadLength) throw new ArgumentOutOfRangeException(nameof(distance));
 
@@ -1036,8 +1246,10 @@ public sealed class RoadNetwork
         _nodeRoads[road.To].Remove(id);
 
         float sweepFirst = road.Geometry.Sweep * (distance / length);
-        var first = _roads[AddRoad(road.From, middle, road.Type, road.SpeedLimit, sweepFirst).Value];
-        var second = _roads[AddRoad(middle, road.To, road.Type, road.SpeedLimit, road.Geometry.Sweep - sweepFirst).Value];
+        firstId = AddRoad(road.From, middle, road.Type, road.SpeedLimit, sweepFirst, road.Structure);
+        secondId = AddRoad(middle, road.To, road.Type, road.SpeedLimit, road.Geometry.Sweep - sweepFirst, road.Structure);
+        var first = _roads[firstId.Value];
+        var second = _roads[secondId.Value];
         for (int i = 0; i < road.ForwardLanes.Length; i++)
             Replace(road.ForwardLanes[i], first.ForwardLanes[i], second.ForwardLanes[i], first.Length);
         for (int i = 0; i < road.BackwardLanes.Length; i++)

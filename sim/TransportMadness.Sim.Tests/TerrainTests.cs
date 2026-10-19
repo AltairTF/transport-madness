@@ -23,13 +23,63 @@ public class TerrainTests
                 float h = terrain.GetSample(i, j);
                 min = Math.Min(min, h); max = Math.Max(max, h);
                 total++;
-                if (h < Terrain.WaterLevel) wet++;
-                else if (h < 4f) flat++;
+                float surface = terrain.WaterSurfaceAtSample(i, j);
+                if (h < surface) wet++;
+                else if (h < surface + 4f) flat++;
             }
         Assert.True(max > 30f, $"highest point {max}");
         Assert.True(min < Terrain.WaterLevel - 2f, $"lowest point {min}");
         Assert.InRange(flat / (float)total, 0.1f, 0.8f);
         Assert.InRange(wet / (float)total, 0.02f, 0.45f);
+    }
+
+    [Fact]
+    public void TheWaterSurfaceFallsToTheSea_RiversAndLakesFollowIt_AndTheSeaLiesAtTheLowEdge()
+    {
+        foreach (ulong seed in new ulong[] { 1, 3, 6, 9, 13 })
+        {
+            var terrain = Terrain.Generate(seed);
+            float half = terrain.HalfSize;
+            float fall = MathF.Sqrt(terrain.WaterSlopeX * terrain.WaterSlopeX + terrain.WaterSlopeZ * terrain.WaterSlopeZ);
+            Assert.InRange(fall, 0.0011f, 0.0013f);
+            // Unit vector the water runs toward; the surface drops about 5 m from one side of the map to the other.
+            float dx = -terrain.WaterSlopeX / fall, dz = -terrain.WaterSlopeZ / fall;
+            Assert.True(terrain.WaterSurfaceAt(-dx * half, -dz * half) - terrain.WaterSurfaceAt(dx * half, dz * half) > 3f, $"seed {seed}");
+
+            // Nothing in a river or lake bed lies below the water by more than its depth, and the surface is the same
+            // everywhere the water is level with it: ground is water exactly when it lies below the surface at that spot.
+            // The edge the water runs toward most squarely is sea along its length; the opposite edge is not.
+            bool alongX = MathF.Abs(dx) >= MathF.Abs(dz);
+            float toward = alongX ? dx : dz;
+            int wet = 0, seaWet = 0, sea = 0, farWet = 0, far = 0;
+            for (int j = 0; j <= terrain.Cells; j++)
+                for (int i = 0; i <= terrain.Cells; i++)
+                {
+                    float depth = terrain.GetSample(i, j) - terrain.WaterSurfaceAtSample(i, j);
+                    Assert.True(depth >= -4.01f, $"seed {seed}: {depth} m below the surface");
+                    if (depth < 0f) wet++;
+                    float x = (i - terrain.Cells * 0.5f) * terrain.CellSize, z = (j - terrain.Cells * 0.5f) * terrain.CellSize;
+                    float inland = (alongX ? x : z) * MathF.Sign(toward); // distance past the middle toward that edge
+                    if (inland > half - 100f) { sea++; if (depth < 0f) seaWet++; }
+                    if (inland < -half + 100f) { far++; if (depth < 0f) farWet++; }
+                }
+            Assert.True(wet > 0);
+            Assert.True(seaWet > 0.95f * sea, $"seed {seed}: sea {seaWet} of {sea}");
+            Assert.True(farWet < 0.5f * far, $"seed {seed}: far edge {farWet} of {far}");
+        }
+    }
+
+    [Fact]
+    public void WaterIsMeasuredAgainstTheSurfaceWhereItIs()
+    {
+        // Level ground at height 0; the surface is 1 m above it at x = -100, level with it at x = 0 and 1 m below at x = 100.
+        var terrain = Terrain.Create(64, 10f, (x, z) => 0f, waterSlopeX: -0.01f);
+
+        Assert.Equal(1f, terrain.WaterSurfaceAt(-100f, 7f), 4);
+        Assert.Equal(-1f, terrain.WaterSurfaceAt(100f, 7f), 4);
+        Assert.True(terrain.IsWater(-100f, 0f));
+        Assert.False(terrain.IsWater(100f, 0f));
+        Assert.Equal(terrain.WaterSurfaceAt(-50f, 0f), terrain.WaterSurfaceAtSample(27, 32), 4);
     }
 
     [Fact]

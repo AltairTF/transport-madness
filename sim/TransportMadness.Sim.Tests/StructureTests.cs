@@ -127,16 +127,115 @@ public class StructureTests
             Assert.All(Pieces(net, net.BuildRoad(-200, 0, 200, 0, RoadType.TwoLane, 14f)), p => Assert.Equal(RoadStructure.None, p.Structure));
     }
 
-    [Fact]
-    public void NoJunctionCanBeBuiltOnABridge_NorCanARoadCrossOne()
-    {
-        var net = new RoadNetwork(Gorge());
-        net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f);
+    // Terrain for crossings: 40 m ground with a gorge down to 10 m along x = 0 (dry: the surface is at 0), or a hill.
+    static Terrain DryGorge() => Terrain.Create(128, 8f, (x, z) => 40f - 30f * Smooth(x, 70f));
+    static Terrain DryRidge() => Terrain.Create(128, 8f, (x, z) => 40f + 45f * Smooth(x, 80f));
+    static Terrain Crater() => Terrain.Create(128, 8f, (x, z) => 40f - 30f * Smooth(MathF.Sqrt(x * x + z * z), 70f));
 
-        Assert.Empty(net.BuildRoad(0, 150, 0, 0, RoadType.TwoLane, 14f));   // ends on the bridge
-        Assert.Empty(net.BuildRoad(0, 150, 0, -150, RoadType.TwoLane, 14f)); // crosses it
-        Assert.False(net.CanBuildRoad(0, 150, 0, -150));
+    [Fact]
+    public void ARoadOnTheGroundPassesUnderABridge_WithoutAJunction()
+    {
+        var net = new RoadNetwork(DryGorge());
+        var bridgeRoad = Pieces(net, net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f));
+        Assert.Contains(bridgeRoad, p => p.Structure == RoadStructure.Bridge);
+        int roads = net.RoadCount, nodes = net.NodeCount;
+
+        var below = Pieces(net, net.BuildRoad(0, 150, 0, -150, RoadType.TwoLane, 14f));
+
+        var piece = Assert.Single(below);
+        Assert.Equal(RoadStructure.None, piece.Structure);
+        Assert.Equal(roads + 1, net.RoadCount);   // nothing was split
+        Assert.Equal(nodes + 2, net.NodeCount);   // two ends, no node where it passes under
+        Assert.All(bridgeRoad, p => Assert.False(p.Retired));
+        Assert.Equal(40f - 30f, net.GetNodeHeight(piece.From), 1);
+    }
+
+    [Fact]
+    public void ABridgeBuiltOverAnExistingRoad_PassesOverItWithoutAJunction()
+    {
+        var net = new RoadNetwork(DryGorge());
+        var below = net.BuildRoad(0, 150, 0, -150, RoadType.TwoLane, 14f);
+        int roads = net.RoadCount;
+
+        var over = Pieces(net, net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f));
+
+        Assert.Equal(new[] { RoadStructure.None, RoadStructure.Bridge, RoadStructure.None }, over.Select(p => p.Structure));
+        Assert.Equal(roads + 3, net.RoadCount);
+        Assert.False(net.GetRoad(below[0]).Retired);
+    }
+
+    [Fact]
+    public void ARoadOverAHill_PassesOverATunnelThroughIt()
+    {
+        var net = new RoadNetwork(DryRidge());
+        Assert.Contains(Pieces(net, net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f)), p => p.Structure == RoadStructure.Tunnel);
+
+        var over = Pieces(net, net.BuildRoad(0, 150, 0, -150, RoadType.TwoLane, 14f));
+
+        var top = Assert.Single(over);
+        Assert.Equal(RoadStructure.None, top.Structure);
+        Assert.Equal(85f, net.GetNodeHeight(top.From), 1);
+    }
+
+    [Fact]
+    public void RoadsThatDoNotClearEachOther_StillMeetInAJunction_OrAreRefused()
+    {
+        // The ground road beside the gorge is at the bridge's height at its ends: crossing the bridge piece there is a junction.
+        var net = new RoadNetwork(DryGorge());
+        net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f);
+        int roads = net.RoadCount;
+
         Assert.NotEmpty(net.BuildRoad(-250, 150, -250, -150, RoadType.TwoLane, 14f)); // across the ground part: a normal junction
+        Assert.Equal(roads + 4, net.RoadCount); // the crossed road is replaced by two halves, and the new road is two pieces
+    }
+
+    [Fact]
+    public void AJunctionCanBeBuiltInTheMiddleOfABridge()
+    {
+        var net = new RoadNetwork(Crater());
+        var span = Pieces(net, net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f));
+        Assert.Contains(span, p => p.Structure == RoadStructure.Bridge);
+
+        var side = Pieces(net, net.BuildRoad(0, 250, 0, 0, RoadType.TwoLane, 14f));
+
+        Assert.NotEmpty(side);
+        Assert.Equal(RoadStructure.Bridge, side[^1].Structure); // it comes in over the crater on its own bridge
+        int junction = side[^1].To;
+        Assert.Equal(3, net.RoadsAt(junction).Count);
+        var onDeck = net.RoadsAt(junction).Select(id => net.GetRoad(id)).Where(r => r.Structure == RoadStructure.Bridge).ToList();
+        Assert.Equal(3, onDeck.Count);        // both halves of the split bridge and the side road
+        Assert.Equal(40f, net.GetNodeHeight(junction), 1);
+    }
+
+    [Fact]
+    public void ARoadMeetingATunnelInTheMiddle_SplitsItIntoTwoTunnels()
+    {
+        var net = new RoadNetwork(DryRidge());
+        net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f);
+        var tunnel = net.GetRoad(net.RoadAt(0f, 0f, 2f)!.Value);
+        Assert.Equal(RoadStructure.Tunnel, tunnel.Structure);
+
+        // From the hilltop down to the tunnel's level: a steep side road, so give it room.
+        var side = net.BuildRoad(0, 400, 0, 0, RoadType.TwoLane, 14f);
+
+        Assert.NotEmpty(side);
+        Assert.True(tunnel.Retired);
+        int junction = net.FindNodeNear(0f, 0f, 1f);
+        Assert.True(junction >= 0);
+        Assert.Equal(3, net.RoadsAt(junction).Count);
+        Assert.Equal(2, net.RoadsAt(junction).Count(id => net.GetRoad(id).Structure == RoadStructure.Tunnel && id != side[^1]));
+    }
+
+    [Fact]
+    public void TrafficUnderAndOverACrossing_NeverInteracts()
+    {
+        var sim = new Simulation(new RoadNetwork(DryGorge()), 12);
+        sim.Execute(new BuildRoadCommand(-300, 0, 300, 0, RoadType.TwoLane, 14f));
+        sim.Execute(new BuildRoadCommand(0, 150, 0, -150, RoadType.TwoLane, 14f));
+        sim.Execute(new SeedTrafficCommand(24));
+        for (int i = 0; i < 4000; i++) sim.Step();
+
+        Assert.Empty(sim.Incidents);
     }
 
     [Fact]
@@ -178,13 +277,21 @@ public class StructureTests
     }
 
     [Fact]
-    public void ANodeWithABridgeCannotBeMoved()
+    public void ANodeAtTheEndOfABridgeCanBeMoved_AndTheRoadsAreWorkedOutAgain()
     {
         var net = new RoadNetwork(Gorge());
         var pieces = Pieces(net, net.BuildRoad(-300, 0, 300, 0, RoadType.TwoLane, 14f));
+        var bridge = pieces[1];
 
-        Assert.False(net.MoveNode(pieces[1].From, -250f, 20f));
-        Assert.Null(net.EstimateMoveNode(pieces[1].To, 250f, 20f));
+        Assert.NotNull(net.EstimateMoveNode(bridge.From, -250f, 20f));
+        Assert.True(net.MoveNode(bridge.From, -250f, 20f));
+
+        Assert.True(net.GetRoad(bridge.Id).Retired);
+        int moved = net.FindNodeNear(-250f, 20f, 0.5f);
+        Assert.Equal(2, net.RoadsAt(moved).Count);
+        var bridges = Enumerable.Range(0, net.RoadCount).Select(r => net.GetRoad(new RoadId(r))).Where(r => !r.Retired && r.Structure == RoadStructure.Bridge).ToList();
+        var rebuilt = Assert.Single(bridges); // the bridge was found again for the longer road
+        Assert.True(net.GetNode(rebuilt.From).X > -250f);
     }
 
     [Fact]

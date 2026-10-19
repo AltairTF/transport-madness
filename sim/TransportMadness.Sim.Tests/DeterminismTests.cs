@@ -16,7 +16,7 @@ public class DeterminismTests
     /// a new field in the hash): after checking that the change was intended, copy the value from the failure message.
     /// It also guards against nondeterminism creeping in, such as iteration order or wall-clock use.
     /// </summary>
-    const ulong GoldenHash = 0x95ED192623CE5403UL;
+    const ulong GoldenHash = 0x4F98F1BA4876C85AUL;
 
     sealed record Result(Simulation Sim, int Overtakes);
 
@@ -114,7 +114,7 @@ public class DeterminismTests
         Assert.True(GoldenHash == hash, $"state hash changed; if intended, set GoldenHash = 0x{hash:X16}UL");
     }
 
-    const ulong AvenueGoldenHash = 0xA2CB276384D07ECFUL;
+    const ulong AvenueGoldenHash = 0x4DCE62462F259152UL;
 
     /// <summary>Two avenues crossing a two-lane road with dense traffic: lane changes, which <see cref="Run"/> never triggers.</summary>
     static (Simulation Sim, int ShiftingSteps) RunAvenues(ulong seed)

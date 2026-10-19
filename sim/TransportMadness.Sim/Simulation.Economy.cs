@@ -1,0 +1,71 @@
+namespace TransportMadness.Sim;
+
+/// <summary>The company's money: what commands cost, the daily accounts, and the loan.</summary>
+public sealed partial class Simulation
+{
+    readonly EconomyTuning _economy;
+    readonly long _ticksPerDay;
+
+    public Company Company { get; }
+
+    /// <summary>Whole days of simulated time that have passed.</summary>
+    public long Day => Tick / _ticksPerDay;
+    public float DayLengthSeconds => _economy.DayLength;
+
+    /// <summary>Whether the company has at least this much money (the cost of a command is rounded up to whole units).</summary>
+    public bool CanAfford(float cost) => Company.Money >= Price(cost);
+
+    static long Price(float cost) => (long)MathF.Ceiling(cost);
+
+    /// <summary>Pays for something when the money is there. Nothing happens, and false is returned, when it is not.</summary>
+    bool TrySpend(float cost, LedgerEntry entry)
+    {
+        long price = Price(cost);
+        if (Company.Money < price) return false;
+        Charge(price, entry);
+        return true;
+    }
+
+    /// <summary>Takes money that is owed whether or not it is there (upkeep, interest): the balance can go negative.</summary>
+    void Charge(long amount, LedgerEntry entry)
+    {
+        Company.Money -= amount;
+        Company.Record(entry, -amount);
+    }
+
+    void Earn(long amount, LedgerEntry entry)
+    {
+        Company.Money += amount;
+        Company.Record(entry, amount);
+    }
+
+    /// <summary>Borrows up to the loan limit. Returns the amount taken, 0 when refused.</summary>
+    int TakeLoan(long amount)
+    {
+        if (amount <= 0 || Company.Loan + amount > _economy.MaxLoan) return 0;
+        Company.Loan += amount;
+        Company.Money += amount;
+        return 1;
+    }
+
+    int RepayLoan(long amount)
+    {
+        if (amount <= 0 || amount > Company.Loan || amount > Company.Money) return 0;
+        Company.Loan -= amount;
+        Company.Money -= amount;
+        return 1;
+    }
+
+    /// <summary>The accounts at the turn of a day: upkeep of stations and vehicles, interest on the loan, insolvency.</summary>
+    void CloseDay()
+    {
+        foreach (var station in _stations)
+            if (station.Active) Charge(Price(_stationTuning.UpkeepPerDay), LedgerEntry.Upkeep);
+        ChargeVehicleUpkeep();
+        if (Company.Loan > 0) Charge(Price(Company.Loan * _economy.InterestPerDay), LedgerEntry.Interest);
+
+        if (Company.NetWorth < -_economy.DebtLimit) Company.InsolventDays++;
+        else Company.InsolventDays = 0;
+        if (Company.InsolventDays >= _economy.BankruptcyDays) Company.Bankrupt = true;
+    }
+}
