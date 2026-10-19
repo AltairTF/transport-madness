@@ -140,7 +140,7 @@ public sealed partial class Simulation
     /// Delivers up to <paramref name="units"/> of a cargo to the buildings and industries a station covers that have
     /// room for it, split by how much room each has. Returns how many units were taken.
     /// </summary>
-    int Distribute(Station station, int cargo, int units)
+    internal int Distribute(Station station, int cargo, int units)
     {
         if (_coverageDirty || _stationAccepts.Count != _stations.Count) RefreshCoverage();
         var buildings = _stationBuildings[station.Id];

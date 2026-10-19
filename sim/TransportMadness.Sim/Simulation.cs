@@ -130,6 +130,8 @@ public sealed partial class Simulation
         _stationTuning = tuning.Stations;
         _cargo = tuning.Cargo;
         _townTuning = tuning.Towns;
+        _trips = tuning.Trips;
+        _growth = tuning.Towns.Growth;
         _industryTuning = tuning.Industries;
         _industryOutput = tuning.Industries.Types.Select(t => CargoIndex(tuning, t.Output)).ToArray();
         _industryInputs = ResolveIndustryInputs(tuning);
@@ -144,6 +146,8 @@ public sealed partial class Simulation
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;
         _rng = new SimRandom(seed);
+        _tripRng = new SimRandom(seed ^ TripSeedMix);
+        _growRng = new SimRandom(seed ^ GrowthSeedMix);
         SyncNetwork();
     }
 
@@ -220,6 +224,7 @@ public sealed partial class Simulation
         Mix(StationHash());
         if (_buildings.Count > 0) Mix(TownHash());
         if (_industries.Count > 0 || _buildings.Count > 0) Mix(IndustryHash());
+        if (_groups.Count > 0) Mix(TripHash());
         Mix(FleetHash());
         Mix((ulong)Company.Money);
         Mix((ulong)Company.Loan);
@@ -347,6 +352,7 @@ public sealed partial class Simulation
         PrepareOvertakes();
         GenerateCargo();
         UpdateIndustries();
+        UpdateTrips();
         UpdateFleet();
         for (int i = 0; i < _count; i++)
         {

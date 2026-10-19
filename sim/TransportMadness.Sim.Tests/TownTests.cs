@@ -266,7 +266,7 @@ public class TownTests
     // ---- Stations --------------------------------------------------------------------------------------------------
 
     [Fact]
-    public void AStation_CoversTheActiveBuildingsInRange_AndCollectsFromThem()
+    public void AStation_CoversTheActiveBuildingsInRange_AndCollectsNothingByItself()
     {
         var (sim, home, shop, far) = SmallTown();
         int a = sim.Execute(new BuildStationCommand(100, 0));
@@ -282,8 +282,8 @@ public class TownTests
         sim.SeedTraffic(0);
         RunDays(sim, 0.5);
 
-        float expectedHome = sim.TownTuning.Of(BuildingType.Home, 0).PassengersPerDay * 0.5f;
-        Assert.Equal(expectedHome, sim.Stations[a].Waiting[passengers], 1);
+        // People appear at a station only when a group sets out by bus (M3c); with no line nobody does.
+        Assert.Equal(0f, sim.Stations[a].Waiting[passengers]);
         Assert.Equal(0f, sim.Stations[a].Waiting[1], 3); // goods come from factories, not from homes
     }
 
@@ -306,20 +306,18 @@ public class TownTests
     }
 
     [Fact]
-    public void ABuildingThatGoesInactive_StopsFeedingItsStation()
+    public void ABuildingThatGoesInactive_IsNoLongerCoveredByItsStation()
     {
-        var (sim, _, _, _) = SmallTown();
+        var (sim, home, _, _) = SmallTown();
         int a = sim.Execute(new BuildStationCommand(100, 0));
-        RunDays(sim, 0.1);
-        float first = sim.Stations[a].Waiting[0];
-        Assert.True(first > 0f);
+        Assert.Equal(new[] { home }, sim.CoveredBy(sim.Stations[a]));
 
-        // Cut the road to the west of the station: the home is still within 40 m of the road by the station, so remove that as well.
         for (int r = 0; r < sim.Network.RoadCount; r++)
             if (!sim.Network.GetRoad(new RoadId(r)).Retired) sim.Execute(new RemoveRoadCommand(r));
         RunDays(sim, 0.1);
 
-        Assert.Equal(first, sim.Stations[a].Waiting[0], 3);
+        Assert.Equal(BuildingState.Inactive, sim.Buildings[home].State);
+        Assert.Empty(sim.CoveredBy(sim.Stations[a]));
     }
 
     [Fact]

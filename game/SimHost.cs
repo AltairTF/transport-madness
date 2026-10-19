@@ -33,6 +33,7 @@ public partial class SimHost : Node3D
     MultiMesh _buildings = null!;
     Node3D _townLabels = null!;
     int _buildingsVersion = -1;
+    int _networkVersion = -1; // of the roads as last drawn
     readonly float[] _crewBuffer = new float[CrewCapacity * FloatsPerInstance];
     float[] _buffer = new float[InitialCapacity * FloatsPerInstance];
     int _capacity = InitialCapacity;
@@ -173,7 +174,7 @@ public partial class SimHost : Node3D
         return plan.Towns.Count;
     }
 
-    const int TownTrafficPerTown = 30; // ambient cars put on a new map per town, until trip groups drive the roads (M3c)
+    const int TownTrafficPerTown = 4; // through-traffic put on a new map per town so the roads between towns are not dead; the town streets are driven by trip groups (M3c)
 
     /// <summary>Height of what is seen at a point: the ground, or the water surface over it.</summary>
     public float HeightAt(float x, float z) => Math.Max(_terrain.HeightAt(x, z), _terrain.WaterSurfaceAt(x, z));
@@ -583,7 +584,7 @@ public partial class SimHost : Node3D
         return lines;
     }
 
-    /// <summary>Open stations: for each {id, name, x, y, z, waiting, accepts} where waiting is the units of each cargo and accepts whether the station takes it, in the order of <see cref="GetCargoNames"/>.</summary>
+    /// <summary>Open stations: for each {id, name, x, y, z, waiting, accepts, waiting_for} where waiting is the units of each cargo and accepts whether the station takes it, in the order of <see cref="GetCargoNames"/>, and waiting_for the people queueing for a ride as {name, count} by the station they are going to.</summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetStations()
     {
         var stations = new Godot.Collections.Array<Godot.Collections.Dictionary>();
@@ -594,8 +595,11 @@ public partial class SimHost : Node3D
             foreach (float w in station.Waiting) waiting.Add((int)w);
             var accepts = new Godot.Collections.Array<bool>();
             for (int c = 0; c < Sim.CargoTypes.Count; c++) accepts.Add(Sim.Accepts(station, c));
+            var waitingFor = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+            foreach (var (dest, count) in station.WaitingFor())
+                waitingFor.Add(new Godot.Collections.Dictionary { ["name"] = $"S{dest + 1}", ["count"] = count });
             var p = StationPosition(station.Id);
-            stations.Add(new Godot.Collections.Dictionary { ["id"] = station.Id, ["name"] = $"S{station.Id + 1}", ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["waiting"] = waiting, ["accepts"] = accepts });
+            stations.Add(new Godot.Collections.Dictionary { ["id"] = station.Id, ["name"] = $"S{station.Id + 1}", ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["waiting"] = waiting, ["accepts"] = accepts, ["waiting_for"] = waitingFor });
         }
         return stations;
     }
@@ -638,7 +642,9 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// The towns: for each {id, name, x, y, z, satisfaction, population, jobs, homes, commerce, industry, inactive,
-    /// abandoned, unmet} (counts of buildings, inactive and abandoned ones apart; unmet is the share of last month's needs that were not met, 0 to 1).
+    /// abandoned, unmet, walked, drove, rode, stayed, connectivity, min_connectivity, min_satisfaction, grew_sizes, grew_buildings, grew_blocks, blocked} (counts of buildings, inactive and abandoned ones apart; unmet is the share
+    /// of last month's needs that were not met, 0 to 1; the last four are people-trips of the day before by foot, by car, on the
+    /// company's lines, and trips that could not be made).
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetTowns()
     {
@@ -653,6 +659,11 @@ public partial class SimHost : Node3D
                 ["population"] = s.Population, ["jobs"] = s.Jobs,
                 ["homes"] = s.Homes, ["commerce"] = s.Commerce, ["industry"] = s.Industry,
                 ["inactive"] = s.Inactive, ["abandoned"] = s.Abandoned, ["unmet"] = town.UnmetShare,
+                ["walked"] = town.TripsYesterday[(int)TripMode.Walk], ["drove"] = town.TripsYesterday[(int)TripMode.Car],
+                ["rode"] = town.TripsYesterday[(int)TripMode.Transit], ["stayed"] = town.TripsYesterday[(int)TripMode.None],
+                ["connectivity"] = town.Connectivity, ["min_connectivity"] = Sim.TownTuning.Growth.MinConnectivity, ["min_satisfaction"] = Sim.TownTuning.Growth.MinSatisfaction,
+                ["grew_sizes"] = town.LastGrowth.Upgrades, ["grew_buildings"] = town.LastGrowth.NewBuildings, ["grew_blocks"] = town.LastGrowth.NewBlocks,
+                ["blocked"] = town.LastGrowth.Blocked.ToString(),
             });
         }
         return towns;
@@ -757,7 +768,9 @@ public partial class SimHost : Node3D
             _simSecondsThisSecond = _realSecondsThisSecond = 0;
         }
 
-        if (Sim.BuildingsVersion != _buildingsVersion) RebuildBuildings();
+        // Towns build streets as they grow, inside a step: draw the new roads before any vehicle on them.
+        if (Sim.Network.Version != _networkVersion) RebuildRoads();
+        else if (Sim.BuildingsVersion != _buildingsVersion) RebuildBuildings();
         float fraction = _speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f;
         DrawVehicles(fraction);
         DrawCrews(fraction);
@@ -922,6 +935,7 @@ public partial class SimHost : Node3D
     {
         foreach (var child in _roadRoot.GetChildren()) child.QueueFree();
         var net = Sim.Network;
+        _networkVersion = net.Version;
         _terrain = net.Terrain!;
         RebuildTerrain();
 

@@ -39,7 +39,26 @@ public sealed class Building
     public BuildingState State { get; internal set; } = BuildingState.Active;
     /// <summary>The day it went into its current state.</summary>
     public long StateSince { get; internal set; }
+    // The road node cars leave from and arrive at, found on demand for the network version it was last worked out for.
+    internal int AccessNode = -1;
+    internal int AccessVersion = -1;
+    /// <summary>Index into its town's lots of the lot it stands on, -1 when it stands on none (placed by hand).</summary>
+    internal int Lot = -1;
 }
+
+/// <summary>A place in a town where a building can stand; free while no building stands on it.</summary>
+internal sealed class Lot
+{
+    internal Lot(TownGenerator.LotSite site) => Site = site;
+    internal TownGenerator.LotSite Site;
+    internal int Building = -1;
+}
+
+/// <summary>Why a town did not grow last month, or <see cref="None"/> when it did (or had nothing to spend).</summary>
+public enum GrowthBlock { None, Satisfaction, Connectivity }
+
+/// <summary>What a town did at the last turn of the month.</summary>
+public readonly record struct GrowthReport(int Upgrades, int NewBuildings, int NewBlocks, GrowthBlock Blocked);
 
 public sealed class Town
 {
@@ -60,9 +79,23 @@ public sealed class Town
     public float Satisfaction { get; internal set; }
     /// <summary>Share (0 to 1) of last month's needs of its buildings that were not met.</summary>
     public float UnmetShare { get; internal set; }
+    /// <summary>Share (0 to 1) of its homes that were reached last month: a group living there made a trip to work or leisure within the time budget. 1 until the first month is over.</summary>
+    public float Connectivity { get; internal set; } = 1f;
+    public GrowthReport LastGrowth { get; internal set; }
+
+    // The street grid: blocks of the first grid are 0..Blocks-1 either way; growth adds columns and rows on any side.
+    internal float Angle;
+    internal int Blocks;
+    internal int IMin, IMax, JMin, JMax;
+    internal List<Lot> Lots { get; } = new();
     /// <summary>Ids of every building ever in the town, demolished ones too (ids are never reused).</summary>
     public IReadOnlyList<int> Buildings => BuildingIds;
     internal List<int> BuildingIds { get; } = new();
+
+    /// <summary>People who made a trip of each <see cref="TripMode"/> today (None: trips that could not be made), counted when the trip starts.</summary>
+    public int[] TripsToday { get; } = new int[4];
+    /// <summary>The same for the day before.</summary>
+    public int[] TripsYesterday { get; } = new int[4];
 }
 
 /// <summary>A building as the generator lays it out.</summary>

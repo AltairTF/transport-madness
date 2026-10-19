@@ -11,6 +11,8 @@ public sealed partial class Simulation
 
     readonly List<float[]> _fields = new();
     readonly List<int> _fieldVersion = new();
+    readonly List<float[]> _nodeFields = new(); // by node: the field of the lanes into it, for trip cars
+    readonly List<int> _nodeFieldVersion = new();
     // Reverse of _nextLanes: the lanes (and moves) that lead into each lane.
     int[] _predStart = new int[1];
     int[] _preds = Array.Empty<int>();
@@ -50,13 +52,35 @@ public sealed partial class Simulation
     float[] FieldTo(Station station)
     {
         if (_fieldVersion[station.Id] == _syncedNetworkVersion) return _fields[station.Id];
+        var sources = new List<int>();
+        for (int l = 0; l < _net.LaneCount; l++)
+            if (!_net.GetLane(new LaneId(l)).Retired && IsStopLane(l, station)) sources.Add(l);
+        _fields[station.Id] = RunField(sources);
+        _fieldVersion[station.Id] = _syncedNetworkVersion;
+        return _fields[station.Id];
+    }
+
+    /// <summary>Seconds to drive from the start of each lane to the end of a lane running into the node (where a trip car is at its destination); infinity where it cannot be reached.</summary>
+    float[] FieldToNode(int node)
+    {
+        while (_nodeFields.Count <= node) { _nodeFields.Add(Array.Empty<float>()); _nodeFieldVersion.Add(-1); }
+        if (_nodeFieldVersion[node] == _syncedNetworkVersion) return _nodeFields[node];
+        var sources = new List<int>();
+        foreach (var lane in _net.IncomingLanes(node)) sources.Add(lane.Value);
+        _nodeFields[node] = RunField(sources);
+        _nodeFieldVersion[node] = _syncedNetworkVersion;
+        return _nodeFields[node];
+    }
+
+    /// <summary>Dijkstra backwards over the lane graph from lanes that count as being there.</summary>
+    float[] RunField(List<int> sources)
+    {
         int lanes = _net.LaneCount;
         var dist = new float[lanes];
         Array.Fill(dist, float.PositiveInfinity);
         var queue = new PriorityQueue<int, float>();
-        for (int l = 0; l < lanes; l++)
+        foreach (int l in sources)
         {
-            if (_net.GetLane(new LaneId(l)).Retired || !IsStopLane(l, station)) continue;
             dist[l] = LaneTime(l);
             queue.Enqueue(l, dist[l]);
         }
@@ -72,8 +96,6 @@ public sealed partial class Simulation
                 queue.Enqueue(from, candidate);
             }
         }
-        _fields[station.Id] = dist;
-        _fieldVersion[station.Id] = _syncedNetworkVersion;
         return dist;
     }
 
@@ -97,6 +119,26 @@ public sealed partial class Simulation
         return best >= 0 ? _nextLanes[best] : ChooseNextLane(lane);
     }
 
-    /// <summary>The lane to take after <paramref name="lane"/>: routed for a company vehicle, random for ambient traffic.</summary>
-    int NextLaneFor(int vehicle, int lane) => _line[vehicle] >= 0 ? RouteNextLane(vehicle, lane) : ChooseNextLane(lane);
+    /// <summary>The turn at the end of <paramref name="lane"/> that leads soonest to the node a trip car is bound for; random when none leads there.</summary>
+    int RouteTripLane(int vehicle, int lane)
+    {
+        int first = _nextStart[lane], count = _nextStart[lane + 1] - first;
+        if (count == 1) return _nextLanes[first];
+        var field = FieldToNode(_tripDest[vehicle]);
+        int best = -1;
+        float bestCost = float.PositiveInfinity;
+        for (int k = first; k < first + count; k++)
+        {
+            int next = _nextLanes[k];
+            float cost = field[next] + MoveTime(lane, k) + (_blockedCount[next] > 0 ? BlockedLanePenalty : 0f);
+            if (cost < bestCost) { bestCost = cost; best = k; }
+        }
+        return best >= 0 ? _nextLanes[best] : ChooseNextLane(lane);
+    }
+
+    /// <summary>The lane to take after <paramref name="lane"/>: routed for a company vehicle or a trip car, random for other ambient traffic.</summary>
+    int NextLaneFor(int vehicle, int lane) =>
+        _line[vehicle] >= 0 ? RouteNextLane(vehicle, lane)
+        : _tripDest[vehicle] >= 0 ? RouteTripLane(vehicle, lane)
+        : ChooseNextLane(lane);
 }

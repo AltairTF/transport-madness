@@ -137,7 +137,7 @@
     "depotPrice": { "simple": 15000, "workshop": 40000, "complex": 90000 }
   },
 
-  // Stations stand at a road node. On a map without towns every station simply produces each cargo at its fixed rate (supplyPerDay below); with towns it collects from the buildings it covers.
+  // Stations stand at a road node. On a map without towns every station simply produces each cargo at its fixed rate (supplyPerDay below); with towns passengers come from trip groups that queue there and cargo from the industries it covers.
   "stations": {
     "price": 8000,
     "upkeepPerDay": 150.0,
@@ -181,6 +181,19 @@
     "initialStockMonths": 1.5,      // months of its monthly needs a building starts with in stock
     "sustainStockMonths": 2.0,      // months of its monthly needs a building keeps in stock at most
 
+    // Growth (M3d), evaluated for every town at the turn of each month. A building whose construction stock is full for its
+    // size goes up one size; one already at the top size spends a full stock on a new building on a free lot of its town (the
+    // nearest to it), or on a new block of streets when no lot is free. Nothing grows while the town's satisfaction or its
+    // connectivity is below its threshold. Connectivity is the share of the town's homes from which a group made a trip to
+    // work or leisure that month within the time budget.
+    "growth": {
+      "minSatisfaction": 50.0,
+      "minConnectivity": 0.6,
+      "timeBudgetSeconds": 300.0,
+      "lotClearance": 15.0,         // a free lot is built on only when no road runs closer than this to its middle
+      "extendGrid": true            // a town with no free lot builds a new block of streets
+    },
+
     // Where and how a town is laid out: a square grid of streets (the middle one an avenue) with two lots per block side.
     "generation": {
       "attempts": 600,              // random places tried for each town
@@ -204,44 +217,81 @@
     ],
 
     // One list per kind of building, three sizes each. size: half the side of the square it stands on, in metres.
-    // people live in a home; jobs are in commerce and industry. passengersPerDay is what a station covering the building
-    // collects each day until trip groups replace it (M3c). sustain: what the building uses up each month (a shortfall
-    // lowers the town's satisfaction); construction: how much it can hold of what building (M3d) will spend.
+    // people live in a home (and travel as trip groups, see 'trips'); jobs are in commerce and industry. sustain: what the
+    // building uses up each month (a shortfall lowers the town's satisfaction); construction: how much it can hold of what
+    // building (M3d) will spend.
     "buildingTypes": [
       { "id": "home", "tiers": [
-        { "size": 8.0, "height": 6.0, "people": 8, "jobs": 0, "demolitionPrice": 3000, "passengersPerDay": 100.0,
+        { "size": 8.0, "height": 6.0, "people": 8, "jobs": 0, "demolitionPrice": 3000,
           "sustain": [{ "cargo": "food", "amount": 20 }, { "cargo": "goods", "amount": 10 }],
           "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
-        { "size": 10.0, "height": 12.0, "people": 20, "jobs": 0, "demolitionPrice": 7000, "passengersPerDay": 250.0,
+        { "size": 10.0, "height": 12.0, "people": 20, "jobs": 0, "demolitionPrice": 7000,
           "sustain": [{ "cargo": "food", "amount": 50 }, { "cargo": "goods", "amount": 25 }],
           "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
-        { "size": 12.0, "height": 24.0, "people": 50, "jobs": 0, "demolitionPrice": 16000, "passengersPerDay": 600.0,
+        { "size": 12.0, "height": 24.0, "people": 50, "jobs": 0, "demolitionPrice": 16000,
           "sustain": [{ "cargo": "food", "amount": 120 }, { "cargo": "goods", "amount": 60 }],
           "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
       ] },
       { "id": "commerce", "tiers": [
-        { "size": 8.0, "height": 6.0, "people": 0, "jobs": 6, "demolitionPrice": 4000, "passengersPerDay": 160.0,
+        { "size": 8.0, "height": 6.0, "people": 0, "jobs": 6, "demolitionPrice": 4000,
           "sustain": [{ "cargo": "goods", "amount": 30 }],
           "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
-        { "size": 10.0, "height": 10.0, "people": 0, "jobs": 16, "demolitionPrice": 9000, "passengersPerDay": 400.0,
+        { "size": 10.0, "height": 10.0, "people": 0, "jobs": 16, "demolitionPrice": 9000,
           "sustain": [{ "cargo": "goods", "amount": 80 }],
           "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
-        { "size": 12.0, "height": 18.0, "people": 0, "jobs": 40, "demolitionPrice": 20000, "passengersPerDay": 1000.0,
+        { "size": 12.0, "height": 18.0, "people": 0, "jobs": 40, "demolitionPrice": 20000,
           "sustain": [{ "cargo": "goods", "amount": 180 }],
           "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
       ] },
       { "id": "industry", "tiers": [
-        { "size": 9.0, "height": 6.0, "people": 0, "jobs": 10, "demolitionPrice": 5000, "passengersPerDay": 40.0,
+        { "size": 9.0, "height": 6.0, "people": 0, "jobs": 10, "demolitionPrice": 5000,
           "sustain": [{ "cargo": "planks", "amount": 30 }],
           "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
-        { "size": 11.0, "height": 8.0, "people": 0, "jobs": 25, "demolitionPrice": 11000, "passengersPerDay": 100.0,
+        { "size": 11.0, "height": 8.0, "people": 0, "jobs": 25, "demolitionPrice": 11000,
           "sustain": [{ "cargo": "planks", "amount": 70 }],
           "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
-        { "size": 12.0, "height": 10.0, "people": 0, "jobs": 60, "demolitionPrice": 25000, "passengersPerDay": 250.0,
+        { "size": 12.0, "height": 10.0, "people": 0, "jobs": 60, "demolitionPrice": 25000,
           "sustain": [{ "cargo": "planks", "amount": 150 }],
           "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
       ] }
     ]
+  },
+
+  // Trip groups (M3c): the people of a home travel in groups of at most groupSize between home, a workplace and a leisure
+  // place, on a daily schedule. Windows are hours of the day; a group's own time inside a window and its jitter are drawn once
+  // from the seed. A group walks when the place is within walkRadius, otherwise takes the mode (car, public transport) with the
+  // lowest generalised cost: seconds plus moneyWeight times the money it costs.
+  "trips": {
+    "groupSize": 10,                // people in one trip group at most; a bigger home has several
+    "carShare": 0.6,                // share of the groups that have a car
+    "peoplePerCar": 2,              // people one ambient car stands for
+    "walkRadius": 150.0,            // straight-line distance within which people walk
+    "walkSpeed": 2.5,               // a day is 600 s, so a pace in m/s is about five times quicker than life against a car at 14 m/s
+    "walkDetour": 1.3,              // path over straight-line distance when walking
+    "workRadius": 1800.0,           // workplaces and leisure places are looked for this far from home
+    "nearness": 300.0,              // a place this far away counts half as much as one next door (weights fall as 1 / (1 + (d / nearness)^2))
+    "leisureChance": 0.6,           // chance per day that a group goes out in the evening
+    "jitterMinutes": 45,            // each group's fixed extra delay after the start of a window, up to this
+    "leisureStayMinutes": 60,       // least time spent at the leisure place before going home
+    "windows": {
+      "workOut":     { "from": 7.0,  "to": 9.0 },
+      "workBack":    { "from": 16.0, "to": 18.0 },
+      "leisureOut":  { "from": 18.0, "to": 21.0 },
+      "leisureBack": { "from": 21.0, "to": 22.5 }
+    },
+    "moneyWeight": 1.5,             // seconds one currency unit counts for in the generalised cost
+    "carCostPerKm": 30.0,
+    "carOverheadSeconds": 60.0,     // finding the car and parking it
+    "carAccessRadius": 150.0,       // a building is reached by car from a road node this close
+    "transitWaitSeconds": 240.0,    // average wait for a line with one vehicle; shared out over the line's vehicles
+    "transitRideFactor": 1.3,       // a bus takes this much longer than a car over the same road (stops, turns)
+    "transitGiveUpSeconds": 900.0,  // people who have waited this long at a station give up
+    "maxCars": 300,                 // trip cars on the road at once; the rest of the trips wait for room
+    "carDepartGapSeconds": 2.0,     // between two cars of the same group
+    "carSpawnClearance": 3.0,       // free road needed around a new car, beyond its own length
+    "carSpawnAttempts": 8,          // places tried per step to put a waiting car on the road
+    "carArriveRange": 30.0,         // a car is at its destination when this close to the end of the lane into the node (it is parked out of the way of the queue)
+    "carTimeoutSeconds": 400.0      // a car still on the road after this long is taken off and its people count as arrived (a jam clears itself, slowly)
   },
 
   // Industries: the producers and processors of the cargo chains (M3b), placed by the generator on level dry land away from

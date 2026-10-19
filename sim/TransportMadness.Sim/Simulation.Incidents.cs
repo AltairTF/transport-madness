@@ -176,6 +176,7 @@ public sealed partial class Simulation
 
     void RemoveVehicle(int vehicle)
     {
+        ReleaseTripSlot(vehicle);
         if (_blockLane[vehicle] >= 0) _blockedCount[_blockLane[vehicle]]--;
         _blockLane[vehicle] = -1;
         for (int i = 0; i < _count; i++)

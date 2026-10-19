@@ -20,6 +20,16 @@ public sealed class Station
     public bool Active { get; internal set; } = true;
     /// <summary>Cargo waiting to be picked up, by cargo type (index into <see cref="Tuning.Cargo"/>). Fractions build up between whole units.</summary>
     public float[] Waiting { get; }
+    // Passengers waiting for a ride to another station (a map with towns); their total is mirrored in Waiting[passengers].
+    internal List<PaxLot> Queue { get; } = new();
+
+    /// <summary>People waiting here, by the station they are going to.</summary>
+    public IReadOnlyDictionary<int, int> WaitingFor()
+    {
+        var by = new SortedDictionary<int, int>();
+        foreach (var lot in Queue) by[lot.Dest] = by.GetValueOrDefault(lot.Dest) + lot.Count;
+        return by;
+    }
 }
 
 /// <summary>A recurring route: the company's vehicles on it visit the stations in order, and start over after the last.</summary>

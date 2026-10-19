@@ -12,7 +12,7 @@ A settlement made of buildings along a grid of streets that generate and consume
 _Avoid_: City
 
 **Building**:
-A home, a commerce building or a light industry building on a lot beside a street of a Town. Has a size tier that sets how many people live or work in it and what it needs. Gets a Trip group from its people. Grows by upgrading its tier, using the Construction stock it has been delivered. Becomes inactive when it loses all road access, is marked Abandoned after 3 months and demolished a month later.
+A home, a commerce building or a light industry building on a lot beside a street of a Town. Has a size tier that sets how many people live or work in it and what it needs. Gets Trip groups from its people. Grows by upgrading its tier, using the Construction stock it has been delivered; at the top tier it founds a new Building on a free Lot instead. Becomes inactive when it loses all road access, is marked Abandoned after 3 months and demolished a month later.
 _Avoid_: House (a Building is not always a home)
 
 **Industry**:
@@ -22,19 +22,25 @@ A producer or processor of cargo that sits in a chain. Primary industries (fores
 Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 
 **Satisfaction**:
-A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold the Town stops growing. Has no effect on money before M5.
+A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold (50) the Town stops growing. Has no effect on money before M5.
 
 **Sustain stock / Construction stock**:
 What a Building holds of delivered Cargo. Sustain (food, goods, planks) is used up every month to meet its needs. Construction (building materials, planks) is spent to upgrade the Building or to found a new one next to it. Deliveries go to the Buildings within the coverage radius of the unloading Station, split by need.
 
 **Connectivity**:
-The share of a Town's Buildings that were reached in a month: their Trip groups finished the work and leisure trips within a time budget, by any mode.
+The share of a Town's homes that were reached in a month: a Trip group living there made a trip to work or leisure within a time budget, by any mode. Below a threshold the Town does not grow.
+
+**Lot**:
+A place beside a street of a Town where a Building can stand. A Town has the lots of its blocks and gets more when it builds a new block of streets.
+
+**Growth**:
+Once a month a Town whose Satisfaction and Connectivity are high enough lets each Building spend a full Construction stock: it goes up a size, or if it is already the biggest founds a new Building on the nearest free Lot, or on a new block of streets when no Lot is free. A Town never shrinks except by abandonment.
 
 **Passenger**:
-A person moving between a home and a place of work or leisure.
+A person moving between a home and a place of work or leisure, here one who has chosen the company's Lines. Waits at a Station in a queue for a destination Station; a bus takes only those whose destination is on its Line and they leave it there.
 
 **Station**:
-A place on the road network where vehicles load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. On a map with towns it collects passengers and goods from the Buildings in its radius (a stopgap until trip groups); on a map without, it produces them at a fixed rate.
+A place on the road network where vehicles load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. On a map with towns, Passengers queue at it for the Station they are going to and Cargo comes from the Industries it covers; on a map without, it produces them at a fixed rate.
 
 **Line**:
 A recurring route that a group of vehicles runs between stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own.
@@ -49,10 +55,13 @@ A period of game time that decides which vehicles and road types are available. 
 Anything that goes wrong on the network: an accident, a breakdown, a blockage. Includes incidents involving ambient traffic.
 
 **Ambient traffic**:
-Vehicles not owned by the Company (private cars, etc.) that share the roads and affect congestion and Incidents.
+Vehicles not owned by the Company (private cars, etc.) that share the roads and affect congestion and Incidents. In towns most of it is Trip cars: a car stands for two people of a Trip group, drives from the road node by its home to the node by its destination, and is taken off the road near it.
 
 **Trip group**:
-A bundle of Passengers travelling together from a home to a work or leisure place. Chooses how to travel (on foot, ambient car, public transport) by time and cost. Has no individual identity.
+A bundle of at most ten people of one Building who travel together from home to a workplace and a leisure place and back, four trips a day at times drawn once from the seed inside the windows of the tuning file. Chooses how to travel by time and money: on foot when the place is close, otherwise by ambient car (if the group has one) or by the Company's Lines. Has no individual identity.
+
+**Mode**:
+How a Trip group goes: on foot, by car or by public transport. Cached per pair of Buildings and chosen again when the roads or the Lines change. A trip that no mode can make is not made (the group stays); the way home is always made, on foot if need be.
 
 **Pedestrian**:
 A purely visual figure shown on streets and platforms to make the flow of Trip groups visible. Carries no simulation of its own.
@@ -120,7 +129,7 @@ The line a vehicle follows from one lane through a junction to the next. Vehicle
 ## Relationships
 
 - A **Town** is served by **Stations**; a **Station** belongs to one or more **Lines**.
-- A **Town** needs **Cargo** deliveries to grow, and its **Passengers** need to reach work and leisure.
+- A **Town** needs **Cargo** deliveries to grow, and its **Trip groups** need to reach work and leisure.
 - A **Contract** names an **Industry** or **Town** as source and destination.
 - A **Line** is run by **Company vehicles**, bought at a **Depot**; they earn **Pay** and cost upkeep every **Day**.
 - An **Era** gates which vehicles and road types the **Company** may buy.

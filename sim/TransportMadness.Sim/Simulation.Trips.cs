@@ -1,0 +1,572 @@
+namespace TransportMadness.Sim;
+
+/// <summary>
+/// Trip groups: the people of each home travel to work and to a leisure place and back on a daily schedule, on foot, by
+/// ambient car or by the company's lines. A group is created with its home, workplace and leisure place, a car or none, and
+/// the times of its trips inside the windows of the tuning file, all drawn once from the seed.
+/// </summary>
+public sealed partial class Simulation
+{
+    const ulong TripSeedMix = 0x7121F5A93C4B8E6DUL; // the trips draw from their own stream, so maps without towns run as before
+    const int GiveUpCheckTicks = 100;
+
+    readonly TripsTuning _trips;
+    readonly SimRandom _tripRng;
+    readonly List<TripGroup> _groups = new();
+    readonly Dictionary<int, int> _jobsTaken = new(); // workplace building -> people assigned to it
+    readonly PriorityQueue<TripEvent, (long Tick, long Order)> _tripEvents = new();
+    long _eventOrder;
+    readonly List<int> _carQueue = new(); // groups with people still to put on the road, oldest first
+    int _tripVehicles;
+    int _transitVersion; // changes when lines, their vehicles or what stations cover change: the mode choices are made again
+    readonly Dictionary<long, ModeChoice> _choices = new();
+    List<int[]> _buildingStations = new(); // by building id: the active stations that cover it
+
+    // Per vehicle slot: the trip group a car belongs to (-1 for other traffic), the node it is bound for, how many people it
+    // stands for and when it is given up on.
+    int[] _tripGroup = FilledWith(64, -1);
+    int[] _tripDest = FilledWith(64, -1);
+    int[] _tripPeople = new int[64];
+    long[] _tripDeadline = new long[64];
+
+    enum TripEventKind : byte { Arrive, JoinQueue }
+
+    /// <summary>Something that happens to a group at a given tick: people reach the other end, or reach their station and join its queue.</summary>
+    readonly record struct TripEvent(TripEventKind Kind, int Group, int People, int StationA, int StationB);
+
+    /// <summary>How a pair of buildings is travelled between, cached until the roads or the lines change.</summary>
+    readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version);
+
+    public IReadOnlyList<TripGroup> TripGroups => _groups;
+    public TripsTuning TripTuning => _trips;
+    /// <summary>Ambient cars on the road that carry a trip group.</summary>
+    public int TripVehicleCount => _tripVehicles;
+
+    void GrowTripArrays(int n)
+    {
+        int old = _tripGroup.Length;
+        Array.Resize(ref _tripGroup, n);
+        Array.Resize(ref _tripDest, n);
+        Array.Resize(ref _tripPeople, n);
+        Array.Resize(ref _tripDeadline, n);
+        for (int i = old; i < n; i++) { _tripGroup[i] = -1; _tripDest[i] = -1; }
+    }
+
+    void ResetTripSlot(int id)
+    {
+        _tripGroup[id] = -1;
+        _tripDest[id] = -1;
+        _tripPeople[id] = 0;
+        _tripDeadline[id] = 0;
+    }
+
+    // ---- Making the groups ---------------------------------------------------------------------------------------
+
+    /// <summary>Makes the trip groups of the homes that exist; called once by <see cref="AddTowns"/>.</summary>
+    void CreateTripGroups()
+    {
+        foreach (var b in _buildings)
+            if (b.Type == BuildingType.Home) CreateTripGroups(b, _townTuning.Of(b.Type, b.Tier).People, 0);
+    }
+
+    /// <summary>
+    /// <paramref name="people"/> more people living in a home split into groups of at most <c>groupSize</c>, each with a
+    /// workplace and a leisure place, whose first trip is on <paramref name="firstDay"/> or later.
+    /// </summary>
+    void CreateTripGroups(Building home, int people, long firstDay)
+    {
+        if (people <= 0) return;
+        int count = (people + _trips.GroupSize - 1) / _trips.GroupSize;
+        for (int k = 0; k < count; k++)
+        {
+            int size = people / count + (k < people % count ? 1 : 0);
+            var g = new TripGroup(_groups.Count, home.Id, size, _tripRng.NextUInt64(), _tripRng.NextFloat() < _trips.CarShare);
+            _groups.Add(g);
+            g.Work = PickPlace(home, work: true, size);
+            g.Leisure = PickPlace(home, work: false, size);
+            g.PlanDay = firstDay;
+            Advance(g, -1, 0);
+        }
+    }
+
+    float Nearness(float distance)
+    {
+        float r = distance / _trips.Nearness;
+        return 1f / (1f + r * r);
+    }
+
+    /// <summary>
+    /// A workplace (a building with jobs, weighted by the jobs not yet taken and by nearness) or a leisure place (a commerce
+    /// building, weighted by size and nearness) within reach of a home; -1 when there is none.
+    /// </summary>
+    int PickPlace(Building home, bool work, int people)
+    {
+        var near = BuildingsNear(home.X, home.Z, _trips.WorkRadius);
+        var weight = new double[near.Count];
+        double total = 0, crowded = 0;
+        var crowdedWeight = new double[near.Count];
+        for (int k = 0; k < near.Count; k++)
+        {
+            var b = _buildings[near[k]];
+            if (b.State != BuildingState.Active) continue;
+            var tier = _townTuning.Of(b.Type, b.Tier);
+            float nearness = Nearness(MathF.Sqrt((b.X - home.X) * (b.X - home.X) + (b.Z - home.Z) * (b.Z - home.Z)));
+            if (work)
+            {
+                if (tier.Jobs <= 0) continue;
+                weight[k] = Math.Max(0, tier.Jobs - _jobsTaken.GetValueOrDefault(b.Id)) * nearness;
+                crowdedWeight[k] = tier.Jobs * nearness;
+            }
+            else
+            {
+                if (b.Type != BuildingType.Commerce) continue;
+                weight[k] = tier.Jobs * nearness;
+            }
+            total += weight[k];
+            crowded += crowdedWeight[k];
+        }
+        // Every job taken: the people crowd into the workplaces anyway rather than stay without one.
+        if (work && total <= 0) { weight = crowdedWeight; total = crowded; }
+        if (total <= 0) return -1;
+
+        double r = _tripRng.NextFloat() * total;
+        int pick = -1;
+        for (int k = 0; k < near.Count; k++)
+        {
+            if (weight[k] <= 0) continue;
+            pick = near[k];
+            r -= weight[k];
+            if (r < 0) break;
+        }
+        if (work && pick >= 0) _jobsTaken[pick] = _jobsTaken.GetValueOrDefault(pick) + people;
+        return pick;
+    }
+
+    bool IsStanding(int building) => building >= 0 && _buildings[building].State == BuildingState.Active;
+
+    // ---- The schedule -------------------------------------------------------------------------------------------
+
+    /// <summary>Uniform in [0, 1), a pure function of a group's seed, a number (the day, say) and a salt.</summary>
+    static float Unit(ulong seed, long a, int salt)
+    {
+        ulong z = seed + (ulong)a * 0x9E3779B97F4A7C15UL + (ulong)(salt + 1) * 0xD1B54A32D192ED03UL;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+        z ^= z >> 31;
+        return (z >> 40) * (1f / (1UL << 24));
+    }
+
+    bool LeisureToday(TripGroup g, long day) => Unit(g.Seed, day, 31) < _trips.LeisureChance;
+
+    /// <summary>Ticks after midnight at which a group starts a trip: its own place inside the window plus its jitter.</summary>
+    long LegOffsetTicks(TripGroup g, int leg)
+    {
+        var w = _trips.Windows.Of(leg);
+        float hour = w.From + (w.To - w.From) * Unit(g.Seed, 0, leg) + _trips.JitterMinutes / 60f * Unit(g.Seed, 0, 8 + leg);
+        return (long)MathF.Round(hour / 24f * _ticksPerDay);
+    }
+
+    /// <summary>Ticks after midnight at which the window of a trip ends, jitter included.</summary>
+    long LegWindowEndTicks(TripGroup g, int leg)
+    {
+        float hour = _trips.Windows.Of(leg).To + _trips.JitterMinutes / 60f;
+        return (long)MathF.Round(hour / 24f * _ticksPerDay);
+    }
+
+    /// <summary>
+    /// Plans the trip after <paramref name="doneLeg"/> (-1 for the first of the day): skips the work trips of a group with no
+    /// workplace and the leisure trips of a day it stays in, and never earlier than <paramref name="ready"/>.
+    /// </summary>
+    void Advance(TripGroup g, int doneLeg, long ready)
+    {
+        int leg = doneLeg + 1;
+        long day = g.PlanDay;
+        if (doneLeg == (int)TripLeg.LeisureOut) ready += Ticks(_trips.LeisureStayMinutes / 1440f * _economy.DayLength);
+        for (int guard = 0; guard < 64; guard++)
+        {
+            if (leg > 3) { leg = 0; day++; }
+            if (leg <= 1 && g.Work < 0) { leg = 2; continue; }
+            if (leg >= 2 && (g.Leisure < 0 || !LeisureToday(g, day))) { leg = 4; continue; }
+            // An evening that has slipped past its window (a slow day on the roads) is not made up for: the group stays in.
+            if (leg == (int)TripLeg.LeisureOut && ready > day * _ticksPerDay + LegWindowEndTicks(g, leg)) { leg = 4; continue; }
+            g.NextLeg = (TripLeg)leg;
+            g.PlanDay = day;
+            g.NextTick = Math.Max(ready, day * _ticksPerDay + LegOffsetTicks(g, leg));
+            return;
+        }
+        g.NextTick = long.MaxValue; // nowhere to go: the daily check looks again
+    }
+
+    // ---- Leaving, arriving ---------------------------------------------------------------------------------------
+
+    static bool IsOutbound(TripLeg leg) => leg == TripLeg.WorkOut || leg == TripLeg.LeisureOut;
+
+    void UpdateTrips()
+    {
+        if (_groups.Count == 0) return;
+        foreach (var g in _groups)
+            if (!g.Travelling && Tick >= g.NextTick) Depart(g);
+        while (_tripEvents.TryPeek(out var e, out var at) && at.Tick <= Tick)
+        {
+            _tripEvents.Dequeue();
+            Handle(e);
+        }
+        DispatchCars();
+        if (_tripVehicles > 0) CheckTripCars();
+        if (Tick % GiveUpCheckTicks == 0) GiveUpWaiting();
+    }
+
+    void Schedule(long tick, TripEvent e) => _tripEvents.Enqueue(e, (tick, _eventOrder++));
+
+    void Handle(TripEvent e)
+    {
+        var g = _groups[e.Group];
+        if (e.Kind == TripEventKind.Arrive) { Arrive(g, e.People); return; }
+        var station = _stations[e.StationA];
+        if (!station.Active || !_stations[e.StationB].Active)
+        {
+            GiveUp(g, e.People, e.StationA);
+            return;
+        }
+        station.Queue.Add(new PaxLot(g.Id, e.People, e.StationA, e.StationB, Tick));
+        RefreshWaiting(station);
+    }
+
+    long WalkTicks(float distance) => Math.Max(1, Ticks(distance * _trips.WalkDetour / _trips.WalkSpeed));
+
+    float Distance(Building a, Building b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z));
+
+    /// <summary>The group starts its next trip, or finds it cannot make it (a place is gone, nothing links the two).</summary>
+    void Depart(TripGroup g)
+    {
+        var leg = g.NextLeg;
+        bool outbound = IsOutbound(leg);
+        int from = leg switch { TripLeg.WorkBack => g.Work, TripLeg.LeisureBack => g.Leisure, _ => g.Home };
+        int to = leg switch { TripLeg.WorkOut => g.Work, TripLeg.LeisureOut => g.Leisure, _ => g.Home };
+        var town = _towns[_buildings[g.Home].Town];
+        if (from < 0 || to < 0) { Skip(g); return; }
+
+        if (outbound && !(IsStanding(from) && IsStanding(to))) { Skip(g); return; } // a place with no road: nobody goes
+
+        var choice = ChooseMode(from, to, g.HasCar);
+        if (choice.Mode == TripMode.None && !outbound)
+            choice = new ModeChoice(TripMode.Walk, 0f, -1, -1, -1, -1, 0f, 0); // people always get home, however far and slowly
+        town.TripsToday[(int)choice.Mode] += g.People;
+        if (choice.Mode == TripMode.None) { Skip(g); return; }
+
+        g.Travelling = true;
+        g.NextTick = long.MaxValue;
+        g.Mode = choice.Mode;
+        g.DepartTick = Tick;
+        g.Origin = from;
+        g.Destination = to;
+        g.Pending = g.People;
+        g.Arrived = 0;
+        switch (choice.Mode)
+        {
+            case TripMode.Walk:
+                Schedule(Tick + WalkTicks(Distance(_buildings[from], _buildings[to])), new TripEvent(TripEventKind.Arrive, g.Id, g.People, -1, -1));
+                break;
+            case TripMode.Car:
+                g.OriginNode = choice.OriginNode;
+                g.DestNode = choice.DestNode;
+                g.ToDispatch = g.People;
+                g.NextSpawnTick = Tick;
+                _carQueue.Add(g.Id);
+                break;
+            default:
+                Schedule(Tick + Math.Max(1, Ticks(choice.WalkToStation)), new TripEvent(TripEventKind.JoinQueue, g.Id, g.People, choice.StationA, choice.StationB));
+                break;
+        }
+    }
+
+    /// <summary>The group stays where it is for this trip and its return; the next one is planned.</summary>
+    void Skip(TripGroup g)
+    {
+        int leg = (int)g.NextLeg;
+        Advance(g, IsOutbound(g.NextLeg) ? leg + 1 : leg, Tick);
+    }
+
+    void Arrive(TripGroup g, int people)
+    {
+        if (!g.Travelling) return;
+        g.Pending -= people;
+        g.Arrived += people;
+        if (g.Pending <= 0) Complete(g);
+    }
+
+    /// <summary>People who gave up a trip they had not made (a ride that never came): they are where they started.</summary>
+    void Drop(TripGroup g, int people)
+    {
+        if (!g.Travelling) return;
+        g.Pending -= people;
+        if (g.Pending <= 0) Complete(g);
+    }
+
+    void Complete(TripGroup g)
+    {
+        g.Travelling = false;
+        int leg = (int)g.NextLeg;
+        if (g.Arrived == 0 && IsOutbound(g.NextLeg))
+        {
+            Advance(g, leg + 1, Tick); // nobody got there: the group is still at home
+            return;
+        }
+        g.LastTripSeconds = (Tick - g.DepartTick) * StepSeconds;
+        g.LastMode = g.Mode;
+        if (IsOutbound(g.NextLeg) && g.LastTripSeconds <= _growth.TimeBudgetSeconds) g.ReachedMonth = MonthIndex;
+        Advance(g, leg, Tick);
+    }
+
+    /// <summary>People at a station (or on the road) who will not make the trip they set out on. On the way out they stay; on the way home they walk.</summary>
+    void GiveUp(TripGroup g, int people, int station)
+    {
+        if (IsOutbound(g.NextLeg)) { Drop(g, people); return; }
+        var (x, z) = _net.GetNode(_stations[station].Node);
+        var home = _buildings[g.Destination];
+        float d = MathF.Sqrt((home.X - x) * (home.X - x) + (home.Z - z) * (home.Z - z));
+        Schedule(Tick + WalkTicks(d), new TripEvent(TripEventKind.Arrive, g.Id, people, -1, -1));
+    }
+
+    /// <summary>Daily upkeep of the groups: yesterday's trip counts, new places for groups whose workplace is gone, and a new look for groups with nothing to do.</summary>
+    void CloseDayForTrips()
+    {
+        if (_groups.Count == 0) return;
+        foreach (var town in _towns)
+        {
+            Array.Copy(town.TripsToday, town.TripsYesterday, town.TripsToday.Length);
+            Array.Clear(town.TripsToday);
+        }
+        foreach (var g in _groups)
+        {
+            if (g.Travelling || (g.NextLeg != TripLeg.WorkOut && g.NextLeg != TripLeg.LeisureOut)) continue;
+            var home = _buildings[g.Home];
+            if (home.State != BuildingState.Active) continue;
+            if (!IsStanding(g.Work))
+            {
+                if (g.Work >= 0) _jobsTaken[g.Work] = Math.Max(0, _jobsTaken.GetValueOrDefault(g.Work) - g.People);
+                g.Work = PickPlace(home, work: true, g.People);
+            }
+            if (!IsStanding(g.Leisure)) g.Leisure = PickPlace(home, work: false, g.People);
+            if (g.NextTick == long.MaxValue)
+            {
+                g.PlanDay = Day + 1;
+                Advance(g, -1, Tick);
+            }
+        }
+    }
+
+    // ---- Choosing how to travel -------------------------------------------------------------------------------
+
+    /// <summary>How people living at <paramref name="from"/> would go to <paramref name="to"/> now: the mode and the seconds it takes.</summary>
+    public (TripMode Mode, float Seconds) ModeFor(int from, int to, bool hasCar)
+    {
+        var c = ChooseMode(from, to, hasCar);
+        return (c.Mode, c.Seconds);
+    }
+
+    ModeChoice ChooseMode(int from, int to, bool hasCar)
+    {
+        SyncNetwork();
+        if (_coverageDirty || _buildingStations.Count != _buildings.Count) RefreshCoverage();
+        long key = ((long)from << 33) | ((long)to << 1) | (hasCar ? 1L : 0L);
+        long version = ((long)_syncedNetworkVersion << 24) + _transitVersion;
+        if (_choices.TryGetValue(key, out var cached) && cached.Version == version) return cached;
+        var choice = ComputeMode(_buildings[from], _buildings[to], hasCar) with { Version = version };
+        _choices[key] = choice;
+        return choice;
+    }
+
+    ModeChoice ComputeMode(Building a, Building b, bool hasCar)
+    {
+        float d = Distance(a, b);
+        if (d <= _trips.WalkRadius)
+            return new ModeChoice(TripMode.Walk, WalkTicks(d) * StepSeconds, -1, -1, -1, -1, 0f, 0);
+
+        // Two buildings that are reached from the same corner are next door whatever the straight line says.
+        int nodeA = AccessNodeOf(a);
+        if (nodeA >= 0 && nodeA == AccessNodeOf(b))
+            return new ModeChoice(TripMode.Walk, WalkTicks(d) * StepSeconds, -1, -1, -1, -1, 0f, 0);
+
+        var best = new ModeChoice(TripMode.None, 0f, -1, -1, -1, -1, 0f, 0);
+        float bestCost = float.PositiveInfinity;
+        if (hasCar && CarSeconds(a, b, out int on, out int dn, out float rideSeconds))
+        {
+            float seconds = rideSeconds + _trips.CarOverheadSeconds;
+            bestCost = seconds + _trips.MoneyWeight * _trips.CarCostPerKm * d / 1000f;
+            best = new ModeChoice(TripMode.Car, seconds, on, dn, -1, -1, 0f, 0);
+        }
+        if (TransitSeconds(a, b, out int sa, out int sb, out float total, out float walk))
+        {
+            float fare = _passengerCargo >= 0 ? _cargo[_passengerCargo].PayPerUnitKm * d / 1000f : 0f;
+            float cost = total + _trips.MoneyWeight * fare;
+            if (cost < bestCost) best = new ModeChoice(TripMode.Transit, total, -1, -1, sa, sb, walk, 0);
+        }
+        return best;
+    }
+
+    int AccessNodeOf(Building b)
+    {
+        if (b.AccessVersion != _syncedNetworkVersion)
+        {
+            b.AccessNode = _net.FindNodeNear(b.X, b.Z, _trips.CarAccessRadius, withRoadsOnly: true);
+            b.AccessVersion = _syncedNetworkVersion;
+        }
+        return b.AccessNode;
+    }
+
+    /// <summary>The lanes that lead out of a node on the right-hand side of each road (where a new car is put).</summary>
+    IEnumerable<int> LanesLeaving(int node)
+    {
+        foreach (var roadId in _net.RoadsAt(node))
+        {
+            var road = _net.GetRoad(roadId);
+            yield return (road.From == node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+        }
+    }
+
+    /// <summary>The time a car takes from the access node of one building to that of the other, false when there is no way.</summary>
+    bool CarSeconds(Building a, Building b, out int originNode, out int destNode, out float seconds)
+    {
+        seconds = 0f;
+        originNode = AccessNodeOf(a);
+        destNode = AccessNodeOf(b);
+        if (originNode < 0 || destNode < 0 || originNode == destNode) return false;
+        var field = FieldToNode(destNode);
+        float best = float.PositiveInfinity;
+        foreach (int lane in LanesLeaving(originNode)) best = MathF.Min(best, field[lane]);
+        seconds = best;
+        return !float.IsPositiveInfinity(best);
+    }
+
+    // ---- Cars --------------------------------------------------------------------------------------------------
+
+    /// <summary>Puts the cars of groups that have set out on the road when there is room, at most a few tries per step.</summary>
+    void DispatchCars()
+    {
+        if (_carQueue.Count == 0) return;
+        long timeout = Ticks(_trips.CarTimeoutSeconds);
+        int attempts = _trips.CarSpawnAttempts;
+        int q = 0;
+        while (q < _carQueue.Count)
+        {
+            var g = _groups[_carQueue[q]];
+            if (g.ToDispatch <= 0) { _carQueue.RemoveAt(q); continue; }
+            if (Tick - g.DepartTick > timeout)
+            {
+                // Never found room or a way: they count as having got there.
+                int stuck = g.ToDispatch;
+                g.ToDispatch = 0;
+                _carQueue.RemoveAt(q);
+                Arrive(g, stuck);
+                continue;
+            }
+            if (Tick < g.NextSpawnTick || _tripVehicles >= _trips.MaxCars) { q++; continue; }
+            if (attempts-- <= 0) return;
+            if (!TrySpawnTripCar(g)) { _carQueue.RemoveAt(q); _carQueue.Add(g.Id); if (attempts <= 0) return; continue; }
+            if (g.ToDispatch <= 0) _carQueue.RemoveAt(q); else q++;
+        }
+    }
+
+    bool TrySpawnTripCar(TripGroup g)
+    {
+        int node = g.OriginNode;
+        if (TrafficNear(node)) return false;
+        var field = FieldToNode(g.DestNode);
+        int bestLane = -1;
+        float bestCost = float.PositiveInfinity;
+        foreach (int lane in LanesLeaving(node))
+        {
+            float position = _laneReach[lane] + VehicleLength + SpawnGap;
+            if (position > _laneLength[lane] || !IsClear(new LaneId(lane), position, VehicleLength + _trips.CarSpawnClearance)) continue;
+            if (field[lane] < bestCost) { bestCost = field[lane]; bestLane = lane; }
+        }
+        if (bestLane < 0) return false;
+
+        int id = SpawnVehicle(new LaneId(bestLane), _laneReach[bestLane] + VehicleLength + SpawnGap, 0f);
+        int people = Math.Min(_trips.PeoplePerCar, g.ToDispatch);
+        _tripGroup[id] = g.Id;
+        _tripDest[id] = g.DestNode;
+        _tripPeople[id] = people;
+        _tripDeadline[id] = Tick + Ticks(_trips.CarTimeoutSeconds);
+        _factor[id] = _traffic.DriverSpeedFactorMin + _traffic.DriverSpeedFactorRange * _tripRng.NextFloat();
+        _patience[id] = _tripRng.NextFloat();
+        _aggression[id] = _tripRng.NextFloat();
+        _attention[id] = _tripRng.NextFloat();
+        _nextLane[id] = RouteTripLane(id, bestLane);
+        _tripVehicles++;
+        g.ToDispatch -= people;
+        g.NextSpawnTick = Tick + Ticks(_trips.CarDepartGapSeconds);
+        return true;
+    }
+
+    /// <summary>Takes off the road the trip cars that have reached the node they were bound for (or have been out too long).</summary>
+    void CheckTripCars()
+    {
+        bool removed = false;
+        for (int i = 0; i < _count; i++)
+        {
+            if (_tripGroup[i] < 0 || _kind[i] != VehicleKind.Car || _lane[i] < 0) continue;
+            int lane = _lane[i];
+            bool there = _laneEndNode[lane] == _tripDest[i] && _laneLength[lane] - _pos[i] <= _trips.CarArriveRange;
+            if (!there && Tick < _tripDeadline[i]) continue;
+            RemoveVehicle(i);
+            removed = true;
+        }
+        if (removed) RebuildOrder();
+    }
+
+    /// <summary>A vehicle is going: the people of a trip car arrive (it was either there or lost), those on a bus are let out.</summary>
+    void ReleaseTripSlot(int vehicle)
+    {
+        if (_line[vehicle] >= 0) _transitVersion++;
+        ReleaseRiders(vehicle);
+        int group = _tripGroup[vehicle];
+        if (group < 0) return;
+        int people = _tripPeople[vehicle];
+        _tripGroup[vehicle] = -1;
+        _tripDest[vehicle] = -1;
+        _tripVehicles--;
+        Arrive(_groups[group], people);
+    }
+
+    ulong TripHash()
+    {
+        ulong h = (ulong)_groups.Count;
+        foreach (var g in _groups)
+        {
+            h = h * 31 + (ulong)g.NextTick;
+            h = h * 31 + (ulong)g.NextLeg;
+            h = h * 31 + (ulong)g.PlanDay;
+            h = h * 31 + (g.Travelling ? 1UL : 0UL);
+            h = h * 31 + (ulong)g.Mode;
+            h = h * 31 + (ulong)g.Pending;
+            h = h * 31 + (ulong)g.Arrived;
+            h = h * 31 + (ulong)g.ToDispatch;
+            h = h * 31 + (ulong)(g.Work + 1);
+            h = h * 31 + (ulong)(g.Leisure + 1);
+        }
+        foreach (var station in _stations)
+            foreach (var lot in station.Queue)
+            {
+                h = h * 31 + (ulong)lot.Group;
+                h = h * 31 + (ulong)lot.Count;
+                h = h * 31 + (ulong)lot.Dest;
+                h = h * 31 + (ulong)lot.Since;
+            }
+        for (int i = 0; i < _riders.Length; i++)
+            if (_riders[i] is { } riders)
+                foreach (var lot in riders)
+                {
+                    h = h * 31 + (ulong)i;
+                    h = h * 31 + (ulong)lot.Group;
+                    h = h * 31 + (ulong)lot.Count;
+                    h = h * 31 + (ulong)lot.Dest;
+                }
+        h = h * 31 + (ulong)_tripVehicles;
+        h = h * 31 + (ulong)_tripEvents.Count;
+        h = h * 31 + (ulong)_eventOrder;
+        var (a, b, c, d) = _tripRng.State;
+        return h ^ a ^ (b << 1) ^ (c << 2) ^ (d << 3);
+    }
+}

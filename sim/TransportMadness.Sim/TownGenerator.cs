@@ -109,7 +109,7 @@ public static class TownGenerator
     }
 
     /// <summary>Turns a position in a town's own axes (u along its first street direction, v across) into the map's.</summary>
-    static (float X, float Z) ToWorld(float cx, float cz, float angle, float u, float v)
+    public static (float X, float Z) ToWorld(float cx, float cz, float angle, float u, float v)
     {
         float c = MathF.Cos(angle), s = MathF.Sin(angle);
         return (cx + u * c - v * s, cz + u * s + v * c);
@@ -136,31 +136,31 @@ public static class TownGenerator
                 }
     }
 
-    static List<BuildingPlan> PlanBuildings(RoadNetwork net, RoadIndex index, SimRandom rng, float cx, float cz, float angle, int blocks)
+    /// <summary>A place a building can stand: on one side of a block, facing its street. Where it is does not depend on what is built on it.</summary>
+    /// <param name="I">Block column (can be negative or past the first grid when a town has grown).</param>
+    /// <param name="J">Block row.</param>
+    /// <param name="U">Middle of the block in the town's own axes, for the ring it lies in.</param>
+    public readonly record struct LotSite(int I, int J, int Side, int Lot, float X, float Z, float Facing, float U, float V);
+
+    /// <summary>
+    /// The lots of the blocks <paramref name="i0"/>..<paramref name="i1"/> by <paramref name="j0"/>..<paramref name="j1"/> of a town
+    /// whose first grid had <paramref name="blocks"/> blocks a side, in a fixed order (block columns, rows, sides, lots). A building's
+    /// middle is as far from its street as the biggest size needs (and an avenue's width, in case the street is widened later), so
+    /// a building can grow in place.
+    /// </summary>
+    public static IEnumerable<LotSite> LotSites(TownsTuning tuning, float cx, float cz, float angle, int blocks, int i0, int i1, int j0, int j1)
     {
-        var tuning = net.Tuning.Towns;
         var g = tuning.Generation;
         float half = blocks * g.BlockLength * 0.5f;
         float avenueHalf = RoadNetwork.HalfWidth(RoadType.Avenue2x2);
-        var plans = new List<BuildingPlan>();
-        // Each block has lots on its four sides, facing the street. Along a side they stand a lot width apart, centred, so
-        // that the ones on neighbouring sides keep clear of each other at the corner. A building's middle is as far
-        // from its street as its own size needs (and an avenue's width, in case the street is widened later).
-        for (int i = 0; i < blocks; i++)
-            for (int j = 0; j < blocks; j++)
+        float setback = avenueHalf + g.SetbackGap + MaxFootprint(tuning);
+        for (int i = i0; i <= i1; i++)
+            for (int j = j0; j <= j1; j++)
                 for (int side = 0; side < 4; side++)
                     for (int lot = 0; lot < LotsPerSide; lot++)
                     {
                         float u0 = -half + i * g.BlockLength, v0 = -half + j * g.BlockLength;
                         float along = g.BlockLength * 0.5f + (lot - (LotsPerSide - 1) * 0.5f) * g.LotWidth;
-                        // Drawn in a fixed order for every lot, built on or not, so one lot's fate never shifts another's.
-                        float fillRoll = rng.NextFloat();
-                        float typeRoll = rng.NextFloat(), tierRoll = rng.NextFloat();
-                        var ring = RingAt(tuning, u0 + g.BlockLength * 0.5f, v0 + g.BlockLength * 0.5f, half);
-                        if (fillRoll >= ring.Fill) continue;
-                        var type = (BuildingType)Pick(ring.Mix, typeRoll);
-                        int tier = Pick(ring.Tiers, tierRoll);
-                        float setback = avenueHalf + g.SetbackGap + tuning.Of(type, tier).Footprint;
                         // Local axes: u along the first street direction, v across. Sides: bottom, top, left, right.
                         (float u, float v, float facing) = side switch
                         {
@@ -170,14 +170,41 @@ public static class TownGenerator
                             _ => (u0 + g.BlockLength - setback, v0 + along, 0f),
                         };
                         var (wx, wz) = ToWorld(cx, cz, angle, u, v);
-                        if (!index.HasRoadWithin(wx, wz, tuning.AccessRadius)) continue;
-                        if (net.Terrain is { } terrain && (MathF.Abs(wx) > terrain.HalfSize || MathF.Abs(wz) > terrain.HalfSize)) continue;
-                        plans.Add(new BuildingPlan(type, tier, wx, wz, facing + angle));
+                        yield return new LotSite(i, j, side, lot, wx, wz, facing + angle, u0 + g.BlockLength * 0.5f, v0 + g.BlockLength * 0.5f);
                     }
+    }
+
+    static float MaxFootprint(TownsTuning tuning)
+    {
+        float widest = 0f;
+        foreach (var type in Enum.GetValues<BuildingType>())
+            widest = MathF.Max(widest, tuning.Of(type, TownsTuning.Tiers - 1).Footprint);
+        return widest;
+    }
+
+    static List<BuildingPlan> PlanBuildings(RoadNetwork net, RoadIndex index, SimRandom rng, float cx, float cz, float angle, int blocks)
+    {
+        var tuning = net.Tuning.Towns;
+        float half = blocks * tuning.Generation.BlockLength * 0.5f;
+        var plans = new List<BuildingPlan>();
+        foreach (var site in LotSites(tuning, cx, cz, angle, blocks, 0, blocks - 1, 0, blocks - 1))
+        {
+            // Drawn in a fixed order for every lot, built on or not, so one lot's fate never shifts another's.
+            float fillRoll = rng.NextFloat();
+            float typeRoll = rng.NextFloat(), tierRoll = rng.NextFloat();
+            var ring = RingAt(tuning, site.U, site.V, half);
+            if (fillRoll >= ring.Fill) continue;
+            var type = (BuildingType)Pick(ring.Mix, typeRoll);
+            int tier = Pick(ring.Tiers, tierRoll);
+            if (!index.HasRoadWithin(site.X, site.Z, tuning.AccessRadius)) continue;
+            if (net.Terrain is { } terrain && (MathF.Abs(site.X) > terrain.HalfSize || MathF.Abs(site.Z) > terrain.HalfSize)) continue;
+            plans.Add(new BuildingPlan(type, tier, site.X, site.Z, site.Facing));
+        }
         return plans;
     }
 
-    static RingTuning RingAt(TownsTuning tuning, float u, float v, float half)
+    /// <summary>The ring a point of the town (in its own axes) lies in: how much is built and what, by distance from the middle of the first grid.</summary>
+    public static RingTuning RingAt(TownsTuning tuning, float u, float v, float half)
     {
         float d = MathF.Max(MathF.Abs(u), MathF.Abs(v)) / half;
         foreach (var ring in tuning.Rings)
@@ -185,7 +212,8 @@ public static class TownGenerator
         return tuning.Rings[^1];
     }
 
-    static int Pick(IReadOnlyList<float> weights, float unit)
+    /// <summary>The index picked by a roll in [0, 1) among weights.</summary>
+    public static int Pick(IReadOnlyList<float> weights, float unit)
     {
         float total = 0f;
         foreach (float w in weights) total += w;

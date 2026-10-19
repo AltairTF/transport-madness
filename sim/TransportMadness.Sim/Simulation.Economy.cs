@@ -85,5 +85,6 @@ public sealed partial class Simulation
         else Company.InsolventDays = 0;
         if (Company.InsolventDays >= _economy.BankruptcyDays) Company.Bankrupt = true;
         CloseDayForTowns();
+        CloseDayForTrips();
     }
 }

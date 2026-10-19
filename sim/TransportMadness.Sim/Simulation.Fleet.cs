@@ -49,6 +49,8 @@ public sealed partial class Simulation
         Array.Resize(ref _loadFrom, n);
         Array.Resize(ref _loadTick, n);
         Array.Resize(ref _income, n);
+        GrowTripArrays(n);
+        GrowTransitArrays(n);
     }
 
     static int[] FilledWith(int length, int value)
@@ -77,6 +79,7 @@ public sealed partial class Simulation
             if (s == stations[(k + 1) % stations.Length]) return -1;
         }
         _lines.Add(new Line(_lines.Count, (int[])stations.Clone()));
+        _transitVersion++;
         return _lines.Count - 1;
     }
 
@@ -85,6 +88,7 @@ public sealed partial class Simulation
     {
         if (line < 0 || line >= _lines.Count || !_lines[line].Active) return 0;
         _lines[line].Active = false;
+        _transitVersion++;
         for (int i = 0; i < _count; i++)
             if (_line[i] == line && _kind[i] == VehicleKind.Car) SellVehicle(i);
         return 1;
@@ -128,6 +132,7 @@ public sealed partial class Simulation
         _desired[id] = spec.MaxSpeed;
         _length[id] = spec.Length;
         _nextLane[id] = RouteNextLane(id, bestLane);
+        _transitVersion++;
         return id;
     }
 
@@ -207,6 +212,8 @@ public sealed partial class Simulation
         _loadTick[id] = 0;
         _income[id] = 0;
         _length[id] = VehicleLength;
+        ResetTripSlot(id);
+        _riders[id] = null;
     }
 
     /// <summary>Starts loading for company vehicles that have pulled up at their stop, and sends off those that have finished.</summary>
@@ -247,11 +254,15 @@ public sealed partial class Simulation
     {
         var station = TargetStation(i)!;
         var spec = _models[_model[i]];
-        int unloaded = 0;
-        if (_load[i] > 0 && Accepts(station, _loadCargo[i])) unloaded = Deliver(i, station);
+        int unloaded = 0, loaded = 0;
+        if (CarriesQueuedPassengers(i))
+        {
+            unloaded = UnloadRiders(i, station);
+            loaded = BoardRiders(i, station);
+        }
+        else if (_load[i] > 0 && Accepts(station, _loadCargo[i])) unloaded = Deliver(i, station);
 
-        int loaded = 0;
-        if (_load[i] == 0)
+        if (_load[i] == 0 && !CarriesQueuedPassengers(i))
         {
             int cargo = CargoToLoad(i, station);
             if (cargo >= 0)
@@ -300,27 +311,36 @@ public sealed partial class Simulation
     int Deliver(int i, Station station)
     {
         int cargo = _loadCargo[i];
-        var type = _cargo[cargo];
         int onBoard = _load[i];
         int taken = Settled && cargo != _passengerCargo ? Distribute(station, cargo, onBoard) : onBoard;
-        var (x0, z0) = _net.GetNode(_stations[_loadFrom[i]].Node);
-        var (x1, z1) = _net.GetNode(station.Node);
-        float km = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)) / 1000f;
-        float seconds = (Tick - _loadTick[i]) * StepSeconds;
-        float share = seconds <= type.FreeSeconds ? 1f
-            : seconds >= type.ZeroSeconds ? type.MinPayShare
-            : 1f - (1f - type.MinPayShare) * (seconds - type.FreeSeconds) / (type.ZeroSeconds - type.FreeSeconds);
-        long pay = (long)MathF.Round(taken * km * type.PayPerUnitKm * share);
-
-        Earn(pay, LedgerEntry.Income);
-        var line = _lines[_line[i]];
-        line.Income += pay;
-        line.Delivered += taken;
-        _income[i] += pay;
+        Pay(i, cargo, taken, _stations[_loadFrom[i]], station, _loadTick[i]);
         _load[i] = 0;
         _loadCargo[i] = -1;
         _loadFrom[i] = -1;
         return onBoard;
+    }
+
+    /// <summary>
+    /// Pays the company for units delivered by a vehicle: quantity times the straight-line distance between the stations
+    /// times the cargo's rate, less for a slow trip since <paramref name="since"/>.
+    /// </summary>
+    void Pay(int vehicle, int cargo, int units, Station from, Station to, long since)
+    {
+        var type = _cargo[cargo];
+        var (x0, z0) = _net.GetNode(from.Node);
+        var (x1, z1) = _net.GetNode(to.Node);
+        float km = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)) / 1000f;
+        float seconds = (Tick - since) * StepSeconds;
+        float share = seconds <= type.FreeSeconds ? 1f
+            : seconds >= type.ZeroSeconds ? type.MinPayShare
+            : 1f - (1f - type.MinPayShare) * (seconds - type.FreeSeconds) / (type.ZeroSeconds - type.FreeSeconds);
+        long pay = (long)MathF.Round(units * km * type.PayPerUnitKm * share);
+
+        Earn(pay, LedgerEntry.Income);
+        var line = _lines[_line[vehicle]];
+        line.Income += pay;
+        line.Delivered += units;
+        _income[vehicle] += pay;
     }
 
     /// <summary>Loading is done: head for the next open station on the line.</summary>

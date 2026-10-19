@@ -1,6 +1,6 @@
 # M3 plan: towns, industries, cargo chains, trip flows
 
-Status: designed (grilled and agreed 2026-10-19). M3a and M3b are built (see `project-status.md` sections 5.11 and 5.12); M3c and M3d are not started. Done when (game-plan.md): a town grows only when it is supplied and connected.
+Status: designed (grilled and agreed 2026-10-19). M3a to M3d are built (see `project-status.md` sections 5.11 to 5.14); M3 is done. Done when (game-plan.md): a town grows only when it is supplied and connected.
 
 M3 is built in four vertical slices; each leaves a playable, tested game. Numbers named here live in `data/tuning.json` (every key required), not in code. Vocabulary is in `/CONTEXT.md`.
 
@@ -33,26 +33,32 @@ M3 is built in four vertical slices; each leaves a playable, tested game. Number
 - Industry window replaces the placeholder (built, with a Stations window showing waiting cargo and acceptance). Trucks became one `freight` model that takes the cargo the next stop accepts, so no model per cargo is needed.
 - Tests: a chain runs end to end with a truck line at each hop; acceptance follows coverage; delivery splits by need; shortfall lowers satisfaction.
 
-### M3c: trip groups
-- A trip group is a number of people (fixed by the building's size tier, so population shows in the trips) with a home, a fixed workplace and a leisure destination.
+### M3c: trip groups (built)
+- A trip group is a number of people (fixed by the building's size tier, so population shows in the trips) with a home, a fixed workplace and a leisure destination. As built: a home's people are split into groups of at most `trips.groupSize` (10), so a big home has several groups with different workplaces, cars and times.
   - Workplace chosen at creation: weighted random by free jobs and nearness, seeded, so trips are stable and deterministic.
   - Leisure destination: weighted-random commerce building.
 - Daily schedule (windows in tuning, a day is 600 s): work out 07:00 to 09:00 and back 16:00 to 18:00; leisure 18:00 to 21:00, home by 23:00; each group jittered by a seeded amount up to 45 minutes. Almost no travel at night.
-- Mode choice: each group has a seeded car-available flag (share from tuning). Walk if the destination is inside the walk radius. Otherwise the lowest generalised cost (time plus a money weight) among the modes available to it. Public transport only counts if a line links a station near the origin to one near the destination. The choice is cached per building pair and redone when the network version changes.
+- Mode choice: each group has a seeded car-available flag (share from tuning). Walk if the destination is inside the walk radius (150 m; also when both buildings are reached from the same road node). Otherwise the lowest generalised cost (time plus a money weight) among the modes available to it. Public transport only counts if a line links a station near the origin to one near the destination. The choice is cached per building pair and redone when the network version changes.
   - Walking is a timer (straight-line distance over walk speed, no pathfinding); pedestrians are a visual derived later.
   - Car: one ambient vehicle stands for 2 people, spawned at the origin's access point and driving to the destination's. A cap on concurrent trip vehicles (inside the 1000-vehicle budget) makes extra trips wait.
   - Public transport: direct lines only (no transfers in M3). Passengers wait at the station in queues per destination station, and a bus loads only those whose destination is on its line. This replaces the single float per cargo for passengers; freight stays one count per cargo type per station.
 - Ambient traffic: trips replace the random walk inside towns. A small seeded baseline of through-traffic stays so roads outside towns are not dead.
 - Passenger supply by coverage (the M3a stopgap) is removed.
-- Performance gate: no entity per person; profile at a realistic town size before and after, and keep the 1000-vehicle step-time test.
+- Performance gate: no entity per person; profile at a realistic town size before and after, and keep the 1000-vehicle step-time test. Measured: five towns, about 3200 people, a mean step of 0.04 ms (Release), 0.15 ms at the 99th percentile, at most 275 vehicles on the road.
+- Differences from the design as written: a leisure trip whose window has already passed (a slow evening on the roads) is skipped for that day; a group that sets out by car puts its cars on the road one every `carDepartGapSeconds`; a car is taken off the road when it is within `carArriveRange` of the end of the lane into its destination node, or after `carTimeoutSeconds` (its people then count as arrived, so a jam clears itself); people always get home (a return that no mode can make is a slow walk); people waiting at a station give up after `transitGiveUpSeconds` (on the way out they stay, on the way home they walk). A group's walking pace is `walkSpeed` 2.5 m/s, not 1.4, because a day is 600 s.
 - Tests: determinism with trips running; schedule respects the windows; a connected town produces measurable ridership; removing a link moves trips to cars or walking; passengers unload only at their destination.
 
-### M3d: growth and the exit test
+### M3d: growth and the exit test (built)
 - Connectivity (town level): a building is reached in a month when its trip groups finished their work and leisure trips within a time budget by any mode; connectivity is the share of reached buildings.
 - Growth is local to where cargo is delivered. A building upgrades through size tiers from its own construction stock. A building at its top tier with construction stock to spare spawns a new building on a free lot beside it; when there is no free lot, the street grid extends by one block. More buildings and bigger buildings mean more people.
 - Gates: construction stock covers the step, town satisfaction is above its threshold, connectivity is above its threshold. The town stalls when a gate fails; it never declines in M3 (only the abandonment above removes buildings).
 - Growth is evaluated once a month.
 - Tests (the exit test): an unserved town keeps its size over N years; a served and connected town grows; the same town served but disconnected does not; growth appears around the station that delivers.
+- As built, where it differs from the text above:
+  - Connectivity is counted over the town's homes (a home is reached when one of its groups completed an outbound work or leisure trip within `growth.timeBudgetSeconds`, 300 s, in the month), not over every building: a workplace nobody can reach has no workers, which shows as unreached homes.
+  - Upgrading a building spends the `construction` list of its current size (the stock cap); a building already at the top size spends the same on a new smallest building. The new building goes on the free lot of its town nearest to the parent, of a kind drawn from the mix of the ring the lot lies in. Only when the town has no free lot at all does it build a new column or row of blocks, on the side nearest to the parent that has dry, empty ground; the town pays nothing for the streets.
+  - Lots are now the same places whatever stands on them (the setback is that of the biggest size), so a building can grow in place; this moved the buildings of generated towns a little.
+  - Thresholds: satisfaction at least 50, connectivity at least 0.6. A town that stalls says why in the Towns window.
 
 ## Cross-cutting
 - Slice order is fixed: real trips (M3c) come before growth (M3d) so growth is built on real connectivity.

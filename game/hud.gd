@@ -485,6 +485,11 @@ func show_stations(stations: Array) -> void:
 				accepts += ("" if accepts.is_empty() else ", ") + _cargo_names[c].to_lower()
 		_station_rows[id]["label"].text = "%s\nwaiting   %s\naccepts   %s" % [
 			station["name"], "nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
+		var bound_for := ""
+		for queue in station.get("waiting_for", []):
+			bound_for += ("" if bound_for.is_empty() else ", ") + "%d to %s" % [queue["count"], queue["name"]]
+		if not bound_for.is_empty():
+			_station_rows[id]["label"].text += "\npeople for   %s" % bound_for
 	for id in _station_rows.keys():
 		if not seen.has(id):
 			_station_rows[id]["row"].queue_free()
@@ -524,6 +529,20 @@ func show_towns(towns: Array) -> void:
 		if town["inactive"] > 0 or town["abandoned"] > 0:
 			label.text += "\n%d cut off from the roads   %d abandoned" % [town["inactive"], town["abandoned"]]
 		label.text += "\nNeeds met last month   %d%%" % roundi(100.0 * (1.0 - town["unmet"]))
+		label.text += "\nConnected   %d%% of homes reached last month" % roundi(100.0 * town["connectivity"])
+		if town["blocked"] == "Satisfaction":
+			label.text += "\nNot growing: satisfaction is below %d" % roundi(town["min_satisfaction"])
+		elif town["blocked"] == "Connectivity":
+			label.text += "\nNot growing: fewer than %d%% of homes can reach work or leisure" % roundi(100.0 * town["min_connectivity"])
+		elif town["grew_sizes"] + town["grew_buildings"] > 0:
+			label.text += "\nGrew last month: %d bigger, %d new buildings" % [town["grew_sizes"], town["grew_buildings"]]
+			if town["grew_blocks"] > 0:
+				label.text += ", %d new block of streets" % town["grew_blocks"]
+		var trips: int = town["walked"] + town["drove"] + town["rode"] + town["stayed"]
+		if trips > 0:
+			label.text += "\nTrips yesterday   %d on foot   %d by car   %d by bus" % [town["walked"], town["drove"], town["rode"]]
+			if town["stayed"] > 0:
+				label.text += "   %d could not go" % town["stayed"]
 		var bar: ProgressBar = entry["bar"]
 		bar.value = town["satisfaction"]
 		bar.tooltip_text = "Satisfaction %d of 100. It falls when buildings are demolished or abandoned, and slowly recovers." % roundi(town["satisfaction"])

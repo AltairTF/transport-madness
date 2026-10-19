@@ -30,6 +30,7 @@ public sealed record Tuning
     public required StationTuning Stations { get; init; }
     public required TownsTuning Towns { get; init; }
     public required IndustriesTuning Industries { get; init; }
+    public required TripsTuning Trips { get; init; }
     public required IReadOnlyList<CargoTuning> Cargo { get; init; }
     public required IReadOnlyList<VehicleModelTuning> Vehicles { get; init; }
 
@@ -47,6 +48,7 @@ public sealed record Tuning
         var tuning = JsonSerializer.Deserialize<Tuning>(json, Options) ?? throw new JsonException("Tuning file is empty");
         tuning.Towns.Validate();
         tuning.Industries.Validate();
+        tuning.Trips.Validate();
         return tuning;
     }
 }
@@ -278,6 +280,7 @@ public sealed record TownsTuning
     public required float UnmetPenalty { get; init; }
     public required float InitialStockMonths { get; init; }
     public required float SustainStockMonths { get; init; }
+    public required GrowthTuning Growth { get; init; }
     public required TownGenerationTuning Generation { get; init; }
     public required IReadOnlyList<RingTuning> Rings { get; init; }
     public required IReadOnlyList<BuildingTypeTuning> BuildingTypes { get; init; }
@@ -306,6 +309,15 @@ public sealed record TownsTuning
                 throw new JsonException("towns.rings need one mix weight per building type and one tier weight per size");
         if (Generation.BlocksMin < 1 || Generation.BlocksMax < Generation.BlocksMin) throw new JsonException("towns.generation blocks are out of order");
     }
+}
+
+public sealed record GrowthTuning
+{
+    public required float MinSatisfaction { get; init; }
+    public required float MinConnectivity { get; init; }
+    public required float TimeBudgetSeconds { get; init; }
+    public required float LotClearance { get; init; }
+    public required bool ExtendGrid { get; init; }
 }
 
 public sealed record TownGenerationTuning
@@ -343,7 +355,6 @@ public sealed record TierTuning
     public required int People { get; init; }
     public required int Jobs { get; init; }
     public required long DemolitionPrice { get; init; }
-    public required float PassengersPerDay { get; init; }
     public required IReadOnlyList<CargoAmount> Sustain { get; init; }
     public required IReadOnlyList<CargoAmount> Construction { get; init; }
 
@@ -409,4 +420,61 @@ public sealed record IndustryTypeTuning
     public required IReadOnlyList<CargoAmount> Inputs { get; init; }
     public required float MaxInput { get; init; }
     public required IReadOnlyList<float> Color { get; init; }
+}
+
+/// <summary>A stretch of the day, in hours (0 to 24), in which a kind of trip starts.</summary>
+public sealed record TripWindow
+{
+    public required float From { get; init; }
+    public required float To { get; init; }
+}
+
+public sealed record TripWindows
+{
+    public required TripWindow WorkOut { get; init; }
+    public required TripWindow WorkBack { get; init; }
+    public required TripWindow LeisureOut { get; init; }
+    public required TripWindow LeisureBack { get; init; }
+
+    public TripWindow Of(int leg) => leg switch { 0 => WorkOut, 1 => WorkBack, 2 => LeisureOut, _ => LeisureBack };
+}
+
+public sealed record TripsTuning
+{
+    public required int GroupSize { get; init; }
+    public required float CarShare { get; init; }
+    public required int PeoplePerCar { get; init; }
+    public required float WalkRadius { get; init; }
+    public required float WalkSpeed { get; init; }
+    public required float WalkDetour { get; init; }
+    public required float WorkRadius { get; init; }
+    public required float Nearness { get; init; }
+    public required float LeisureChance { get; init; }
+    public required float JitterMinutes { get; init; }
+    public required float LeisureStayMinutes { get; init; }
+    public required TripWindows Windows { get; init; }
+    public required float MoneyWeight { get; init; }
+    public required float CarCostPerKm { get; init; }
+    public required float CarOverheadSeconds { get; init; }
+    public required float CarAccessRadius { get; init; }
+    public required float TransitWaitSeconds { get; init; }
+    public required float TransitRideFactor { get; init; }
+    public required float TransitGiveUpSeconds { get; init; }
+    public required int MaxCars { get; init; }
+    public required float CarDepartGapSeconds { get; init; }
+    public required float CarSpawnClearance { get; init; }
+    public required int CarSpawnAttempts { get; init; }
+    public required float CarArriveRange { get; init; }
+    public required float CarTimeoutSeconds { get; init; }
+
+    internal void Validate()
+    {
+        if (GroupSize < 1 || PeoplePerCar < 1 || MaxCars < 0) throw new JsonException("trips.groupSize, peoplePerCar and maxCars are out of range");
+        if (WalkSpeed <= 0f || WalkDetour < 1f) throw new JsonException("trips.walkSpeed and walkDetour are out of range");
+        for (int leg = 0; leg < 4; leg++)
+        {
+            var w = Windows.Of(leg);
+            if (w.From < 0f || w.To < w.From || w.To > 24f) throw new JsonException($"trips.windows leg {leg} is not a stretch of the day");
+        }
+    }
 }

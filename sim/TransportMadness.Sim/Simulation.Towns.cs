@@ -12,8 +12,6 @@ public sealed partial class Simulation
     readonly int _passengerCargo; // index into the cargo list, -1 when the roster has none
     bool _worldAdded;
     RoadIndex? _roadIndex;
-    // What each station collects per second from the buildings in its coverage, by cargo; refreshed when buildings or stations change.
-    readonly List<float[]> _stationRate = new();
     bool _coverageDirty = true;
 
     public IReadOnlyList<Town> Towns => _towns;
@@ -56,11 +54,13 @@ public sealed partial class Simulation
                 town.BuildingIds.Add(building.Id);
                 CellList(b.X, b.Z, create: true)!.Add(building.Id);
             }
+            InitLots(town, townPlan);
         }
         if (plan.Industries != null) AddIndustries(plan.Industries);
         _coverageDirty = true;
         BuildingsVersion++;
         EvaluateAccess();
+        CreateTripGroups();
     }
 
     static long CellKey(int cx, int cz) => ((long)cx << 32) ^ (uint)cz;
@@ -164,6 +164,8 @@ public sealed partial class Simulation
         if ((Day + 1) % _economy.DaysPerMonth == 0)
         {
             ConsumeNeeds();
+            EvaluateConnectivity();
+            GrowTowns();
             foreach (var town in _towns)
                 town.Satisfaction = MathF.Min(_townTuning.MaxSatisfaction, town.Satisfaction + _townTuning.RecoveryPerMonth);
         }
@@ -179,6 +181,7 @@ public sealed partial class Simulation
     {
         SetState(b, BuildingState.Demolished);
         CellList(b.X, b.Z, create: false)?.Remove(b.Id);
+        if (b.Lot >= 0) _towns[b.Town].Lots[b.Lot].Building = -1;
     }
 
     // ---- Roads through buildings -------------------------------------------------------------------------------
@@ -246,15 +249,16 @@ public sealed partial class Simulation
     // ---- What stations cover, collect and accept -------------------------------------------------------------
 
     /// <summary>
-    /// Works out, for every station, the standing buildings and the industries within its coverage radius, the
-    /// passengers it collects from them each second (a stopgap until trip groups) and the cargo it accepts.
+    /// Works out, for every station, the standing buildings and the industries within its coverage radius and the cargo it
+    /// accepts, and for every building the stations that cover it (where its people can catch a bus).
     /// </summary>
     void RefreshCoverage()
     {
         _coverageDirty = false;
-        while (_stationRate.Count < _stations.Count)
+        _transitVersion++;
+        var perBuilding = new List<int>?[_buildings.Count];
+        while (_stationBuildings.Count < _stations.Count)
         {
-            _stationRate.Add(new float[_cargo.Count]);
             _stationBuildings.Add(Array.Empty<int>());
             _stationIndustries.Add(Array.Empty<int>());
             _stationAccepts.Add(new bool[_cargo.Count]);
@@ -264,9 +268,7 @@ public sealed partial class Simulation
         float radius = _stationTuning.CoverageRadius;
         for (int s = 0; s < _stations.Count; s++)
         {
-            var rate = _stationRate[s];
             var accepts = _stationAccepts[s];
-            Array.Clear(rate);
             Array.Clear(accepts);
             _stationBuildings[s] = Array.Empty<int>();
             _stationIndustries[s] = Array.Empty<int>();
@@ -280,11 +282,8 @@ public sealed partial class Simulation
                 var b = _buildings[id];
                 if (b.State != BuildingState.Active) continue;
                 buildings.Add(id);
-                if (_passengerCargo >= 0)
-                {
-                    rate[_passengerCargo] += _townTuning.Of(b.Type, b.Tier).PassengersPerDay / _economy.DayLength;
-                    accepts[_passengerCargo] = true;
-                }
+                (perBuilding[id] ??= new List<int>()).Add(s);
+                if (_passengerCargo >= 0) accepts[_passengerCargo] = true;
                 var sustain = _sustainNeed[(int)b.Type][b.Tier];
                 var construction = _constructionCap[(int)b.Type][b.Tier];
                 for (int c = 0; c < accepts.Length; c++)
@@ -302,6 +301,7 @@ public sealed partial class Simulation
             _stationIndustries[s] = industries.ToArray();
         }
         _industryStations = perIndustry.Select(l => l.ToArray()).ToList();
+        _buildingStations = perBuilding.Select(l => l?.ToArray() ?? Array.Empty<int>()).ToList();
     }
 
     /// <summary>The buildings an active station covers (active ones only), in id order.</summary>
@@ -331,7 +331,11 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)b.Tier;
             h = h * 31 + (ulong)b.StateSince;
         }
-        foreach (var t in _towns) h = h * 31 + BitConverter.SingleToUInt32Bits(t.Satisfaction);
+        foreach (var t in _towns)
+        {
+            h = h * 31 + BitConverter.SingleToUInt32Bits(t.Satisfaction);
+            h = h * 31 + BitConverter.SingleToUInt32Bits(t.Connectivity);
+        }
         return h;
     }
 }
