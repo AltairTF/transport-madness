@@ -6,10 +6,12 @@ signal changed
 
 const PATH := "user://settings.cfg"
 const RESOLUTIONS: Array[Vector2i] = [
-	Vector2i(1024, 576), Vector2i(1152, 648), Vector2i(1280, 720), Vector2i(1280, 800), Vector2i(1366, 768),
-	Vector2i(1440, 900), Vector2i(1600, 900), Vector2i(1680, 1050), Vector2i(1920, 1080), Vector2i(1920, 1200),
-	Vector2i(2048, 1152), Vector2i(2560, 1080), Vector2i(2560, 1440), Vector2i(2560, 1600), Vector2i(3440, 1440),
-	Vector2i(3840, 2160)]
+	Vector2i(960, 540), Vector2i(1024, 576), Vector2i(1152, 648), Vector2i(1280, 720), Vector2i(1280, 800), Vector2i(1280, 960),
+	Vector2i(1280, 1024), Vector2i(1360, 768), Vector2i(1366, 768), Vector2i(1400, 1050), Vector2i(1440, 900), Vector2i(1536, 864),
+	Vector2i(1600, 900), Vector2i(1600, 1024), Vector2i(1600, 1200), Vector2i(1680, 1050), Vector2i(1792, 1008), Vector2i(1920, 1080),
+	Vector2i(1920, 1200), Vector2i(1920, 1440), Vector2i(2048, 1152), Vector2i(2240, 1260), Vector2i(2304, 1440), Vector2i(2560, 1080),
+	Vector2i(2560, 1440), Vector2i(2560, 1600), Vector2i(2880, 1620), Vector2i(3200, 1800), Vector2i(3440, 1440), Vector2i(3840, 1600),
+	Vector2i(3840, 2160), Vector2i(5120, 1440)]
 const MIN_WINDOW := Vector2i(960, 540)
 const UI_SCALES: Array[float] = [0.75, 1.0, 1.25, 1.5]
 const WINDOW_FILL := 0.92 ## share of the free screen area a first-run window may take (the title bar needs room)

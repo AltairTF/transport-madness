@@ -131,6 +131,14 @@ public sealed partial class Simulation
         return 1;
     }
 
+    /// <summary>Gives a line a colour. Returns 1, 0 when there is no such line or the value is not 0xRRGGBB.</summary>
+    int SetLineColor(int line, int rgb)
+    {
+        if (line < 0 || line >= _lines.Count || !_lines[line].Active || rgb < 0 || rgb > 0xFFFFFF) return 0;
+        _lines[line].Color = rgb;
+        return 1;
+    }
+
     /// <summary>Closes a line and sells its vehicles. Returns 1, 0 when there is no such line.</summary>
     int DeleteLine(int line)
     {

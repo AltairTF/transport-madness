@@ -15,8 +15,12 @@ public class DeterminismTests
     /// Pinned state hash of <see cref="Run"/> with seed 7. It changes whenever behaviour does (tuning, manoeuvre rules,
     /// a new field in the hash): after checking that the change was intended, copy the value from the failure message.
     /// It also guards against nondeterminism creeping in, such as iteration order or wall-clock use.
+    /// The value is per operating system: <c>MathF.Sin/Cos/Sqrt</c> come from the platform's maths library, and macOS and glibc
+    /// round some results differently (Linux gave the same hash on x64 and arm64). A system with no pinned value (Windows) is
+    /// only checked against itself, by the other determinism tests.
     /// </summary>
-    const ulong GoldenHash = 0x4F98F1BA4876C85AUL;
+    const ulong GoldenHashMac = 0x4F98F1BA4876C85AUL;
+    const ulong GoldenHashLinux = 0x21FAD11BE18778E9UL;
 
     sealed record Result(Simulation Sim, int Overtakes);
 
@@ -111,7 +115,9 @@ public class DeterminismTests
     {
         var hash = Run(seed: 7).Sim.StateHash();
 
-        Assert.True(GoldenHash == hash, $"state hash changed; if intended, set GoldenHash = 0x{hash:X16}UL");
+        ulong? pinned = OperatingSystem.IsMacOS() ? GoldenHashMac : OperatingSystem.IsLinux() ? GoldenHashLinux : null;
+        if (pinned is not { } golden) { Assert.Equal(hash, Run(seed: 7).Sim.StateHash()); return; }
+        Assert.True(golden == hash, $"state hash changed; if intended, set {(OperatingSystem.IsMacOS() ? "GoldenHashMac" : "GoldenHashLinux")} = 0x{hash:X16}UL (the other system's value may need its own check)");
     }
 
     const ulong AvenueGoldenHash = 0x4DCE62462F259152UL;

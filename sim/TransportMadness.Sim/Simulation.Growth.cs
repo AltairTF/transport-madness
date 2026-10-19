@@ -11,6 +11,7 @@ public sealed partial class Simulation
     const ulong GrowthSeedMix = 0x47524F57544821A7UL;
     const float LotCrowding = 22f;  // a lot is not built on while a standing building is closer than this
     const float SampleSpacing = 30f; // ground is checked this far apart when a town wants a new block
+    const float StockSlack = 0.01f;  // a construction stock this close to its cost counts as full (float dust)
     const float StripClearance = 12f; // a new block is refused when a building stands this close to a point of it
 
     readonly GrowthTuning _growth;
@@ -89,7 +90,10 @@ public sealed partial class Simulation
         {
             if (b.Type != BuildingType.Home || b.State != BuildingState.Active) continue;
             homes[b.Town]++;
-            if (reached.Contains(b.Id)) counted[b.Town]++;
+            bool was = b.Reached;
+            b.Reached = reached.Contains(b.Id);
+            if (b.Reached) counted[b.Town]++;
+            if (b.Reached != was) BuildingsVersion++; // the connectivity view colours homes by it
         }
         foreach (var town in _towns)
             town.Connectivity = homes[town.Id] > 0 ? (float)counted[town.Id] / homes[town.Id] : 1f;
@@ -139,7 +143,7 @@ public sealed partial class Simulation
         {
             if (cost[c] <= 0f) continue;
             any = true;
-            if (b.Construction[c] < cost[c]) return false;
+            if (b.Construction[c] < cost[c] - StockSlack) return false;
         }
         return any;
     }
@@ -148,7 +152,7 @@ public sealed partial class Simulation
     {
         var cost = _constructionCap[(int)b.Type][b.Tier];
         for (int c = 0; c < cost.Length; c++)
-            if (cost[c] > 0f) b.Construction[c] -= cost[c];
+            if (cost[c] > 0f) b.Construction[c] = MathF.Max(0f, b.Construction[c] - cost[c]);
     }
 
     /// <summary>A building goes up one size; a home gets the people of the new size as new trip groups.</summary>

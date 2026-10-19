@@ -24,7 +24,9 @@ public sealed class TripGroup
     public int Id { get; }
     /// <summary>Building the group lives in.</summary>
     public int Home { get; }
-    public int People { get; }
+    public int People { get; internal set; }
+    /// <summary>The home was demolished: the group is gone for good (its people and the jobs they held are released), and it never travels again.</summary>
+    public bool Retired { get; internal set; }
     /// <summary>Workplace building, -1 when it has none.</summary>
     public int Work { get; internal set; } = -1;
     /// <summary>Commerce building it goes to in the evening, -1 when there is none.</summary>

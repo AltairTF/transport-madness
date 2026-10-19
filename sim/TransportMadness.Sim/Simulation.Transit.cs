@@ -10,6 +10,8 @@ public sealed partial class Simulation
     List<PaxLot>?[] _riders = new List<PaxLot>?[64]; // by vehicle slot: the passengers on board
     int[] _lineFleet = Array.Empty<int>();
     int _lineFleetVersion = -1;
+    float[] _lineCycle = Array.Empty<float>(); // seconds one vehicle takes to go round a line, infinity when a leg has no road
+    long _lineCycleVersion = -1;
 
     /// <summary>Whether buses on this map take their passengers from the station queues (a map with towns) rather than from a fixed supply.</summary>
     bool CarriesQueuedPassengers(int vehicle) => Settled && _passengerCargo >= 0 && _modelCargo[_model[vehicle]] == _passengerCargo;
@@ -33,6 +35,38 @@ public sealed partial class Simulation
         for (int i = 0; i < _count; i++)
             if (_line[i] >= 0 && _kind[i] == VehicleKind.Car) _lineFleet[_line[i]]++;
         _lineFleetVersion = _transitVersion;
+    }
+
+    /// <summary>
+    /// How long a vehicle takes to go once round each line, from the road time of every leg (as a car would drive it, times the
+    /// ride factor) and the standing time at every stop of the models on it; counted again when lines, fleets or roads change.
+    /// </summary>
+    void EnsureLineCycles()
+    {
+        EnsureLineFleet();
+        long version = ((long)_syncedNetworkVersion << 24) + _transitVersion;
+        if (_lineCycleVersion == version && _lineCycle.Length == _lines.Count) return;
+        _lineCycle = new float[_lines.Count];
+        var dwell = new float[_lines.Count];
+        for (int i = 0; i < _count; i++)
+            if (_line[i] >= 0 && _kind[i] == VehicleKind.Car) dwell[_line[i]] += _models[_model[i]].DwellSeconds;
+        foreach (var line in _lines)
+        {
+            float cycle = 0f;
+            for (int k = 0; k < line.Stops.Count && !float.IsPositiveInfinity(cycle); k++)
+                cycle += RideSeconds(_stations[line.Stops[k]], _stations[line.Stops[(k + 1) % line.Stops.Count]]) * _trips.TransitRideFactor;
+            if (_lineFleet[line.Id] > 0) cycle += line.Stops.Count * dwell[line.Id] / _lineFleet[line.Id];
+            _lineCycle[line.Id] = cycle;
+        }
+        _lineCycleVersion = version;
+    }
+
+    /// <summary>The seconds one vehicle takes to go once round a line (infinity when some leg has no road); 0 for an unknown line.</summary>
+    public float LineCycleSeconds(int line)
+    {
+        SyncNetwork();
+        EnsureLineCycles();
+        return line >= 0 && line < _lineCycle.Length ? _lineCycle[line] : 0f;
     }
 
     static bool LineHasStop(Line line, int station)
@@ -72,20 +106,22 @@ public sealed partial class Simulation
         var near = _buildingStations[a.Id];
         var far = _buildingStations[b.Id];
         if (near.Length == 0 || far.Length == 0) return false;
-        EnsureLineFleet();
+        EnsureLineCycles();
         float best = float.PositiveInfinity;
         foreach (int sa in near)
             foreach (int sb in far)
             {
                 if (sa == sb) continue;
-                int vehicles = 0;
+                // Vehicles come every cycle / fleet seconds on a line; with several lines the arrivals add up.
+                float perSecond = 0f;
                 foreach (var line in _lines)
-                    if (line.Active && LineHasStop(line, sa) && LineHasStop(line, sb)) vehicles += _lineFleet[line.Id];
-                if (vehicles == 0) continue;
+                    if (line.Active && _lineFleet[line.Id] > 0 && LineHasStop(line, sa) && LineHasStop(line, sb) && !float.IsPositiveInfinity(_lineCycle[line.Id]))
+                        perSecond += _lineFleet[line.Id] / MathF.Max(1f, _lineCycle[line.Id]);
+                if (perSecond <= 0f) continue;
                 float ride = RideSeconds(_stations[sa], _stations[sb]);
                 if (float.IsPositiveInfinity(ride)) continue;
                 float walkIn = WalkSeconds(a, _stations[sa]);
-                float t = walkIn + _trips.TransitWaitSeconds / vehicles + ride * _trips.TransitRideFactor + WalkSeconds(b, _stations[sb]);
+                float t = walkIn + _trips.TransitWaitShare / perSecond + ride * _trips.TransitRideFactor + WalkSeconds(b, _stations[sb]);
                 if (t >= best) continue;
                 best = t;
                 stationA = sa;

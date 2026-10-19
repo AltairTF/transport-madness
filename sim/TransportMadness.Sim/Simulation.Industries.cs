@@ -151,12 +151,15 @@ public sealed partial class Simulation
         for (int k = 0; k < buildings.Length; k++) total += roomB[k] = BuildingRoom(_buildings[buildings[k]], cargo);
         for (int k = 0; k < industries.Length; k++) total += roomI[k] = IndustryRoom(_industries[industries[k]], cargo);
         if (total <= 0f) return 0;
-        float given = MathF.Min(units, MathF.Floor(total));
+        // A vehicle's units are whole: when they cover all the room every taker is filled to the brim, so the last fraction of
+        // a unit of room (and the float dust of splitting by room) never leaves a stock stuck just short of full.
+        float given = MathF.Min(units, MathF.Ceiling(total));
         if (given <= 0f) return 0;
+        float share = given >= total ? 1f : given / total;
         for (int k = 0; k < buildings.Length; k++)
-            if (roomB[k] > 0f) GiveToBuilding(_buildings[buildings[k]], cargo, given * roomB[k] / total);
+            if (roomB[k] > 0f) GiveToBuilding(_buildings[buildings[k]], cargo, roomB[k] * share);
         for (int k = 0; k < industries.Length; k++)
-            if (roomI[k] > 0f) _industries[industries[k]].Input[cargo] += given * roomI[k] / total;
+            if (roomI[k] > 0f) _industries[industries[k]].Input[cargo] += roomI[k] * share;
         return (int)given;
     }
 

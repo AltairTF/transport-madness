@@ -37,6 +37,8 @@ public sealed class Building
     /// <summary>What it holds of each cargo for building and growing (spent from M3d).</summary>
     public float[] Construction { get; internal set; } = Array.Empty<float>();
     public BuildingState State { get; internal set; } = BuildingState.Active;
+    /// <summary>For a home: whether a group living there made a trip to work or leisure within the time budget in the last month counted (true until the first month is over). Always true for other kinds.</summary>
+    public bool Reached { get; internal set; } = true;
     /// <summary>The day it went into its current state.</summary>
     public long StateSince { get; internal set; }
     // The road node cars leave from and arrive at, found on demand for the network version it was last worked out for.
@@ -108,7 +110,8 @@ public sealed record TownPlan(string Name, float X, float Z, float Angle, int Bl
 public readonly record struct IndustryPlan(int Type, float X, float Z, float Angle);
 
 /// <summary>What the generator made: the towns that fit, out of the number asked for, and the industries.</summary>
-public sealed record WorldPlan(int Requested, IReadOnlyList<TownPlan> Towns, IReadOnlyList<IndustryPlan>? Industries = null);
+/// <param name="Unlinked">Indices into <paramref name="Industries"/> of processors that could not be placed within reach of their inputs and a town.</param>
+public sealed record WorldPlan(int Requested, IReadOnlyList<TownPlan> Towns, IReadOnlyList<IndustryPlan>? Industries = null, IReadOnlyList<int>? Unlinked = null);
 
 /// <summary>A producer or processor in a cargo chain. It stands where it was generated and exchanges cargo with the stations that cover it.</summary>
 public sealed class Industry

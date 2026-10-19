@@ -45,6 +45,18 @@ public sealed record EditLineCommand(int Line, int[] Stations) : SimCommand;
 /// <summary>Gives a line a name of one to 24 characters. Result: 1, 0 when refused.</summary>
 public sealed record RenameLineCommand(int Line, string Name) : SimCommand;
 
+/// <summary>Gives a line a colour (0xRRGGBB) for its vehicles and its name in the windows. Result: 1, 0 when refused (no such line, or not a colour).</summary>
+public sealed record SetLineColorCommand(int Line, int Rgb) : SimCommand;
+
+/// <summary>Names a station, one to 24 characters, in place of the name made from its town. Result: 1, 0 when refused.</summary>
+public sealed record RenameStationCommand(int Station, string Name) : SimCommand;
+
+/// <summary>Closes a station for good: lines skip it, vehicles head for the next stop and people waiting there give up. Nothing is refunded. Result: 1, 0 when it is already closed or does not exist.</summary>
+public sealed record CloseStationCommand(int Station) : SimCommand;
+
+/// <summary>Adds bays to a station that has none, for the bay price. Result: 1, 0 when refused (closed, already has bays, or not enough money).</summary>
+public sealed record AddStationBaysCommand(int Station) : SimCommand;
+
 /// <summary>Closes a line and sells its vehicles. Result: 1, 0 when there is no such line.</summary>
 public sealed record DeleteLineCommand(int Line) : SimCommand;
 

@@ -268,7 +268,7 @@
   "trips": {
     "groupSize": 10,                // people in one trip group at most; a bigger home has several
     "carShare": 0.6,                // share of the groups that have a car
-    "peoplePerCar": 2,              // people one ambient car stands for
+    "peoplePerCar": 5,              // people one ambient car stands for
     "walkRadius": 150.0,            // straight-line distance within which people walk
     "walkSpeed": 2.5,               // a day is 600 s, so a pace in m/s is about five times quicker than life against a car at 14 m/s
     "walkDetour": 1.3,              // path over straight-line distance when walking
@@ -287,10 +287,10 @@
     "carCostPerKm": 30.0,
     "carOverheadSeconds": 60.0,     // finding the car and parking it
     "carAccessRadius": 150.0,       // a building is reached by car from a road node this close
-    "transitWaitSeconds": 240.0,    // average wait for a line with one vehicle; shared out over the line's vehicles
+    "transitWaitShare": 0.5,        // average wait as a share of the time between two vehicles of a line (its round trip over its fleet); half when they come evenly
     "transitRideFactor": 1.3,       // a bus takes this much longer than a car over the same road (stops, turns)
     "transitGiveUpSeconds": 900.0,  // people who have waited this long at a station give up
-    "maxCars": 300,                 // trip cars on the road at once; the rest of the trips wait for room
+    "maxCars": 200,                 // trip cars on the road at once; the rest of the trips wait for room
     "carDepartGapSeconds": 2.0,     // between two cars of the same group
     "carSpawnClearance": 3.0,       // free road needed around a new car, beyond its own length
     "carSpawnAttempts": 8,          // places tried per step to put a waiting car on the road
@@ -311,7 +311,8 @@
       "edgeMargin": 250.0,
       "townClearance": 150.0,       // from the edge of a town's grid
       "minSpacing": 350.0,          // between industries
-      "maxHeightRange": 5.0         // highest minus lowest ground under it
+      "maxHeightRange": 5.0,        // highest minus lowest ground under it
+      "chainReach": 1500.0          // a processor is placed within this of a producer of each of its inputs and of a town; when no such place is found it is placed anywhere and reported as unlinked
     },
     // How many of each type, in the order of 'types', for the three settings of the new-game screen.
     "counts": {

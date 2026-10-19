@@ -14,6 +14,8 @@ public sealed class Station
     }
 
     public int Id { get; }
+    /// <summary>The name the player gave it, null while it has none (the game then names it for its town). Not part of the state hash.</summary>
+    public string? Name { get; internal set; }
     /// <summary>The node it stands at; follows the node when that is moved.</summary>
     public int Node { get; internal set; }
     /// <summary>False once every road at its node has been torn down.</summary>
@@ -55,6 +57,8 @@ public sealed class Line
     public int Id { get; }
     /// <summary>Chosen by the player; not part of the state hash.</summary>
     public string Name { get; internal set; }
+    /// <summary>The colour the player chose (0xRRGGBB), -1 while it has none (the game then picks one from its number). Not part of the state hash.</summary>
+    public int Color { get; internal set; } = -1;
     /// <summary>The station ids in order; changes when the line is edited.</summary>
     public IReadOnlyList<int> Stops { get; internal set; }
     /// <summary>False once deleted; its vehicles are sold.</summary>

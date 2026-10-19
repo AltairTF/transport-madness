@@ -62,8 +62,11 @@ func _ready() -> void:
 	hud.line_action.connect(_on_line_action)
 	hud.line_edit.connect(_on_line_edit)
 	hud.line_rename.connect(_on_line_rename)
+	hud.line_color.connect(func(line: int, color: Color) -> void: host.SetLineColor(line, color))
+	hud.station_action.connect(_on_station_action)
 	hud.vehicle_action.connect(_on_vehicle_action)
 	hud.town_focus.connect(rig.focus_on)
+	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
 	if _world_note != "":
 		hud.show_message(_world_note)
 
@@ -137,6 +140,9 @@ func _new_world(map: String) -> void:
 		"towns":
 			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns, Session.industries)
 			_world_note = "" if placed >= Session.towns else "Only %d of %d towns fit on this map" % [placed, Session.towns]
+			var unlinked: int = host.UnlinkedIndustries
+			if unlinked > 0:
+				_world_note += ("" if _world_note == "" else ". ") + "%d industries have no supplier or town within reach on this map" % unlinked
 			if hud != null and _world_note != "":
 				hud.show_message(_world_note)
 			var towns: Array = host.GetTowns()
@@ -186,6 +192,18 @@ func _on_line_edit(line: int, stops: Array) -> void:
 
 func _on_line_rename(line: int, new_name: String) -> void:
 	host.RenameLine(line, new_name)
+
+
+## A button or the name box of a row in the Stations window.
+func _on_station_action(kind: String, station: int, text: String) -> void:
+	match kind:
+		"rename":
+			if not host.RenameStation(station, text):
+				hud.show_message("A station's name is one to 24 characters")
+		"close":
+			hud.show_message("Station closed" if host.CloseStation(station) else "That station is already closed")
+		"bays":
+			hud.show_message("Bays built" if host.AddStationBays(station) else "Can't build bays: not enough money, or the station has them already")
 
 
 ## Sells a vehicle: the button of the Vehicles window.

@@ -10,11 +10,17 @@ signal line_action(kind: String, line: int, model: String)
 ## The Lines window changed a line's stations (the new list of station ids) or its name.
 signal line_edit(line: int, stops: Array)
 signal line_rename(line: int, new_name: String)
+## The player picked a colour for a line.
+signal line_color(line: int, color: Color)
+## A station row: kind is "rename" (with the new name in text), "close" or "bays".
+signal station_action(kind: String, station: int, text: String)
 ## A vehicle row button: kind is "sell".
 signal vehicle_action(kind: String, vehicle: int)
 signal menu_requested
 ## The Towns window asks the camera to go to a town.
 signal town_focus(x: float, z: float)
+## The Towns window turns the connectivity view of the map on or off.
+signal connectivity_view_toggled(on: bool)
 
 const UiTheme := preload("res://game/ui_theme.gd")
 
@@ -238,6 +244,11 @@ func _build_lines_page() -> Control:
 
 func _build_towns_page() -> Control:
 	_towns_box = VBoxContainer.new()
+	var view := CheckButton.new()
+	view.text = "Show connectivity on the map"
+	view.tooltip_text = "Homes turn green when someone living there reached work or leisure within the time budget last month, red when nobody did. Everything else is dimmed."
+	view.toggled.connect(func(on: bool) -> void: connectivity_view_toggled.emit(on))
+	_towns_box.add_child(view)
 	_towns_empty = Label.new()
 	_towns_empty.theme_type_variation = "Dim"
 	_towns_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -509,24 +520,32 @@ func show_stations(stations: Array) -> void:
 				waiting += ("" if waiting.is_empty() else ", ") + "%d %s" % [station["waiting"][c], _cargo_names[c].to_lower()]
 			if station["accepts"][c]:
 				accepts += ("" if accepts.is_empty() else ", ") + _cargo_names[c].to_lower()
-		var label: Label = _station_rows[id]["label"]
-		label.text = station["name"]
+		var entry: Dictionary = _station_rows[id]
+		var label: Label = entry["label"]
+		var name_edit: LineEdit = entry["name"]
+		if not name_edit.has_focus() and name_edit.text != station["name"]:
+			name_edit.text = station["name"]
+		var bays_button: Button = entry["bays_button"]
+		bays_button.visible = not station["bays"]
+		bays_button.text = "Add bays (%s)" % _money_text(station["bay_price"])
+		entry["station_name"] = station["name"]
 		var served := ""
 		for line in station.get("lines", []):
 			served += ("" if served.is_empty() else ", ") + line["name"]
+		var text := "lines   %s" % ("none" if served.is_empty() else served)
 		if station["bays"]:
-			label.text += "\nbays   %d in use" % station["in_bay"]
-		label.text += "\nlines   %s" % ("none" if served.is_empty() else served)
-		label.text += "\ncovers   %d homes   %d shops   %d other workplaces   %d industries" % [
+			text = "bays   %d in use\n%s" % [station["in_bay"], text]
+		text += "\ncovers   %d homes   %d shops   %d other workplaces   %d industries" % [
 			station["homes"], station["shops"], station["workplaces"], station["industries"]]
-		label.text += "\nwaiting   %s\naccepts   %s" % ["nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
+		text += "\nwaiting   %s\naccepts   %s" % ["nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
 		var bound_for := ""
 		for queue in station.get("waiting_for", []):
 			bound_for += ("" if bound_for.is_empty() else ", ") + "%d to %s" % [queue["count"], queue["name"]]
 		if not bound_for.is_empty():
-			label.text += "\npeople for   %s" % bound_for
-		label.text += "\nyesterday   %d boarded   %d got off   %d gave up waiting" % [station["boarded"], station["alighted"], station["gave_up"]]
-		label.text += "\ntoday so far   %d boarded   %d got off   %d gave up waiting" % [station["boarded_today"], station["alighted_today"], station["gave_up_today"]]
+			text += "\npeople for   %s" % bound_for
+		text += "\nyesterday   %d boarded   %d got off   %d gave up waiting" % [station["boarded"], station["alighted"], station["gave_up"]]
+		text += "\ntoday so far   %d boarded   %d got off   %d gave up waiting" % [station["boarded_today"], station["alighted_today"], station["gave_up_today"]]
+		label.text = text
 		if not served.is_empty():
 			var colour: Color = station["lines"][0]["color"]
 			label.add_theme_color_override("font_color", colour)
@@ -540,20 +559,55 @@ func show_stations(stations: Array) -> void:
 	_stations_empty.visible = _station_rows.is_empty()
 
 
+## Closing a station cannot be undone, so it asks first.
+func _confirm_close_station(id: int) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.dialog_text = "Close %s for good?\nLines will skip it and nothing is refunded." % _station_rows[id]["station_name"]
+	dialog.ok_button_text = "Close it"
+	dialog.confirmed.connect(func() -> void:
+		station_action.emit("close", id, "")
+		dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered()
+
+
 func _add_station_row(id: int, station: Dictionary) -> void:
 	var row := VBoxContainer.new()
+	var header := HBoxContainer.new()
+	row.add_child(header)
+	var name_edit := LineEdit.new()
+	name_edit.max_length = 24
+	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_edit.tooltip_text = "Click to rename the station, Enter to keep the name."
+	name_edit.text_submitted.connect(func(text: String) -> void:
+		station_action.emit("rename", id, text)
+		name_edit.release_focus())
+	name_edit.focus_exited.connect(func() -> void: station_action.emit("rename", id, name_edit.text))
+	header.add_child(name_edit)
 	var label := Label.new()
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
+	var buttons := HFlowContainer.new()
+	row.add_child(buttons)
 	var go := Button.new()
 	go.text = "Go to"
 	go.pressed.connect(func() -> void: town_focus.emit(station["x"], station["z"]))
-	row.add_child(go)
+	buttons.add_child(go)
+	var bays_button := Button.new()
+	bays_button.tooltip_text = "Build bays: loading vehicles pull out of the lane so they do not block it."
+	bays_button.pressed.connect(func() -> void: station_action.emit("bays", id, ""))
+	buttons.add_child(bays_button)
+	var close := Button.new()
+	close.text = "Close"
+	close.tooltip_text = "Close the station for good. Lines skip it; nothing is refunded."
+	close.pressed.connect(func() -> void: _confirm_close_station(id))
+	buttons.add_child(close)
 	var separator := HSeparator.new()
 	_stations_box.add_child(row)
 	_stations_box.add_child(separator)
-	_station_rows[id] = {"row": row, "label": label, "separator": separator}
+	_station_rows[id] = {"row": row, "label": label, "separator": separator, "name": name_edit, "bays_button": bays_button, "station_name": ""}
 
 
 ## One row per town: its name and numbers, a satisfaction bar and a button that takes the camera there.
@@ -580,6 +634,7 @@ func show_towns(towns: Array) -> void:
 			label.text += "\nGrew last month: %d bigger, %d new buildings" % [town["grew_sizes"], town["grew_buildings"]]
 			if town["grew_blocks"] > 0:
 				label.text += ", %d new block of streets" % town["grew_blocks"]
+		label.text += _town_needs_text(town)
 		var trips: int = town["walked"] + town["drove"] + town["rode"] + town["stayed"]
 		if trips > 0:
 			label.text += "\nTrips yesterday   %d on foot   %d by car   %d by bus" % [town["walked"], town["drove"], town["rode"]]
@@ -594,6 +649,27 @@ func show_towns(towns: Array) -> void:
 			_town_rows[id]["separator"].queue_free()
 			_town_rows.erase(id)
 	_towns_empty.visible = _town_rows.is_empty()
+
+
+## What the town still needs: how much of it a station of yours reaches, what its buildings are short of this month, and what is
+## missing from their stock for growing.
+func _town_needs_text(town: Dictionary) -> String:
+	var text := "\nYour stations reach   %d of %d buildings" % [town["covered"], town["buildings"]]
+	if town["covered"] == 0:
+		return text + "\nNo station of yours reaches this town, so nothing can be delivered to it"
+	var short := ""
+	var missing := ""
+	for need in town["needs"]:
+		var name: String = _cargo_names[need["cargo"]].to_lower() if need["cargo"] < _cargo_names.size() else "cargo %d" % need["cargo"]
+		if need["short"] > 0:
+			short += ("" if short.is_empty() else ", ") + "%s (%d buildings)" % [name, need["short"]]
+		if need["construction"] >= 1.0:
+			missing += ("" if missing.is_empty() else ", ") + "%d %s" % [roundi(need["construction"]), name]
+	if not short.is_empty():
+		text += "\nShort of this month's needs   " + short
+	if not missing.is_empty():
+		text += "\nStill missing to grow   " + missing
+	return text
 
 
 func _add_town_row(id: int, town: Dictionary) -> void:
@@ -641,7 +717,9 @@ func show_lines(lines: Array) -> void:
 			_add_row(id)
 		var entry: Dictionary = _line_rows[id]
 		var colour: Color = line["color"]
-		entry["swatch"].color = colour
+		entry["color"] = colour
+		if not entry["swatch"].get_popup().visible: # not while the player is choosing
+			entry["swatch"].color = colour
 		var name_edit: LineEdit = entry["name"]
 		if not name_edit.has_focus() and name_edit.text != line["name"]:
 			name_edit.text = line["name"]
@@ -720,9 +798,15 @@ func _add_row(id: int) -> void:
 	var row := VBoxContainer.new()
 	var header := HBoxContainer.new()
 	row.add_child(header)
-	var swatch := ColorRect.new()
-	swatch.custom_minimum_size = Vector2(10, 10)
+	var swatch := ColorPickerButton.new()
+	swatch.custom_minimum_size = Vector2(30, 20)
 	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	swatch.edit_alpha = false
+	swatch.tooltip_text = "Pick a colour for this line and its vehicles."
+	swatch.popup_closed.connect(func() -> void:
+		var shown: Color = _line_rows[id]["color"]
+		if not swatch.color.is_equal_approx(shown):
+			line_color.emit(id, swatch.color))
 	header.add_child(swatch)
 	var name_edit := LineEdit.new()
 	name_edit.max_length = 24
@@ -768,7 +852,7 @@ func _add_row(id: int) -> void:
 	_lines_box.add_child(row)
 	_lines_box.add_child(separator)
 	_line_rows[id] = {"row": row, "label": label, "separator": separator, "swatch": swatch, "name": name_edit, "stops": stops,
-		"choice": choice, "stop_ids": [], "stop_names": []}
+		"choice": choice, "stop_ids": [], "stop_names": [], "color": swatch.color}
 
 
 ## One row per company vehicle: what and where it is, what it carries and what it has earned, with buttons to go to it or sell it.

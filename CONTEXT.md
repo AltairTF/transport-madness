@@ -16,7 +16,7 @@ A home, a commerce building or a light industry building on a lot beside a stree
 _Avoid_: House (a Building is not always a home)
 
 **Industry**:
-A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm) produce at a fixed rate; processors (sawmill, cement works, food plant, factory) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods. Its output goes to the Stations that cover it, shared evenly; its inputs are filled by deliveries to those Stations.
+A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm) produce at a fixed rate; processors (sawmill, cement works, food plant, factory) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods. Its output goes to the Stations that cover it, shared evenly; its inputs are filled by deliveries to those Stations. The generator places a processor within reach of a producer of its inputs and of a Town; one that did not fit is reported when a game starts.
 
 **Cargo**:
 Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
@@ -58,10 +58,10 @@ A period of game time that decides which vehicles and road types are available. 
 Anything that goes wrong on the network: an accident, a breakdown, a blockage. Includes incidents involving ambient traffic.
 
 **Ambient traffic**:
-Vehicles not owned by the Company (private cars, etc.) that share the roads and affect congestion and Incidents. In towns most of it is Trip cars: a car stands for two people of a Trip group, drives from the road node by its home to the node by its destination, and is taken off the road near it.
+Vehicles not owned by the Company (private cars, etc.) that share the roads and affect congestion and Incidents. In towns most of it is Trip cars: a car stands for five people of a Trip group, drives from the road node by its home to the node by its destination, and is taken off the road near it.
 
 **Trip group**:
-A bundle of at most ten people of one Building who travel together from home to a workplace and a leisure place and back, four trips a day at times drawn once from the seed inside the windows of the tuning file. Chooses how to travel by time and money: on foot when the place is close, otherwise by ambient car (if the group has one) or by the Company's Lines. Has no individual identity.
+A bundle of at most ten people of one Building who travel together from home to a workplace and a leisure place and back, four trips a day at times drawn once from the seed inside the windows of the tuning file. Chooses how to travel by time and money: on foot when the place is close, otherwise by ambient car (if the group has one) or by the Company's Lines. Has no individual identity. Ends (is retired) when its home is demolished, and the jobs it held go back to its workplace.
 
 **Congestion estimate**:
 How many times longer than on empty roads people expect a car trip to take, kept for each hour of the day and moved toward what each finished car trip really took. The car's cost in the choice of Mode uses it, so a jammed rush hour sends people to the Lines, or nowhere.
@@ -105,7 +105,7 @@ The road equivalent of an Overhaul, done by a road crew. Closes or narrows the r
 A vehicle kept past its Era. It has no permanent wear limit, but it burns more fuel and its Patch, Service and Overhaul costs are higher than when new.
 
 **Command**:
-A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, create, edit, rename or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
+A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, rename, close or add bays to a Station, create, edit, rename, colour or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
 
 **Company vehicle**:
 A bus or truck the Company owns, bought at a Depot for a Line. A bus takes passengers; a truck takes whichever freight Cargo is waiting at a stop and wanted at the next one. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.

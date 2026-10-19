@@ -396,6 +396,7 @@ public sealed record IndustryGenerationTuning
     public required float TownClearance { get; init; }
     public required float MinSpacing { get; init; }
     public required float MaxHeightRange { get; init; }
+    public required float ChainReach { get; init; }
 }
 
 public sealed record IndustryCounts
@@ -461,7 +462,7 @@ public sealed record TripsTuning
     public required float CarCostPerKm { get; init; }
     public required float CarOverheadSeconds { get; init; }
     public required float CarAccessRadius { get; init; }
-    public required float TransitWaitSeconds { get; init; }
+    public required float TransitWaitShare { get; init; }
     public required float TransitRideFactor { get; init; }
     public required float TransitGiveUpSeconds { get; init; }
     public required int MaxCars { get; init; }

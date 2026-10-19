@@ -112,15 +112,18 @@ internal static class Worlds
     }
 
     /// <summary>A forest (or farm) and the nearest processor joined by a road, a station beside each, a depot at the first and one line with trucks.</summary>
-    internal static (Simulation Sim, int Line, int Bought, float Dist)? TruckScenario(ulong seed, int trucks, int primaryType = 0, int processorType = 3, Tuning? tuning = null)
+    internal static (Simulation Sim, int Line, int Bought, float Dist)? TruckScenario(ulong seed, int trucks, int primaryType = 0, int processorType = 3, Tuning? tuning = null, float minDistance = 0f)
     {
         var (sim, _) = World(seed, 3, tuning, IndustryAmount.Normal);
         sim.Execute(new TakeLoanCommand(1000000));
         var primaries = sim.Industries.Where(i => i.Type == primaryType).ToList();
         var processors = sim.Industries.Where(i => i.Type == processorType).ToList();
         if (primaries.Count == 0 || processors.Count == 0) return null;
-        var (pa, pb) = primaries.SelectMany(x => processors.Select(y => (x, y))).OrderBy(t => MathF.Sqrt(MathF.Pow(t.x.X - t.y.X, 2) + MathF.Pow(t.x.Z - t.y.Z, 2))).First();
-        float dist = MathF.Sqrt(MathF.Pow(pa.X - pb.X, 2) + MathF.Pow(pa.Z - pb.Z, 2));
+        static float Gap(Industry a, Industry b) => MathF.Sqrt(MathF.Pow(a.X - b.X, 2) + MathF.Pow(a.Z - b.Z, 2));
+        var pairs = primaries.SelectMany(x => processors.Select(y => (x, y))).Where(t => Gap(t.x, t.y) >= minDistance).OrderBy(t => Gap(t.x, t.y)).ToList();
+        if (pairs.Count == 0) return null;
+        var (pa, pb) = pairs[0];
+        float dist = Gap(pa, pb);
         if (sim.Execute(new BuildRoadCommand(pa.X, pa.Z, pb.X, pb.Z, RoadType.TwoLane, 14f)) <= 0) return null;
         var net = sim.Network;
         int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(pa.X, pa.Z, 5f, withRoadsOnly: true), DepotLevel.Simple));

@@ -92,6 +92,50 @@ public sealed partial class Simulation
         return found;
     }
 
+    /// <summary>What the active buildings of a town lack of one cargo: how many are short of this month's need, the units that need lacks, and the units of construction stock missing for growth.</summary>
+    public readonly record struct CargoNeed(int Cargo, int ShortBuildings, float MissingMonthly, float MissingConstruction);
+
+    /// <summary>What a town still needs and how much of it a station of the company reaches: its active buildings, and how many of them some active station covers.</summary>
+    public readonly record struct TownNeeds(IReadOnlyList<CargoNeed> Cargo, int Buildings, int Covered);
+
+    /// <summary>The cargo a town's buildings are short of (this month's needs and the stock for growing) and how much of the town the company's stations cover.</summary>
+    public TownNeeds NeedsOf(int town)
+    {
+        if (_coverageDirty || _buildingStations.Count != _buildings.Count) RefreshCoverage();
+        var short_ = new int[_cargo.Count];
+        var monthly = new float[_cargo.Count];
+        var construction = new float[_cargo.Count];
+        var wanted = new bool[_cargo.Count];
+        int active = 0, covered = 0;
+        foreach (int id in _towns[town].BuildingIds)
+        {
+            var b = _buildings[id];
+            if (b.State != BuildingState.Active) continue;
+            active++;
+            if (id < _buildingStations.Count && _buildingStations[id].Length > 0) covered++;
+            var need = _sustainNeed[(int)b.Type][b.Tier];
+            var cap = _constructionCap[(int)b.Type][b.Tier];
+            for (int c = 0; c < _cargo.Count; c++)
+            {
+                if (need[c] > 0f)
+                {
+                    wanted[c] = true;
+                    float lack = need[c] - b.Sustain[c];
+                    if (lack > 0f) { short_[c]++; monthly[c] += lack; }
+                }
+                if (cap[c] > 0f)
+                {
+                    wanted[c] = true;
+                    construction[c] += Math.Max(0f, cap[c] - b.Construction[c]);
+                }
+            }
+        }
+        var list = new List<CargoNeed>();
+        for (int c = 0; c < _cargo.Count; c++)
+            if (wanted[c]) list.Add(new CargoNeed(c, short_[c], monthly[c], construction[c]));
+        return new TownNeeds(list, active, covered);
+    }
+
     public TownStats StatsOf(int town)
     {
         int people = 0, jobs = 0, homes = 0, commerce = 0, industry = 0, inactive = 0, abandoned = 0;

@@ -39,7 +39,7 @@ public partial class SimHost : Node3D
     readonly float[] _crewBuffer = new float[CrewCapacity * FloatsPerInstance];
     float[] _buffer = new float[InitialCapacity * FloatsPerInstance];
     int _capacity = InitialCapacity;
-    Node3D _roadRoot = null!;
+    Node3D _roadRoot = null!, _stationRoot = null!;
     Node3D _terrainRoot = null!;
     StandardMaterial3D _terrainMaterial = null!;
     MeshInstance3D?[] _terrainChunks = Array.Empty<MeshInstance3D?>();
@@ -60,6 +60,8 @@ public partial class SimHost : Node3D
     {
         _roadRoot = new Node3D { Name = "Roads" };
         AddChild(_roadRoot);
+        _stationRoot = new Node3D { Name = "Stations" };
+        AddChild(_stationRoot);
         _roadMaterial = Flat(new Color(0.23f, 0.24f, 0.26f));
         _medianMaterial = Flat(new Color(0.35f, 0.5f, 0.3f));
         _depotMaterial = Flat(new Color(0.85f, 0.25f, 0.2f));
@@ -162,7 +164,7 @@ public partial class SimHost : Node3D
     /// <summary>
     /// Starts a map of generated hills with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many).
     /// Returns how many towns were placed; fewer than <paramref name="towns"/> when the land ran out. A few ambient cars
-    /// are put on the streets.
+    /// are put on the streets. <see cref="UnlinkedIndustries"/> says how many processors found no place within reach of their inputs.
     /// </summary>
     public int NewTownsWorld(long seed, int towns, int industries)
     {
@@ -171,10 +173,14 @@ public partial class SimHost : Node3D
         Sim = new Simulation(net, (ulong)seed);
         Sim.AddTowns(plan);
         Sim.Execute(new SeedTrafficCommand(TownTrafficPerTown * Math.Max(1, plan.Towns.Count)));
+        UnlinkedIndustries = plan.Unlinked?.Count ?? 0;
         RebuildRoads();
         _accumulator = 0;
         return plan.Towns.Count;
     }
+
+    /// <summary>Processors of the last <see cref="NewTownsWorld"/> map that have no producer of an input, or no town, within reach.</summary>
+    public int UnlinkedIndustries { get; private set; }
 
     const int TownTrafficPerTown = 4; // through-traffic put on a new map per town so the roads between towns are not dead; the town streets are driven by trip groups (M3c)
 
@@ -534,6 +540,34 @@ public partial class SimHost : Node3D
 
     public bool RenameLine(int line, string name) => Sim.Execute(new RenameLineCommand(line, name)) == 1;
 
+    /// <summary>Gives a line the colour the player picked (alpha is ignored). False when refused.</summary>
+    public bool SetLineColor(int line, Color color) =>
+        Sim.Execute(new SetLineColorCommand(line, (Mathf.RoundToInt(color.R * 255f) << 16) | (Mathf.RoundToInt(color.G * 255f) << 8) | Mathf.RoundToInt(color.B * 255f))) == 1;
+
+    /// <summary>Names a station; nothing happens when the name is the one it has. False when refused (empty, too long, closed).</summary>
+    public bool RenameStation(int station, string name)
+    {
+        name = name.Trim();
+        if (name == StationName(station)) return true;
+        return Sim.Execute(new RenameStationCommand(station, name)) == 1;
+    }
+
+    /// <summary>Closes a station for good (nothing is refunded). False when it is already closed.</summary>
+    public bool CloseStation(int station)
+    {
+        bool closed = Sim.Execute(new CloseStationCommand(station)) == 1;
+        if (closed) RebuildStations();
+        return closed;
+    }
+
+    /// <summary>Adds bays to a station that has none, for the bay price. False when refused.</summary>
+    public bool AddStationBays(int station)
+    {
+        bool added = Sim.Execute(new AddStationBaysCommand(station)) == 1;
+        if (added) RebuildStations();
+        return added;
+    }
+
     /// <summary>Sells a company vehicle. False when it is not one in working order.</summary>
     public bool SellVehicle(int vehicle) => Sim.Execute(new SellVehicleCommand(vehicle)) >= 0;
 
@@ -543,6 +577,7 @@ public partial class SimHost : Node3D
     /// <summary>The name of a station: the nearest town within 500 m, else the nearest industry within 300 m, followed by its number among the stations named for it.</summary>
     public string StationName(int station)
     {
+        if (Sim.Stations[station].Name is { } chosen) return chosen;
         for (int s = 0; s <= station; s++)
         {
             if (_stationNames.ContainsKey(s)) continue;
@@ -693,7 +728,7 @@ public partial class SimHost : Node3D
             var p = StationPosition(station.Id);
             stations.Add(new Godot.Collections.Dictionary
             {
-                ["id"] = station.Id, ["name"] = StationName(station.Id), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["bays"] = station.HasBays, ["in_bay"] = station.InBay,
+                ["id"] = station.Id, ["name"] = StationName(station.Id), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["bays"] = station.HasBays, ["in_bay"] = station.InBay, ["bay_price"] = Sim.StationBayPrice,
                 ["waiting"] = waiting, ["accepts"] = accepts, ["waiting_for"] = waitingFor, ["lines"] = lines,
                 ["homes"] = homes, ["shops"] = shops, ["workplaces"] = workplaces, ["industries"] = Sim.IndustriesCoveredBy(station).Count,
                 ["boarded"] = station.Yesterday.Boarded, ["alighted"] = station.Yesterday.Alighted, ["gave_up"] = station.Yesterday.GaveUp,
@@ -741,9 +776,11 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// The towns: for each {id, name, x, y, z, satisfaction, population, jobs, homes, commerce, industry, inactive,
-    /// abandoned, unmet, walked, drove, rode, stayed, connectivity, min_connectivity, min_satisfaction, grew_sizes, grew_buildings, grew_blocks, blocked} (counts of buildings, inactive and abandoned ones apart; unmet is the share
+    /// abandoned, unmet, walked, drove, rode, stayed, connectivity, min_connectivity, min_satisfaction, grew_sizes, grew_buildings, grew_blocks, blocked, buildings, covered, needs} (counts of buildings, inactive and abandoned ones apart; unmet is the share
     /// of last month's needs that were not met, 0 to 1; the last four are people-trips of the day before by foot, by car, on the
-    /// company's lines, and trips that could not be made).
+    /// company's lines, and trips that could not be made; buildings standing and covered is how many of those a station of the company
+    /// covers; needs is a list of {cargo, short, monthly, construction}: for each cargo its buildings use or build with, how many buildings
+    /// are short of this month's need, the units that need lacks, and the units of construction stock missing for growth).
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetTowns()
     {
@@ -751,6 +788,10 @@ public partial class SimHost : Node3D
         foreach (var town in Sim.Towns)
         {
             var s = Sim.StatsOf(town.Id);
+            var needs = Sim.NeedsOf(town.Id);
+            var needList = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+            foreach (var n in needs.Cargo)
+                needList.Add(new Godot.Collections.Dictionary { ["cargo"] = n.Cargo, ["short"] = n.ShortBuildings, ["monthly"] = n.MissingMonthly, ["construction"] = n.MissingConstruction });
             towns.Add(new Godot.Collections.Dictionary
             {
                 ["id"] = town.Id, ["name"] = town.Name, ["x"] = town.X, ["y"] = HeightAt(town.X, town.Z), ["z"] = town.Z,
@@ -763,10 +804,25 @@ public partial class SimHost : Node3D
                 ["connectivity"] = town.Connectivity, ["min_connectivity"] = Sim.TownTuning.Growth.MinConnectivity, ["min_satisfaction"] = Sim.TownTuning.Growth.MinSatisfaction,
                 ["grew_sizes"] = town.LastGrowth.Upgrades, ["grew_buildings"] = town.LastGrowth.NewBuildings, ["grew_blocks"] = town.LastGrowth.NewBlocks,
                 ["blocked"] = town.LastGrowth.Blocked.ToString(),
+                ["buildings"] = needs.Buildings, ["covered"] = needs.Covered, ["needs"] = needList,
             });
         }
         return towns;
     }
+
+    /// <summary>
+    /// The connectivity view: homes are coloured green when a group living there reached work or leisure last month and red when
+    /// none did; everything else is dimmed.
+    /// </summary>
+    public void SetConnectivityView(bool on)
+    {
+        if (_connectivityView == on) return;
+        _connectivityView = on;
+        _buildingsVersion = -1; // redraw the buildings
+    }
+
+    public bool ConnectivityView => _connectivityView;
+    bool _connectivityView;
 
     /// <summary>Runs the simulation for this many simulated seconds right now, without drawing (for the self-tests).</summary>
     public void StepFor(double seconds)
@@ -1023,8 +1079,9 @@ public partial class SimHost : Node3D
         _crews.VisibleInstanceCount = n;
     }
 
-    /// <summary>A strong colour per line, shared by its vehicles and the line list.</summary>
-    static Color LineColor(int line) => Color.FromHsv(((line * 0.381966f) % 1f), 0.85f, 0.95f);
+    /// <summary>The colour of a line, shared by its vehicles and the line list: the player's choice, else a strong colour from its number.</summary>
+    Color LineColor(int line) =>
+        Sim.Lines[line].Color is >= 0 and var rgb ? new Color(((rgb >> 16) & 255) / 255f, ((rgb >> 8) & 255) / 255f, (rgb & 255) / 255f) : Color.FromHsv(((line * 0.381966f) % 1f), 0.85f, 0.95f);
 
     static Color CarColor(int id)
     {
@@ -1090,14 +1147,7 @@ public partial class SimHost : Node3D
             _roadRoot.AddChild(disc);
         }
 
-        foreach (var station in Sim.Stations)
-        {
-            if (!station.Active) continue;
-            var (x, z) = net.GetNode(station.Node);
-            var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(14f, 4f, 10f) }, MaterialOverride = _stationMaterial };
-            platform.Position = new Vector3(x - 24f, _terrain.HeightAt(x - 24f, z - 24f) + 2f, z - 24f);
-            _roadRoot.AddChild(platform);
-        }
+        RebuildStations();
 
         foreach (var depot in Sim.Depots)
         {
@@ -1109,6 +1159,39 @@ public partial class SimHost : Node3D
         }
         RebuildBuildings();
     }
+
+    /// <summary>Draws each open station: a platform beside its node and, with bays, a pocket of paving beside the stop lane that the vehicles pull into.</summary>
+    void RebuildStations()
+    {
+        foreach (var child in _stationRoot.GetChildren()) child.QueueFree();
+        var net = Sim.Network;
+        foreach (var station in Sim.Stations)
+        {
+            if (!station.Active) continue;
+            var (x, z) = net.GetNode(station.Node);
+            var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(14f, 4f, 10f) }, MaterialOverride = _stationMaterial };
+            platform.Position = new Vector3(x - 24f, _terrain.HeightAt(x - 24f, z - 24f) + 2f, z - 24f);
+            _stationRoot.AddChild(platform);
+            foreach (var (laneId, position) in Sim.BayLanes(station))
+            {
+                int lane = laneId.Value;
+                float length = Sim.BayLength;
+                float s = Math.Max(0f, position - length * 0.5f);
+                LaneFrame(lane, s, out float cx, out float cz, out float dx, out float dz);
+                float side = _laneSide[lane] + BayOffset;
+                var centre = new Vector3(cx - dz * side, _laneY[lane] + _laneGrade[lane] * s + 0.01f, cz + dx * side);
+                float tilt = 1f / MathF.Sqrt(1f + _laneGrade[lane] * _laneGrade[lane]);
+                var along = new Vector3(dx * tilt, _laneGrade[lane] * tilt, dz * tilt);
+                var across = new Vector3(-dz, 0f, dx);
+                var up = across.Cross(along);
+                var pocket = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(length, RoadHeight, Simulation.LaneWidth) }, MaterialOverride = _roadMaterial };
+                pocket.Transform = new Transform3D(new Basis(along, up, across), centre);
+                _stationRoot.AddChild(pocket);
+            }
+        }
+    }
+
+    static readonly Color ReachedColour = new(0.25f, 0.85f, 0.35f), CutOffColour = new(0.92f, 0.22f, 0.20f), DimmedColour = new(0.30f, 0.32f, 0.36f);
 
     static readonly Color[] BuildingColors =
     {
@@ -1151,7 +1234,9 @@ public partial class SimHost : Node3D
             buf[o + 4] = 0f;         buf[o + 5] = tier.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = b.Z;
             var colour = BuildingColors[(int)b.Type];
-            colour = b.State switch
+            if (_connectivityView)
+                colour = b.Type == BuildingType.Home && b.State == BuildingState.Active ? (b.Reached ? ReachedColour : CutOffColour) : colour.Lerp(DimmedColour, 0.7f);
+            colour = _connectivityView && b.State == BuildingState.Active ? colour : b.State switch
             {
                 BuildingState.Inactive => colour.Lerp(new Color(0.45f, 0.45f, 0.45f), 0.65f),
                 BuildingState.Abandoned => new Color(0.17f, 0.15f, 0.15f),

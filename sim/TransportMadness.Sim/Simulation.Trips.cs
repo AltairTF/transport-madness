@@ -42,6 +42,8 @@ public sealed partial class Simulation
     readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version, float FreeRide = 0f);
 
     public IReadOnlyList<TripGroup> TripGroups => _groups;
+    /// <summary>People of trip groups who have a workplace building as their job.</summary>
+    internal int JobsTakenAt(int building) => _jobsTaken.GetValueOrDefault(building);
     public TripsTuning TripTuning => _trips;
     /// <summary>Ambient cars on the road that carry a trip group.</summary>
     public int TripVehicleCount => _tripVehicles;
@@ -352,7 +354,9 @@ public sealed partial class Simulation
         }
         foreach (var g in _groups)
         {
-            if (g.Travelling || (g.NextLeg != TripLeg.WorkOut && g.NextLeg != TripLeg.LeisureOut)) continue;
+            if (g.Retired || g.Travelling) continue;
+            if (_buildings[g.Home].State == BuildingState.Demolished) { Retire(g); continue; }
+            if (g.NextLeg != TripLeg.WorkOut && g.NextLeg != TripLeg.LeisureOut) continue;
             var home = _buildings[g.Home];
             if (home.State != BuildingState.Active) continue;
             if (!IsStanding(g.Work))
@@ -367,6 +371,16 @@ public sealed partial class Simulation
                 Advance(g, -1, Tick);
             }
         }
+    }
+
+    /// <summary>The home of a group is gone (demolished): the group ends, and the jobs it held go back to the workplace.</summary>
+    void Retire(TripGroup g)
+    {
+        if (g.Work >= 0) _jobsTaken[g.Work] = Math.Max(0, _jobsTaken.GetValueOrDefault(g.Work) - g.People);
+        g.Retired = true;
+        g.People = 0;
+        g.Work = g.Leisure = -1;
+        g.NextTick = long.MaxValue;
     }
 
     // ---- Choosing how to travel -------------------------------------------------------------------------------

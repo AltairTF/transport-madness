@@ -24,7 +24,7 @@ public class BalanceProbe
         float cto = EnvF("CARTIMEOUT", -1f); if (cto > 0) t = t with { Trips = t.Trips with { CarTimeoutSeconds = cto } };
         float mxc = EnvF("MAXCARS", -1f); if (mxc > 0) t = t with { Trips = t.Trips with { MaxCars = (int)mxc } };
         float cs = EnvF("CONGSMOOTH", -1f); if (cs >= 0) t = t with { Trips = t.Trips with { CongestionSmoothing = cs } };
-        float ts = EnvF("TRANSITWAIT", -1f); if (ts > 0) t = t with { Trips = t.Trips with { TransitWaitSeconds = ts } };
+        float ts = EnvF("TRANSITWAIT", -1f); if (ts > 0) t = t with { Trips = t.Trips with { TransitWaitShare = ts } };
         return t;
     }
 
@@ -245,6 +245,85 @@ public class BalanceProbe
         }
     }
 
+
+    /// <summary>
+    /// A station in the middle of each town and a fixed daily delivery of building materials and planks (DELIVER units each),
+    /// plus its monthly needs in food and goods: how fast the town grows. MONTHS, DELIVER (default 60), NEEDS (default 1 = needs met).
+    /// </summary>
+    [Fact]
+    public void Growth_OfAServedTown()
+    {
+        if (!On) return;
+        int months = Env("MONTHS", 12), deliver = Env("DELIVER", 60); float needs = EnvF("NEEDS", 1f);
+        foreach (ulong seed in new ulong[] { 1, 2, 3, 4, 5, 6 })
+        {
+            var (sim, _) = World(seed, 3, Override(Tuning.Load()));
+            var town = sim.Towns[0];
+            var (x, z) = sim.Network.GetNode(sim.Network.FindNodeNear(town.X, town.Z, 200f, withRoadsOnly: true));
+            sim.Execute(new TakeLoanCommand(1000000));
+            int sid = sim.Execute(new BuildStationCommand(x, z));
+            if (sid < 0) { _out.WriteLine($"seed {seed}: no station"); continue; }
+            var st = sim.Stations[sid];
+            int Cargo(string id) { for (int c = 0; c < sim.CargoTypes.Count; c++) if (sim.CargoTypes[c].Id == id) return c; return -1; }
+            int mat = Cargo("materials"), pl = Cargo("planks"), food = Cargo("food"), goods = Cargo("goods");
+            var covered = sim.CoveredBy(st);
+            float monthlyNeed(int c) => covered.Sum(id => sim.TownTuning.Of(sim.Buildings[id].Type, sim.Buildings[id].Tier).Sustain.Where(a => sim.CargoTypes[c].Id == a.Cargo).Sum(a => a.Amount));
+            float firstWaveMat = covered.Sum(id => sim.TownTuning.Of(sim.Buildings[id].Type, sim.Buildings[id].Tier).Construction.Where(a => a.Cargo == "materials").Sum(a => a.Amount));
+            float firstWavePl = covered.Sum(id => sim.TownTuning.Of(sim.Buildings[id].Type, sim.Buildings[id].Tier).Construction.Where(a => a.Cargo == "planks").Sum(a => a.Amount));
+            int pop0 = sim.StatsOf(town.Id).Population, all0 = sim.Buildings.Count(b => b.Town == town.Id);
+            _out.WriteLine($"seed {seed} {town.Name}: {covered.Count} of {all0} buildings covered, pop {pop0}; needs/month food {monthlyNeed(food):0} goods {monthlyNeed(goods):0}; first wave of upgrades costs materials {firstWaveMat:0} planks {firstWavePl:0} = {(firstWaveMat + firstWavePl) / 20:0} truckloads");
+            var line = new System.Text.StringBuilder("   pop by month:");
+            int firstGrowth = -1; long dayTicks = (long)Math.Round(sim.DayLengthSeconds / Simulation.StepSeconds); int dpm = sim.Network.Tuning.Economy.DaysPerMonth;
+            double carry = 0;
+            for (int m = 1; m <= months; m++)
+            {
+                for (int d = 0; d < dpm; d++)
+                {
+                    sim.Distribute(st, mat, deliver); sim.Distribute(st, pl, deliver);
+                    sim.Distribute(st, food, (int)(monthlyNeed(food) * needs / dpm + carry)); sim.Distribute(st, goods, (int)(monthlyNeed(goods) * needs / dpm));
+                    for (long t = 0; t < dayTicks; t++) sim.Step();
+                }
+                var r = town.LastGrowth;
+                if (firstGrowth < 0 && (r.Upgrades + r.NewBuildings) > 0) firstGrowth = m;
+                line.Append($" {sim.StatsOf(town.Id).Population}(+{r.Upgrades}u+{r.NewBuildings}n{(r.Blocked != GrowthBlock.None ? " " + r.Blocked.ToString()[0] : "")} s{town.Satisfaction:0} c{town.Connectivity:0.00})");
+            }
+            _out.WriteLine(line.ToString());
+            _out.WriteLine($"   first growth month {firstGrowth}; population {pop0} -> {sim.StatsOf(town.Id).Population}; buildings {all0} -> {sim.Buildings.Count(b => b.Town == town.Id)}");
+        }
+    }
+
+
+    /// <summary>How many generated maps have a processor with no producer of an input (or no town) within reach; REACH overrides the tuning (0 = the old placement), MAPS, TOWNS.</summary>
+    [Fact]
+    public void Chains_WithinReach()
+    {
+        if (!On) return;
+        int maps = Env("MAPS", 100), towns = Env("TOWNS", 5);
+        foreach (var amount in new[] { IndustryAmount.Few, IndustryAmount.Normal, IndustryAmount.Many })
+        {
+            var tuning = Tuning.Load();
+            float reachSetting = EnvF("REACH", tuning.Industries.Generation.ChainReach);
+            tuning = tuning with { Industries = tuning.Industries with { Generation = tuning.Industries.Generation with { ChainReach = reachSetting } } };
+            int gaps = 0, unlinkedTotal = 0, processors = 0;
+            for (ulong seed = 1; seed <= (ulong)maps; seed++)
+            {
+                var net = new RoadNetwork(Terrain.Generate(seed), tuning);
+                var plan = IndustryGenerator.Generate(net, seed, TownGenerator.Generate(net, seed, towns), amount);
+                processors += plan.Industries!.Count(i => tuning.Industries.Types[i.Type].Inputs.Count > 0);
+                var types = tuning.Industries.Types; float er = EnvF("EVALREACH", 1500f);
+                int broken = 0;
+                foreach (var me in plan.Industries!.Where(i => types[i.Type].Inputs.Count > 0))
+                {
+                    bool Near(float x, float z) => (x - me.X) * (x - me.X) + (z - me.Z) * (z - me.Z) <= er * er;
+                    if (!(plan.Towns.Any(t => Near(t.X, t.Z)) && types[me.Type].Inputs.All(i => plan.Industries!.Any(o => types[o.Type].Output == i.Cargo && Near(o.X, o.Z))))) broken++;
+                }
+                unlinkedTotal += broken;
+                if (broken > 0) gaps++;
+            }
+            _out.WriteLine($"{amount}: reach {reachSetting:0}, {maps} maps, {gaps} with a processor out of reach {EnvF("EVALREACH", 1500f):0} ({unlinkedTotal} of {processors} processors)");
+        }
+    }
+
     /// <summary>A truck line from a forest to a sawmill (or a farm to a food plant): income per truck.</summary>
     [Fact]
     public void TruckLine_PrimaryToProcessor()
@@ -252,14 +331,17 @@ public class BalanceProbe
         if (!On) return;
         int trucks = Env("TRUCKS", 3), days = Env("DAYS", 10), from = 3, primaryType = Env("PRIMARY", 0), processorType = Env("PROCESSOR", 3);
         double totalIncome = 0, totalUpkeep = 0; int n = 0;
-        foreach (ulong seed in new ulong[] { 1, 2, 3, 4, 5, 6 })
+        foreach (ulong seed in Enumerable.Range(1, Env("SEEDS", 6)).Select(i => (ulong)i))
         {
             var (sim, plan) = World(seed, 3, Override(Tuning.Load()), IndustryAmount.Normal);
             sim.Execute(new TakeLoanCommand(1000000));
             var a = sim.Industries.Where(i => i.Type == primaryType).ToList();
             var b = sim.Industries.Where(i => i.Type == processorType).ToList();
             if (a.Count == 0 || b.Count == 0) { _out.WriteLine($"seed {seed}: no pair ({a.Count} primary, {b.Count} processor)"); continue; }
-            var (pa, pb) = a.SelectMany(x => b.Select(y => (x, y))).OrderBy(t => MathF.Sqrt(MathF.Pow(t.x.X - t.y.X, 2) + MathF.Pow(t.x.Z - t.y.Z, 2))).First();
+            float minDist = EnvF("MINDIST", 0f);
+            var pairs = a.SelectMany(x => b.Select(y => (x, y))).Where(t => MathF.Sqrt(MathF.Pow(t.x.X - t.y.X, 2) + MathF.Pow(t.x.Z - t.y.Z, 2)) >= minDist).OrderBy(t => MathF.Sqrt(MathF.Pow(t.x.X - t.y.X, 2) + MathF.Pow(t.x.Z - t.y.Z, 2))).ToList();
+            if (pairs.Count == 0) { _out.WriteLine($"seed {seed}: no pair at {minDist} m or more"); continue; }
+            var (pa, pb) = pairs[0];
             float dist = MathF.Sqrt(MathF.Pow(pa.X - pb.X, 2) + MathF.Pow(pa.Z - pb.Z, 2));
             if (sim.Execute(new BuildRoadCommand(pa.X, pa.Z, pb.X, pb.Z, RoadType.TwoLane, 14f)) <= 0) { _out.WriteLine($"seed {seed}: road refused"); continue; }
             var net = sim.Network;

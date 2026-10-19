@@ -110,6 +110,56 @@ public class IndustryTests
         Assert.InRange(plan.Industries!.Count, 1, 13);
     }
 
+    /// <summary>Whether every processor of a plan has a producer of each of its inputs and a town within <paramref name="reach"/>.</summary>
+    static List<int> BrokenChains(Tuning tuning, WorldPlan plan, float reach)
+    {
+        var types = tuning.Industries.Types;
+        var broken = new List<int>();
+        for (int k = 0; k < plan.Industries!.Count; k++)
+        {
+            var me = plan.Industries[k];
+            bool Near(float x, float z) => (x - me.X) * (x - me.X) + (z - me.Z) * (z - me.Z) <= reach * reach;
+            if (types[me.Type].Inputs.Count == 0) continue;
+            bool ok = plan.Towns.Any(t => Near(t.X, t.Z)) && types[me.Type].Inputs.All(i => plan.Industries.Any(o => types[o.Type].Output == i.Cargo && Near(o.X, o.Z)));
+            if (!ok) broken.Add(k);
+        }
+        return broken;
+    }
+
+    [Theory]
+    [InlineData(IndustryAmount.Few)]
+    [InlineData(IndustryAmount.Normal)]
+    [InlineData(IndustryAmount.Many)]
+    public void EveryProcessor_HasItsInputsAndATownWithinReach_OnMostMaps_AndTheRestAreReported(IndustryAmount amount)
+    {
+        var tuning = Tuning.Load();
+        float reach = tuning.Industries.Generation.ChainReach;
+        int mapsWithAGap = 0, maps = 40;
+        for (ulong seed = 1; seed <= (ulong)maps; seed++)
+        {
+            var net = new RoadNetwork(Terrain.Generate(seed), tuning);
+            var plan = IndustryGenerator.Generate(net, seed, TownGenerator.Generate(net, seed, 5), amount);
+            var broken = BrokenChains(tuning, plan, reach);
+            Assert.Equal(broken.OrderBy(k => k), plan.Unlinked!.OrderBy(k => k)); // what is out of reach is exactly what is reported
+            if (broken.Count > 0) mapsWithAGap++;
+        }
+        Assert.True(mapsWithAGap <= maps / 8, $"{mapsWithAGap} of {maps} maps have a chain out of reach");
+    }
+
+    [Fact]
+    public void WhenAChainDoesNotFit_TheProcessorIsStillPlaced_AndReported()
+    {
+        // Reach of nothing: no processor can be placed next to anything, so all of them fall back and are listed.
+        var tuning = With(t => t with { Industries = t.Industries with { Generation = t.Industries.Generation with { ChainReach = 1f } } });
+        var net = new RoadNetwork(Terrain.Generate(3), tuning);
+
+        var plan = IndustryGenerator.Generate(net, 3, TownGenerator.Generate(net, 3, 4), IndustryAmount.Normal);
+
+        int processors = plan.Industries!.Count(i => tuning.Industries.Types[i.Type].Inputs.Count > 0);
+        Assert.Equal(processors, plan.Unlinked!.Count);
+        Assert.All(plan.Unlinked, k => Assert.NotEmpty(tuning.Industries.Types[plan.Industries[k].Type].Inputs));
+    }
+
     // ---- Production ----------------------------------------------------------------------------------------------
 
     [Fact]

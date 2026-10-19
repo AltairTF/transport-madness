@@ -63,6 +63,29 @@ public class TripTests
     // ---- The groups ----------------------------------------------------------------------------------------------
 
     [Fact]
+    public void WhenAHomeIsDemolished_ItsGroupsAreRetired_AndTheJobsTheyHeldGoBack()
+    {
+        var (sim, _, _, _, _) = Corridor();
+        sim.Execute(new TakeLoanCommand(1000000));
+        Run(sim, 2);
+        int Jobs() => new[] { 3, 4, 5 }.Sum(sim.JobsTakenAt);
+        int before = Jobs();
+        int victims = sim.TripGroups.Where(g => g.Home == 1).Sum(g => g.People);
+        Assert.Equal(60, before);
+        Assert.True(victims > 0);
+
+        Assert.True(sim.Execute(new BuildRoadCommand(200, -70, 200, 70, RoadType.TwoLane, 14f)) > 0);
+        Assert.Equal(BuildingState.Demolished, sim.Buildings[1].State);
+        Run(sim, 1.1);
+
+        Assert.All(sim.TripGroups.Where(g => g.Home == 1), g => { Assert.True(g.Retired); Assert.Equal(0, g.People); Assert.False(g.Travelling); });
+        Assert.All(sim.TripGroups.Where(g => g.Home != 1), g => Assert.False(g.Retired));
+        Assert.Equal(before - victims, Jobs());
+        // The rest of the town goes on as before: the other two homes still send their people out.
+        Assert.Equal(40, sim.TripGroups.Where(g => g.Home != 1).Sum(g => g.People));
+    }
+
+    [Fact]
     public void TheGroupsOfAHome_AddUpToItsPeople_InGroupsNoBiggerThanTheTuningAllows()
     {
         var (sim, _, _, _, _) = Corridor();
@@ -206,6 +229,53 @@ public class TripTests
     }
 
     [Fact]
+    public void TheWaitForALine_IsAShareOfItsRoundTripOverItsFleet()
+    {
+        var (sim, depot, a, b, c) = Corridor();
+        int line = sim.Execute(new CreateLineCommand(new[] { a, b, c }));
+        sim.Execute(new BuyVehicleCommand(depot, "bus", line));
+        float cycle = sim.LineCycleSeconds(line);
+        float oneBus = sim.ModeFor(0, 3, hasCar: false).Seconds;
+
+        // A round trip of the line is the road both ways times the ride factor, plus the standing at the three stops.
+        Assert.InRange(cycle, 150f, 600f);
+
+        Run(sim, 0.05);
+        sim.Execute(new BuyVehicleCommand(depot, "bus", line));
+        float twoBuses = sim.ModeFor(0, 3, hasCar: false).Seconds;
+
+        Assert.Equal(cycle, sim.LineCycleSeconds(line), 0.5f); // the fleet does not change the round trip
+        Assert.Equal(sim.TripTuning.TransitWaitShare * cycle / 2f, oneBus - twoBuses, 1f);
+    }
+
+    [Fact]
+    public void ALongerLine_MakesPeopleWaitLonger_ThanAShortOneWithTheSameBus()
+    {
+        var (sim, depot, a, b, c) = Corridor();
+        int shortLine = sim.Execute(new CreateLineCommand(new[] { a, b }));
+        int longLine = sim.Execute(new CreateLineCommand(new[] { a, b, c }));
+
+        Assert.True(sim.LineCycleSeconds(longLine) > sim.LineCycleSeconds(shortLine) * 1.5f);
+    }
+
+    [Fact]
+    public void ALineWithNoRoadBetweenItsStops_HasNoRoundTrip_AndBringsNobody()
+    {
+        var (sim, depot, a, b, c) = Corridor();
+        int line = sim.Execute(new CreateLineCommand(new[] { a, b, c }));
+        sim.Execute(new BuyVehicleCommand(depot, "bus", line));
+        for (int r = 0; r < sim.Network.RoadCount; r++)
+        {
+            var road = sim.Network.GetRoad(new RoadId(r));
+            var (x, _) = sim.Network.GetNode(road.From);
+            if (!road.Retired && x >= 799f && x <= 801f) sim.Execute(new RemoveRoadCommand(r));
+        }
+
+        Assert.True(float.IsPositiveInfinity(sim.LineCycleSeconds(line)));
+        Assert.Equal(TripMode.None, sim.ModeFor(0, 3, hasCar: false).Mode);
+    }
+
+    [Fact]
     public void WithoutALine_APersonWithoutACarCannotTravelFar_AndOneWithACarDrives()
     {
         var (sim, _, _, _, _) = Corridor();
@@ -229,7 +299,7 @@ public class TripTests
         var (mode, seconds) = sim.ModeFor(0, 3, hasCar: false);
 
         Assert.Equal(TripMode.Transit, mode);
-        Assert.True(seconds > sim.TripTuning.TransitWaitSeconds / 2f);
+        Assert.True(seconds > sim.TripTuning.TransitWaitShare * sim.LineCycleSeconds(line));
 
         sim.Execute(new DeleteLineCommand(line));
         Assert.Equal(TripMode.None, sim.ModeFor(0, 3, hasCar: false).Mode);

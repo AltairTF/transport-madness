@@ -72,11 +72,56 @@ public sealed partial class Simulation
         return _stations.Count - 1;
     }
 
+    /// <summary>Names a station. Returns 1, 0 when it is closed or unknown or the name is empty or longer than 24 characters.</summary>
+    int RenameStation(int station, string name)
+    {
+        name = name?.Trim() ?? "";
+        if (station < 0 || station >= _stations.Count || !_stations[station].Active || name.Length == 0 || name.Length > 24) return 0;
+        _stations[station].Name = name;
+        return 1;
+    }
+
+    /// <summary>Closes a station by hand, as losing its roads does: people waiting give up, lines skip it, nothing is refunded. Returns 1, 0 when it is closed or unknown.</summary>
+    int CloseStation(int station)
+    {
+        if (station < 0 || station >= _stations.Count || !_stations[station].Active) return 0;
+        _stations[station].Active = false;
+        _coverageDirty = true;
+        _transitVersion++;
+        return 1;
+    }
+
+    /// <summary>Adds bays to an open station without them, for the bay price. Returns 1, 0 when refused.</summary>
+    int AddStationBays(int station)
+    {
+        if (station < 0 || station >= _stations.Count || !_stations[station].Active || _stations[station].HasBays) return 0;
+        if (!TrySpend(_stationTuning.BayPrice, LedgerEntry.Stations)) return 0;
+        _stations[station].HasBays = true;
+        return 1;
+    }
+
     bool HasStopLane(int node)
     {
         foreach (var lane in _net.IncomingLanes(node))
             if (_net.GetLane(lane).Length >= _stationTuning.MinApproach) return true;
         return false;
+    }
+
+    /// <summary>Vehicles per bay pocket and how long the pocket is drawn for each: <see cref="StationTuning.BayCapacity"/> vehicles of a bus's length and a gap.</summary>
+    public float BayLength => _stationTuning.BayCapacity * (VehicleLength + 2f);
+
+    /// <summary>
+    /// The lanes where a vehicle can pull into a bay of the station (the right-most lane of each approach) and the position along
+    /// each where the front of a halted vehicle stands, for drawing the bays. Empty for a station without bays.
+    /// </summary>
+    public IReadOnlyList<(LaneId Lane, float Position)> BayLanes(Station station)
+    {
+        var list = new List<(LaneId Lane, float Position)>();
+        if (!station.Active || !station.HasBays) return list;
+        SyncNetwork();
+        foreach (var lane in _net.IncomingLanes(station.Node))
+            if (IsStopLane(lane.Value, station) && _net.GetLane(lane).Index == 0) list.Add((lane, StopPosition(lane.Value)));
+        return list;
     }
 
     /// <summary>Whether vehicles bound for the station stop on this lane: it runs into the station's node and is long enough.</summary>

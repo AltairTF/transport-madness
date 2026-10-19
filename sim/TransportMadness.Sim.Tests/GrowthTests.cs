@@ -75,6 +75,22 @@ public class GrowthTests
     }
 
     [Fact]
+    public void BuildingsFilledByDeliveries_ReachAFullStock_NotJustShortOfIt()
+    {
+        // Deliveries are split by room; the last fraction of a unit of room used to be left over for good (239.93 of 240).
+        var (sim, _) = BlockTown(Quick(), (BuildingType.Home, 0), (BuildingType.Commerce, 0), (BuildingType.Home, 1), (BuildingType.Home, 0), (BuildingType.Commerce, 1), (BuildingType.Home, 0), (BuildingType.Home, 1), (BuildingType.Commerce, 0));
+        var (x, z) = sim.Network.GetNode(sim.Network.FindNodeNear(-60f, -60f, 20f, withRoadsOnly: true));
+        var station = sim.Stations[sim.Execute(new BuildStationCommand(x, z))];
+        sim.Execute(new TakeLoanCommand(100000));
+        foreach (int cargo in new[] { Materials, Planks })
+            while (sim.Distribute(station, cargo, 7) > 0) { }
+
+        RunMonths(sim, 1.1);
+
+        Assert.Equal(8, sim.Towns[0].LastGrowth.Upgrades);
+    }
+
+    [Fact]
     public void ABuildingWithAPartialStock_WaitsForTheRest()
     {
         var (sim, _) = BlockTown(Quick(), (BuildingType.Home, 0));
@@ -274,6 +290,52 @@ public class GrowthTests
         Assert.True(open.Towns[0].Connectivity >= open.TownTuning.Growth.MinConnectivity, $"connectivity {open.Towns[0].Connectivity}");
         Assert.Equal(GrowthBlock.None, open.Towns[0].LastGrowth.Blocked);
         Assert.All(Enumerable.Range(0, 4), id => Assert.Equal(1, open.Buildings[id].Tier));
+    }
+
+    // ---- What a town still needs, and what the map shows ---------------------------------------------------------
+
+    [Fact]
+    public void TheNeedsOfATown_ListWhatItIsShortOf_AndHowMuchOfItTheStationsCover()
+    {
+        var (sim, _) = BlockTown(Quick(), (BuildingType.Home, 0), (BuildingType.Commerce, 0));
+        int Cargo(string id) => Enumerable.Range(0, sim.CargoTypes.Count).First(c => sim.CargoTypes[c].Id == id);
+        int materials = Cargo("materials"), food = Cargo("food"), goods = Cargo("goods");
+
+        var start = sim.NeedsOf(0);
+        Assert.Equal(2, start.Buildings);
+        Assert.Equal(0, start.Covered); // no station yet
+        Assert.Equal(80f, start.Cargo.First(c => c.Cargo == materials).MissingConstruction); // 40 for each building
+        Assert.All(start.Cargo, c => Assert.Equal(0, c.ShortBuildings)); // they start with some stock
+
+        var (x, z) = sim.Network.GetNode(sim.Network.FindNodeNear(-60f, -60f, 20f, withRoadsOnly: true));
+        sim.Execute(new TakeLoanCommand(100000));
+        Assert.True(sim.Execute(new BuildStationCommand(x, z)) >= 0);
+        RunMonths(sim, 3.1); // the starting stock is used up
+
+        var later = sim.NeedsOf(0);
+        Assert.Equal(2, later.Covered);
+        Assert.Equal(1, later.Cargo.First(c => c.Cargo == food).ShortBuildings);  // the home eats
+        Assert.Equal(2, later.Cargo.First(c => c.Cargo == goods).ShortBuildings); // home and shop
+        Assert.True(later.Cargo.First(c => c.Cargo == goods).MissingMonthly > 0f);
+
+        var station = sim.Stations[0];
+        while (sim.Distribute(station, materials, 20) > 0) { }
+        Assert.Equal(0f, sim.NeedsOf(0).Cargo.First(c => c.Cargo == materials).MissingConstruction, 0.01f);
+    }
+
+    [Fact]
+    public void HomesAreMarkedReached_OrNot_ByTheTripsOfLastMonth()
+    {
+        var cut = TwoClusters(joined: false);
+        var open = TwoClusters(joined: true);
+        Assert.All(Enumerable.Range(0, 4), id => Assert.True(cut.Buildings[id].Reached)); // until a month is over
+
+        RunMonths(cut, 1.05);
+        RunMonths(open, 1.05);
+
+        Assert.All(Enumerable.Range(0, 4), id => Assert.False(cut.Buildings[id].Reached));
+        Assert.All(Enumerable.Range(0, 4), id => Assert.True(open.Buildings[id].Reached));
+        Assert.True(open.Buildings[5].Reached); // other kinds are never marked
     }
 
     // ---- Determinism ----------------------------------------------------------------------------------------------

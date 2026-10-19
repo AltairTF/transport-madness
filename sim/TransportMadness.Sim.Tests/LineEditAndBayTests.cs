@@ -298,4 +298,133 @@ public class LineEditAndBayTests
 
         Assert.Equal(Hash(), Hash());
     }
+
+    // ---- Colour, names, closing and bays by hand ------------------------------------------------------------------
+
+    [Fact]
+    public void ALineTakesTheColourThePlayerGivesIt_AndRefusesAnythingElse()
+    {
+        var (sim, _, a, b, _) = StraightLine();
+        int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
+        Assert.Equal(-1, sim.Lines[line].Color);
+
+        Assert.Equal(1, sim.Execute(new SetLineColorCommand(line, 0x3366CC)));
+        Assert.Equal(0x3366CC, sim.Lines[line].Color);
+        Assert.Equal(0, sim.Execute(new SetLineColorCommand(line, 0x1000000)));
+        Assert.Equal(0, sim.Execute(new SetLineColorCommand(line, -5)));
+        Assert.Equal(0, sim.Execute(new SetLineColorCommand(99, 0xFFFFFF)));
+        Assert.Equal(0x3366CC, sim.Lines[line].Color);
+    }
+
+    [Fact]
+    public void AStationCanBeRenamed_AndTheColourAndNameDoNotChangeTheState()
+    {
+        var (sim, _, a, b, _) = StraightLine();
+        int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
+        ulong before = sim.StateHash();
+
+        Assert.Equal(1, sim.Execute(new RenameStationCommand(a, "  Central  ")));
+        sim.Execute(new SetLineColorCommand(line, 0xAA0000));
+
+        Assert.Equal("Central", sim.Stations[a].Name);
+        Assert.Equal(before, sim.StateHash());
+        Assert.Equal(0, sim.Execute(new RenameStationCommand(a, "")));
+        Assert.Equal(0, sim.Execute(new RenameStationCommand(a, new string('x', 25))));
+        Assert.Equal(0, sim.Execute(new RenameStationCommand(77, "Nowhere")));
+        Assert.Equal("Central", sim.Stations[a].Name);
+    }
+
+    [Fact]
+    public void ClosingAStation_MakesBusesSkipIt()
+    {
+        var (sim, depot, a, b, c) = StraightLine();
+        int line = sim.Execute(new CreateLineCommand(new[] { a, c, b }));
+        int bus = sim.Execute(new BuyVehicleCommand(depot, "bus", line));
+        Run(sim, 0.05);
+
+        Assert.Equal(1, sim.Execute(new CloseStationCommand(c)));
+
+        Assert.False(sim.Stations[c].Active);
+        Assert.Equal(0, sim.Execute(new CloseStationCommand(c))); // already closed
+        Assert.Equal(0, sim.Execute(new RenameStationCommand(c, "Gone")));
+        var stoppedAt = new HashSet<int>();
+        for (long t = 0; t < 24000; t++)
+        {
+            sim.Step();
+            var info = sim.GetFleetInfo(bus);
+            if (info.Loading) stoppedAt.Add(sim.Lines[line].Stops[info.NextStop]);
+        }
+        Assert.Contains(a, stoppedAt);
+        Assert.Contains(b, stoppedAt);
+        Assert.DoesNotContain(c, stoppedAt);
+        Assert.Equal(VehicleKind.Car, sim.GetVehicle(bus).Kind);
+    }
+
+    [Fact]
+    public void ANewStationCanStandWhereAClosedOneWas()
+    {
+        var (sim, _, _, _, c) = StraightLine();
+        int node = sim.Stations[c].Node;
+        Assert.NotNull(sim.StationAt(node));
+
+        sim.Execute(new CloseStationCommand(c));
+
+        Assert.Null(sim.StationAt(node));
+        Assert.True(sim.Execute(new BuildStationCommand(600, 0)) >= 0);
+    }
+
+    [Fact]
+    public void BaysCanBeAddedToAnExistingStation_ForTheirPrice_Once()
+    {
+        var (sim, _, a, _, _) = StraightLine();
+        sim.Execute(new TakeLoanCommand(100000));
+        Assert.False(sim.Stations[a].HasBays);
+        long money = sim.Company.Money;
+        ulong before = sim.StateHash();
+
+        Assert.Equal(1, sim.Execute(new AddStationBaysCommand(a)));
+
+        Assert.True(sim.Stations[a].HasBays);
+        Assert.Equal(money - sim.StationBayPrice, sim.Company.Money);
+        Assert.NotEqual(before, sim.StateHash());
+        Assert.Equal(0, sim.Execute(new AddStationBaysCommand(a))); // it has them already
+        Assert.Equal(money - sim.StationBayPrice, sim.Company.Money);
+    }
+
+    [Fact]
+    public void BaysAreRefused_WhenTheCompanyCannotPayOrTheStationIsClosed()
+    {
+        var (sim, _, a, b, _) = StraightLine();
+        sim.Execute(new CloseStationCommand(b));
+        Assert.Equal(0, sim.Execute(new AddStationBaysCommand(b)));
+
+        sim.Company.Money = 0;
+
+        Assert.Equal(0, sim.Execute(new AddStationBaysCommand(a)));
+        Assert.False(sim.Stations[a].HasBays);
+    }
+
+    [Fact]
+    public void TheNewCommands_ReplayFromTheLog()
+    {
+        var (sim, depot, a, b, c) = StraightLine();
+        sim.Execute(new TakeLoanCommand(100000));
+        int line = sim.Execute(new CreateLineCommand(new[] { a, c, b }));
+        sim.Execute(new BuyVehicleCommand(depot, "bus", line));
+        Run(sim, 0.02);
+        sim.Execute(new AddStationBaysCommand(a));
+        sim.Execute(new RenameStationCommand(b, "Harbour"));
+        sim.Execute(new SetLineColorCommand(line, 0x00AA55));
+        Run(sim, 0.02);
+        sim.Execute(new CloseStationCommand(c));
+        Run(sim, 0.05);
+
+        var (twin, _, _, _, _) = StraightLine();
+        int setup = 5; // the road, the depot and three stations are built by StraightLine itself
+        twin.Replay(sim.CommandLog.Skip(setup).ToList(), sim.Tick);
+
+        Assert.Equal(sim.StateHash(), twin.StateHash());
+        Assert.Equal("Harbour", twin.Stations[b].Name);
+        Assert.Equal(0x00AA55, twin.Lines[line].Color);
+    }
 }

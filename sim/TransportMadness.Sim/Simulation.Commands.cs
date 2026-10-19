@@ -82,6 +82,14 @@ public sealed partial class Simulation
                 return EditLine(c.Line, c.Stations);
             case RenameLineCommand c:
                 return RenameLine(c.Line, c.Name);
+            case SetLineColorCommand c:
+                return SetLineColor(c.Line, c.Rgb);
+            case RenameStationCommand c:
+                return RenameStation(c.Station, c.Name);
+            case CloseStationCommand c:
+                return CloseStation(c.Station);
+            case AddStationBaysCommand c:
+                return AddStationBays(c.Station);
             case DeleteLineCommand c:
                 return DeleteLine(c.Line);
             case BuyVehicleCommand c:
