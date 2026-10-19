@@ -117,7 +117,7 @@ public sealed partial class Simulation
             var road = _net.GetRoad(roadId);
             int lane = (road.From == _depots[depot].Node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
             float position = _laneReach[lane] + spec.Length + SpawnGap;
-            if (position > _laneLength[lane] || !IsClear(new LaneId(lane), position, spec.Length + _traffic.SpawnClearance)) continue;
+            if (position > _laneLength[lane] || !IsClearFor(new LaneId(lane), position, spec.Length, _traffic.SpawnClearance)) continue;
             float cost = field?[lane] ?? 0f;
             if (float.IsPositiveInfinity(cost)) continue; // no way from here to the line's first station
             if (bestLane < 0 || cost < bestCost) { bestLane = lane; bestCost = cost; }

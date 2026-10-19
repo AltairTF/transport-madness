@@ -231,7 +231,9 @@ public sealed partial class Simulation
             {
                 int j = _order[r];
                 if (_lat[j] >= HomeLaneLat) continue;
-                if (GapAcrossJunction(lane, next, _pos[follower], _pos[j], _length[j]) < 0f)
+                // Only a vehicle that came by the follower's own lane is in front of it: one that merged in from another
+                // street is beside it, and a long body there is no overlap (the junction check covers real ones).
+                if (_prevLane[j] == lane && GapAcrossJunction(lane, next, _pos[follower], _pos[j], _length[j]) < 0f)
                     Collide(follower, j, IncidentKind.RearEnd);
                 break;
             }

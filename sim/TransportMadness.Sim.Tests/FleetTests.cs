@@ -342,4 +342,25 @@ public class FleetTests
         Assert.True(running == bought, $"{running} running, {wrecked} wrecked of {bought}");
         Assert.Empty(sim.Incidents);
     }
+
+    [Fact]
+    public void RoomToSpawn_CountsTheRealLengthOfTheVehicleAlreadyOnTheLane()
+    {
+        // A 10 m bus reaches back 10 m from its front: a car put on the road 11 m behind that front used to count as clear
+        // (only the distance between fronts was compared) and was then rear-ended by the bus pulling away over it.
+        var (sim, depot, a, b) = StraightLine();
+        int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
+        int bus = sim.Execute(new BuyVehicleCommand(depot, "bus", line));
+        Assert.True(bus >= 0);
+        for (int t = 0; t < 40; t++) sim.Step();
+        var state = sim.GetVehicle(bus);
+        float front = state.Position;
+        Assert.Equal(10f, sim.LengthOf(bus));
+
+        Assert.False(sim.IsClearFor(state.Lane, front - 11f, Simulation.VehicleLength, 3f)); // inside the bus's body
+        Assert.False(sim.IsClearFor(state.Lane, front - 12.4f, Simulation.VehicleLength, 3f)); // closer than the margin to its rear
+        Assert.True(sim.IsClearFor(state.Lane, front - 13.5f, Simulation.VehicleLength, 3f));
+        Assert.False(sim.IsClearFor(state.Lane, front + 6f, Simulation.VehicleLength, 3f)); // too close in front of it
+        Assert.True(sim.IsClearFor(state.Lane, front + 8f, Simulation.VehicleLength, 3f));
+    }
 }

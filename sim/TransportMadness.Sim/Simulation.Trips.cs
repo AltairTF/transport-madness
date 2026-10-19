@@ -478,7 +478,7 @@ public sealed partial class Simulation
         foreach (int lane in LanesLeaving(node))
         {
             float position = _laneReach[lane] + VehicleLength + SpawnGap;
-            if (position > _laneLength[lane] || !IsClear(new LaneId(lane), position, VehicleLength + _trips.CarSpawnClearance)) continue;
+            if (position > _laneLength[lane] || !IsClearFor(new LaneId(lane), position, VehicleLength, _trips.CarSpawnClearance)) continue;
             if (field[lane] < bestCost) { bestCost = field[lane]; bestLane = lane; }
         }
         if (bestLane < 0) return false;

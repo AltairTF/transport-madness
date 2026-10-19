@@ -442,4 +442,36 @@ public class TripTests
 
         Assert.True(clock.ElapsedMilliseconds < 2000, $"{clock.ElapsedMilliseconds} ms for 400 steps with {sim.TripVehicleCount} trip cars");
     }
+
+    [Fact]
+    public void BusesOnALinkBetweenTwoTowns_SurviveADayOfTrafficAmongTheTripCars()
+    {
+        // A 10 m bus entering a street that a car is waiting to merge into used to be counted as rear-ended by that car (the
+        // gap across the junction was measured along the car's short turn, though the bus was on another street). On this
+        // map the first bus was wrecked in the evening of the first day.
+        var net = new RoadNetwork(DryLevelMap());
+        var plan = TownGenerator.Generate(net, 1, 4);
+        var sim = new Simulation(net, 1);
+        sim.AddTowns(plan);
+        var (a, b) = (sim.Towns[0], sim.Towns[2]); // the closest pair on this seed, 765 m apart
+        float dx = b.X - a.X, dz = b.Z - a.Z, len = MathF.Sqrt(dx * dx + dz * dz);
+        dx /= len; dz /= len;
+        var (ax, az) = net.GetNode(net.FindNodeNear(a.X + dx * 250f, a.Z + dz * 250f, 400f, withRoadsOnly: true));
+        var (bx, bz) = net.GetNode(net.FindNodeNear(b.X - dx * 250f, b.Z - dz * 250f, 400f, withRoadsOnly: true));
+        Assert.True(sim.Execute(new BuildRoadCommand(ax, az, bx, bz, RoadType.TwoLane, 14f)) > 0);
+        int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(ax, az, 5f, withRoadsOnly: true), DepotLevel.Simple));
+        var (sax, saz) = net.GetNode(net.FindNodeNear(a.X, a.Z, 200f, withRoadsOnly: true));
+        var (sbx, sbz) = net.GetNode(net.FindNodeNear(b.X, b.Z, 200f, withRoadsOnly: true));
+        int sa = sim.Execute(new BuildStationCommand(sax, saz)), sb = sim.Execute(new BuildStationCommand(sbx, sbz));
+        int line = sim.Execute(new CreateLineCommand(new[] { sa, sb }));
+        Assert.True(depot >= 0 && sa >= 0 && sb >= 0 && line >= 0);
+        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", line)) >= 0);
+        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", line)) >= 0);
+
+        Run(sim, 1);
+
+        var company = Enumerable.Range(0, sim.VehicleCount).Where(sim.IsCompanyVehicle).ToList();
+        Assert.Equal(2, company.Count);
+        Assert.All(company, v => Assert.Equal(VehicleKind.Car, sim.GetVehicle(v).Kind));
+    }
 }

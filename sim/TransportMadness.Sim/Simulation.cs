@@ -189,6 +189,20 @@ public sealed partial class Simulation
         return true;
     }
 
+    /// <summary>
+    /// Whether a vehicle of <paramref name="length"/> whose front would be at <paramref name="pos"/> has <paramref name="margin"/> metres
+    /// free all round on the lane, counting the real length of the vehicles already there (a bus in front reaches back 10 m).
+    /// </summary>
+    internal bool IsClearFor(LaneId lane, float pos, float length, float margin)
+    {
+        for (int r = _laneStart[lane.Value]; r < _laneStart[lane.Value + 1]; r++)
+        {
+            int j = _order[r];
+            if (_pos[j] > pos - length - margin && _pos[j] - _length[j] < pos + margin) return false;
+        }
+        return true;
+    }
+
     /// <summary>FNV-1a over the complete simulation state; equal hashes mean identical runs.</summary>
     public ulong StateHash()
     {
