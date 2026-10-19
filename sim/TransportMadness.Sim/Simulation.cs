@@ -41,9 +41,9 @@ public sealed partial class Simulation
     readonly SimRandom _rng;
 
     // Per-lane constants copied out of the network so the hot loop stays on flat arrays.
-    readonly float[] _laneLength;
-    readonly float[] _laneLimit;
-    readonly int[] _laneEndNode;
+    float[] _laneLength = Array.Empty<float>();
+    float[] _laneLimit = Array.Empty<float>();
+    int[] _laneEndNode = Array.Empty<int>();
 
     int _count; // slots in use, including removed ones
     int _active; // vehicles that currently exist
@@ -75,29 +75,18 @@ public sealed partial class Simulation
 
     // Vehicles grouped by lane, ascending position within a lane. Rebuilt each step.
     int[] _order = new int[64];
-    int[] _laneStart;
+    int[] _laneStart = new int[1];
     int[] _rankInOrder = new int[64];
-    readonly int[] _cursor;
+    int[] _cursor = Array.Empty<int>();
 
     readonly List<int> _overtakers = new();
 
-    /// <summary>The network must be complete: lanes added after construction are not simulated.</summary>
+    /// <summary>The network may keep growing: roads added later are picked up at the start of the next step or spawn.</summary>
     public Simulation(RoadNetwork net, ulong seed)
     {
         _net = net;
         _rng = new SimRandom(seed);
-        _laneStart = new int[net.LaneCount + 1];
-        _cursor = new int[net.LaneCount];
-        _laneLength = new float[net.LaneCount];
-        _laneLimit = new float[net.LaneCount];
-        _laneEndNode = new int[net.LaneCount];
-        for (int l = 0; l < net.LaneCount; l++)
-        {
-            var lane = net.GetLane(new LaneId(l));
-            _laneLength[l] = lane.Length;
-            _laneLimit[l] = lane.SpeedLimit;
-            _laneEndNode[l] = lane.EndNode;
-        }
+        SyncNetwork();
     }
 
     public RoadNetwork Network => _net;
@@ -111,6 +100,8 @@ public sealed partial class Simulation
     /// </summary>
     public int SeedTraffic(int count)
     {
+        SyncNetwork();
+        if (_net.LaneCount == 0) return 0;
         const float clearance = 12f;
         int placed = 0;
         for (int attempt = 0; placed < count && attempt < count * 30; attempt++)
@@ -172,6 +163,7 @@ public sealed partial class Simulation
 
     public int SpawnVehicle(LaneId lane, float position, float speed)
     {
+        SyncNetwork();
         int id;
         if (_freeSlots.Count > 0) id = _freeSlots.Pop();
         else
@@ -233,6 +225,7 @@ public sealed partial class Simulation
 
     public void Step()
     {
+        SyncNetwork();
         DecideManoeuvres();
         PrepareOvertakes();
         for (int i = 0; i < _count; i++)
@@ -350,6 +343,38 @@ public sealed partial class Simulation
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Picks up roads built since the last call. Vehicles whose planned turn no longer exists (a dead end that
+    /// became a junction, say) choose again.
+    /// </summary>
+    void SyncNetwork()
+    {
+        int lanes = _net.LaneCount;
+        if (lanes == _laneLength.Length) return;
+
+        int old = _laneLength.Length;
+        Array.Resize(ref _laneLength, lanes);
+        Array.Resize(ref _laneLimit, lanes);
+        Array.Resize(ref _laneEndNode, lanes);
+        _laneStart = new int[lanes + 1];
+        _cursor = new int[lanes];
+        for (int l = old; l < lanes; l++)
+        {
+            var lane = _net.GetLane(new LaneId(l));
+            _laneLength[l] = lane.Length;
+            _laneLimit[l] = lane.SpeedLimit;
+            _laneEndNode[l] = lane.EndNode;
+        }
+
+        for (int i = 0; i < _count; i++)
+        {
+            if (_lane[i] < 0) continue;
+            var next = _net.GetLane(new LaneId(_lane[i])).Next;
+            if (Array.IndexOf(next, new LaneId(_nextLane[i])) < 0) _nextLane[i] = ChooseNextLane(new LaneId(_lane[i])).Value;
+        }
+        RebuildOrder();
     }
 
     LaneId ChooseNextLane(LaneId lane)

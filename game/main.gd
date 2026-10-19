@@ -2,6 +2,7 @@ extends Node3D
 ## Wires the world together: environment, HUD, input. Command line (after `--`):
 ##   --bench                      measure frame rate with 1000 vehicles at 1x and 8x, then quit
 ##   --shot=<file> [--shot-after=<seconds>]   save a screenshot and quit
+##   --selftest-build             build roads with simulated mouse clicks, run, print stats, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
 const VEHICLES := 1000
@@ -11,6 +12,7 @@ const SEED := 1
 @onready var rig: Node3D = $CameraRig
 
 var hud: CanvasLayer
+var build_tool: Node
 var _elapsed := 0.0
 var _stats_timer := 0.0
 var _args := {}
@@ -40,6 +42,16 @@ func _ready() -> void:
 	add_child(hud)
 	hud.speed_selected.connect(func(speed: float) -> void: host.SetSpeed(speed))
 
+	build_tool = load("res://game/build_tool.gd").new()
+	add_child(build_tool)
+	build_tool.setup(host, rig.get_node("Camera3D"))
+	build_tool.message.connect(hud.show_message)
+	hud.tool_selected.connect(build_tool.set_tool)
+	hud.action_requested.connect(_on_action)
+
+	if _args.has("--selftest-build"):
+		_selftest_build()
+
 	if _args.has("--bench"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 		_bench = [{"speed": 1.0, "warmup": 3.0, "measure": 8.0}, {"speed": 8.0, "warmup": 3.0, "measure": 8.0}]
@@ -53,12 +65,74 @@ func _process(delta: float) -> void:
 		_stats_timer = 0.0
 		hud.show_stats(host.GetStats())
 
-	if _args.has("--shot") and _elapsed > float(_args.get("--shot-after", 6.0)):
+	if _args.has("--shot") and not _args.has("--selftest-build") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
 		get_tree().quit()
 
 	if _bench_index < _bench.size():
 		_run_bench(delta)
+
+
+func _on_action(action: String) -> void:
+	match action:
+		"traffic":
+			hud.show_message("Added %d cars" % host.SpawnTraffic(100))
+		"crash":
+			hud.show_message("Vehicle %d crashed" % host.CrashSomeone())
+		"empty":
+			host.NewEmptyWorld(SEED)
+		"demo":
+			host.NewDemoWorld(SEED, VEHICLES)
+
+
+## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.
+func _selftest_build() -> void:
+	host.NewEmptyWorld(SEED)
+	rig.distance = 400.0
+	rig.pitch = -89.0
+	rig.position = Vector3.ZERO
+	rig._apply()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var camera: Camera3D = rig.get_node("Camera3D")
+
+	# World points on the ground, converted to the screen positions a player would click.
+	var clicks := [
+		["road2", [Vector3(-150, 0, 0), Vector3(0, 0, 0), Vector3(0, 0, 100)]],
+		["road4", [Vector3(0, 0, 0), Vector3(150, 0, 0)]],
+		["road2", [Vector3(0, 0, 0), Vector3(-5, 0, -110)]],
+		["depot", [Vector3(0, 0, 0)]],
+	]
+	for step in clicks:
+		hud.select_tool(step[0])
+		build_tool.set_tool(step[0])
+		for point in step[1]:
+			await _click_world(camera, point)
+		build_tool.set_tool("pointer")
+	var stats: Dictionary = host.GetStats()
+	print("SELFTEST roads=%d depots=%d" % [host.RoadCount(), host.DepotCount()])
+	host.SpawnTraffic(60)
+	host.SetSpeed(8.0)
+	await get_tree().create_timer(10.0).timeout
+	stats = host.GetStats()
+	print("SELFTEST vehicles=%d mean_speed=%.1f tick=%d incidents=%d" % [stats["vehicles"], stats["mean_speed"], stats["tick"], stats["incidents"]])
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	get_tree().quit()
+
+
+func _click_world(camera: Camera3D, point: Vector3) -> void:
+	var screen := camera.unproject_position(point)
+	var motion := InputEventMouseMotion.new()
+	motion.position = screen
+	Input.parse_input_event(motion)
+	await get_tree().process_frame
+	var press := InputEventMouseButton.new()
+	press.position = screen
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	Input.parse_input_event(press)
+	await get_tree().process_frame
 
 
 func _start_bench_phase() -> void:

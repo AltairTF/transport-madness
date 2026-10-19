@@ -97,6 +97,17 @@ public sealed class RoadNetwork
     }
 
     public (float X, float Z) GetNode(int node) => _nodes[node];
+    /// <summary>The road joining two nodes, in either direction, or null.</summary>
+    public RoadId? FindRoad(int a, int b)
+    {
+        foreach (var id in _nodeRoads[a])
+        {
+            var road = _roads[id.Value];
+            if ((road.From == a && road.To == b) || (road.From == b && road.To == a)) return id;
+        }
+        return null;
+    }
+
     public Road GetRoad(RoadId id) => _roads[id.Value];
     public Lane GetLane(LaneId id) => _lanes[id.Value];
 

@@ -81,6 +81,97 @@ public partial class SimHost : Node3D
         _accumulator = 0;
     }
 
+    /// <summary>Starts an empty flat map.</summary>
+    public void NewEmptyWorld(long seed)
+    {
+        Sim = new Simulation(new RoadNetwork(), (ulong)seed);
+        RebuildRoads();
+        _accumulator = 0;
+    }
+
+    /// <summary>The existing node within <paramref name="radius"/> of a point, if any, else the point itself.</summary>
+    public Godot.Collections.Dictionary SnapToNode(float x, float z, float radius)
+    {
+        int node = FindNode(x, z, radius);
+        if (node < 0) return new Godot.Collections.Dictionary { ["snapped"] = false, ["x"] = x, ["z"] = z };
+        var (nx, nz) = Sim.Network.GetNode(node);
+        return new Godot.Collections.Dictionary { ["snapped"] = true, ["x"] = nx, ["z"] = nz };
+    }
+
+    int FindNode(float x, float z, float radius)
+    {
+        var net = Sim.Network;
+        int best = -1;
+        float bestDistance = radius * radius;
+        for (int n = 0; n < net.NodeCount; n++)
+        {
+            var (nx, nz) = net.GetNode(n);
+            float d = (nx - x) * (nx - x) + (nz - z) * (nz - z);
+            if (d <= bestDistance) { best = n; bestDistance = d; }
+        }
+        return best;
+    }
+
+    /// <summary>Whether a road of at least the minimum length, not duplicating an existing one, fits between the points.</summary>
+    public bool CanBuildRoad(float x0, float z0, float x1, float z1)
+    {
+        var net = Sim.Network;
+        int a = FindNode(x0, z0, 0.5f), b = FindNode(x1, z1, 0.5f);
+        if (a >= 0 && a == b) return false;
+        if (a >= 0 && b >= 0 && net.FindRoad(a, b) != null) return false;
+        float length = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
+        return length >= RoadNetwork.MinRoadLength;
+    }
+
+    /// <summary>Builds a straight road, reusing nodes already at the end points. Type 0 is 2-lane, 1 is the 2x2 avenue.</summary>
+    public bool BuildRoad(float x0, float z0, float x1, float z1, int type)
+    {
+        if (!CanBuildRoad(x0, z0, x1, z1)) return false;
+        var net = Sim.Network;
+        int a = FindNode(x0, z0, 0.5f);
+        if (a < 0) a = net.AddNode(x0, z0);
+        int b = FindNode(x1, z1, 0.5f);
+        if (b < 0) b = net.AddNode(x1, z1);
+        net.AddRoad(a, b, type == 1 ? RoadType.Avenue2x2 : RoadType.TwoLane, type == 1 ? 19f : 14f);
+        RebuildRoads();
+        return true;
+    }
+
+    /// <summary>Places a depot at the node nearest the point (within 60 m) that has none yet.</summary>
+    public bool BuildDepot(float x, float z, int level)
+    {
+        int node = FindNode(x, z, 60f);
+        if (node < 0) return false;
+        foreach (var depot in Sim.Depots) if (depot.Node == node) return false;
+        Sim.AddDepot(node, (DepotLevel)Math.Clamp(level, 0, 2));
+        RebuildRoads();
+        return true;
+    }
+
+    /// <summary>Adds up to <paramref name="count"/> ambient vehicles; returns how many fit.</summary>
+    public int SpawnTraffic(int count) => Sim.SeedTraffic(count);
+
+    /// <summary>Breaks down a moving car, picked deterministically from the current state. Returns its id or -1.</summary>
+    public int CrashSomeone()
+    {
+        int n = Sim.VehicleCount;
+        for (int k = 0; k < n; k++)
+        {
+            int i = (int)((Sim.Tick + k) % n);
+            var v = Sim.GetVehicle(i);
+            if (v.Kind == VehicleKind.Car && v.Speed > 4f)
+            {
+                Sim.Crash(i);
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public int DepotCount() => Sim.Depots.Count;
+
+    public int RoadCount() => Sim.Network.RoadCount;
+
     /// <summary>Game speed multiplier: 0 pauses, then 1, 2, 4 or 8.</summary>
     public void SetSpeed(float speed) => _speed = Mathf.Max(0f, speed);
 
