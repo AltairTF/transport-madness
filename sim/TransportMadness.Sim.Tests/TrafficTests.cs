@@ -72,7 +72,8 @@ public class TrafficTests
             var v = sim.GetVehicle(i);
             var lane = net.GetLane(v.Lane);
             Assert.True(v.Speed >= 0f && v.Speed <= lane.SpeedLimit * 1.25f, $"speed {v.Speed}");
-            Assert.True(v.Position >= 0f && v.Position < lane.Length, $"pos {v.Position}");
+            // A vehicle driving through a junction is past the end of its lane until it comes out on the next one.
+            Assert.True(v.Position >= 0f && v.Position < lane.Length + 40f, $"pos {v.Position}");
         }
     }
 

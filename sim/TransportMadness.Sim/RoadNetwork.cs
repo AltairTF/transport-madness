@@ -249,28 +249,62 @@ public sealed class RoadNetwork
     /// <summary>How far into a lane of the given length a junction path reaches (from its end, or from its start).</summary>
     public static float JunctionReach(float laneLength) => MathF.Min(JunctionRadius, laneLength * 0.5f);
 
-    /// <summary>
-    /// Where a vehicle is when it is a <paramref name="fraction"/> (0 to 1) of the way along the path from lane
-    /// <paramref name="from"/> to lane <paramref name="to"/> through their junction, and which way it faces. The path
-    /// starts <see cref="JunctionReach"/> before the end of <paramref name="from"/> and ends the same distance into
-    /// <paramref name="to"/>. This is for drawing: the simulation itself carries a vehicle across the node in one step.
-    /// </summary>
-    public (float X, float Z, float Heading) JunctionPoint(LaneId from, LaneId to, float fraction)
+    /// <summary>Length of the path through a junction from the end of lane <paramref name="from"/> to the start of <paramref name="to"/>.</summary>
+    public float JunctionLength(LaneId from, LaneId to)
     {
         var path = MovePath(from, to);
         float total = 0f;
         for (int i = 0; i + 1 < path.Length; i++) total += Distance(path[i], path[i + 1]);
-        float target = Math.Clamp(fraction, 0f, 1f) * total;
+        return total;
+    }
+
+    /// <summary>How far the heading turns along the path through a junction, as a positive angle in [0, pi].</summary>
+    public float JunctionTurn(LaneId from, LaneId to)
+    {
+        float a = JunctionPointAt(from, to, 0f).Heading, b = JunctionPointAt(from, to, float.MaxValue).Heading;
+        float d = MathF.Abs(b - a) % MathF.Tau;
+        return MathF.Min(d, MathF.Tau - d);
+    }
+
+    /// <summary>
+    /// Where a vehicle is when it has gone <paramref name="distance"/> metres along the path from lane <paramref name="from"/>
+    /// to lane <paramref name="to"/> through their junction, and which way it faces. The path starts
+    /// <see cref="JunctionReach"/> before the end of <paramref name="from"/> and ends the same distance into
+    /// <paramref name="to"/>; distances outside it are clamped to its ends.
+    /// </summary>
+    public (float X, float Z, float Heading) JunctionPointAt(LaneId from, LaneId to, float distance)
+    {
+        var path = MovePath(from, to);
+        float target = Math.Max(0f, distance);
         for (int i = 0; i + 1 < path.Length; i++)
         {
             float length = Distance(path[i], path[i + 1]);
             if (target > length && i + 2 < path.Length) { target -= length; continue; }
             float t = length > 1e-6f ? Math.Clamp(target / length, 0f, 1f) : 0f;
             float dx = path[i + 1].X - path[i].X, dz = path[i + 1].Z - path[i].Z;
-            return (path[i].X + dx * t, path[i].Z + dz * t, MathF.Atan2(dz, dx));
+            // The path is a polyline; blending the heading of a piece into its neighbours' (each piece's own heading
+            // holds at its middle) makes the heading change smoothly instead of in steps at the corners.
+            float heading = MathF.Atan2(dz, dx);
+            if (t < 0.5f && i > 0) heading = BlendAngle(SegmentHeading(path, i - 1), heading, 0.5f + t);
+            else if (t >= 0.5f && i + 2 < path.Length) heading = BlendAngle(heading, SegmentHeading(path, i + 1), t - 0.5f);
+            return (path[i].X + dx * t, path[i].Z + dz * t, heading);
         }
         return (path[0].X, path[0].Z, 0f);
     }
+
+    static float SegmentHeading((float X, float Z)[] path, int i) => MathF.Atan2(path[i + 1].Z - path[i].Z, path[i + 1].X - path[i].X);
+
+    /// <summary>The angle <paramref name="t"/> of the way from <paramref name="a"/> to <paramref name="b"/> by the shorter turn.</summary>
+    static float BlendAngle(float a, float b, float t)
+    {
+        float d = b - a;
+        d -= MathF.Tau * MathF.Floor((d + MathF.PI) / MathF.Tau);
+        return a + d * t;
+    }
+
+    /// <summary>The same pose as <see cref="JunctionPointAt"/>, given as a <paramref name="fraction"/> (0 to 1) of the path.</summary>
+    public (float X, float Z, float Heading) JunctionPoint(LaneId from, LaneId to, float fraction) =>
+        JunctionPointAt(from, to, Math.Clamp(fraction, 0f, 1f) * JunctionLength(from, to));
 
     static float Distance((float X, float Z) a, (float X, float Z) b) => MathF.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Z - a.Z) * (b.Z - a.Z));
 

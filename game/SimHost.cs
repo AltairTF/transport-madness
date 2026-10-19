@@ -496,38 +496,16 @@ public partial class SimHost : Node3D
         z = _laneZ[lane] - k * (MathF.Cos(h) - _laneCosH0[lane]);
     }
 
-    /// <summary>
-    /// When the middle of a vehicle is within reach of a junction, its pose along the path through it (the way it is
-    /// about to turn, or the way it just turned), else false. The simulation moves a vehicle across the node in one
-    /// step; this is what makes the turn look right.
-    /// </summary>
-    bool TurnPose(int vehicle, int lane, float centre, out float x, out float z, out float heading, out float y)
+    /// <summary>The pose of a vehicle inside a junction (see <see cref="Simulation.JunctionPoseOf"/>), with the road height there.</summary>
+    bool TurnPose(int vehicle, float centre, out float x, out float z, out float heading, out float y)
     {
         x = z = heading = y = 0f;
-        float length = _laneLength[lane];
-        float reach = RoadNetwork.JunctionReach(length);
-        int from, to;
-        float fraction;
-        int next = Sim.NextLaneOf(vehicle).Value;
-        int prev = Sim.PreviousLaneOf(vehicle).Value;
-        if (centre > length - reach && next >= 0)
-        {
-            from = lane; to = next;
-            fraction = (centre - (length - reach)) / (reach + RoadNetwork.JunctionReach(_laneLength[next]));
-        }
-        else if (prev >= 0 && centre < reach)
-        {
-            from = prev; to = lane;
-            float reachIn = RoadNetwork.JunctionReach(_laneLength[prev]);
-            fraction = (reachIn + centre) / (reachIn + reach);
-        }
-        else return false;
-
-        fraction = Math.Clamp(fraction, 0f, 1f);
-        (x, z, heading) = Sim.Network.JunctionPoint(new LaneId(from), new LaneId(to), fraction);
+        if (Sim.JunctionPoseOf(vehicle, centre) is not { } pose) return false;
+        x = pose.X; z = pose.Z; heading = pose.Heading;
+        int from = pose.From.Value, to = pose.To.Value;
         float yFrom = _laneY[from] + _laneGrade[from] * (_laneLength[from] - RoadNetwork.JunctionReach(_laneLength[from]));
         float yTo = _laneY[to] + _laneGrade[to] * RoadNetwork.JunctionReach(_laneLength[to]);
-        y = yFrom + (yTo - yFrom) * fraction;
+        y = yFrom + (yTo - yFrom) * Math.Clamp(pose.Distance / Math.Max(pose.Length, 0.01f), 0f, 1f);
         return true;
     }
 
@@ -554,10 +532,10 @@ public partial class SimHost : Node3D
 
             int lane = v.Lane.Value;
             // Look a fraction of a step ahead so motion is smooth between the 20 Hz simulation steps.
-            float pos = Math.Min(v.Position + v.Speed * Simulation.StepSeconds * stepFraction, _laneLength[lane]) - Simulation.VehicleLength * 0.5f;
+            float pos = v.Position + v.Speed * Simulation.StepSeconds * stepFraction - Simulation.VehicleLength * 0.5f;
             float side = -Simulation.LaneWidth * v.Lateral + v.Shift;
             float cx, cz, dx, dz, baseY;
-            if (TurnPose(i, lane, pos, out cx, out cz, out float heading, out baseY))
+            if (TurnPose(i, pos, out cx, out cz, out float heading, out baseY))
             {
                 // Inside a junction the vehicle follows the path through it; that path already includes the lane offset.
                 dx = MathF.Cos(heading); dz = MathF.Sin(heading);
@@ -868,7 +846,7 @@ public partial class SimHost : Node3D
         {
             _terrainSource = _terrain;
             _water.Mesh = new PlaneMesh { Size = new Vector2(_terrain.HalfSize * 2f, _terrain.HalfSize * 2f) };
-            _water.Position = new Vector3(0f, Terrain.WaterLevel - TerrainSink * 0.5f, 0f);
+            _water.Position = new Vector3(0f, Terrain.WaterLevel - TerrainSink - 0.01f, 0f); // just under level ground, which is drawn TerrainSink lower
             foreach (var child in _terrainRoot.GetChildren()) child.QueueFree();
             _terrainChunks = new MeshInstance3D?[side * side];
             _terrain.TakeChangedChunks(); // everything is built below
@@ -897,7 +875,7 @@ public partial class SimHost : Node3D
                 float gx = _terrain.GetSample(i + 1, j) - _terrain.GetSample(i - 1, j);
                 float gz = _terrain.GetSample(i, j + 1) - _terrain.GetSample(i, j - 1);
                 normals[k] = new Vector3(-gx, 2f * cell, -gz).Normalized();
-                colors[k] = TerrainColor(height, normals[k].Y).SrgbToLinear(); // vertex colours are read as linear
+                colors[k] = TerrainColor(height, normals[k].Y, NearWater(i, j)).SrgbToLinear(); // vertex colours are read as linear
             }
         var indices = new int[(w - 1) * (h - 1) * 6];
         int t = 0;
@@ -928,7 +906,17 @@ public partial class SimHost : Node3D
         instance.Mesh = mesh;
     }
 
-    static Color TerrainColor(float height, float normalY)
+    /// <summary>Whether a sample is dry but within two samples of water, which is where the shore is sand.</summary>
+    bool NearWater(int i, int j)
+    {
+        if (_terrain.GetSample(i, j) < Terrain.WaterLevel) return false;
+        for (int d = 1; d <= 2; d++)
+            if (_terrain.GetSample(i + d, j) < Terrain.WaterLevel || _terrain.GetSample(i - d, j) < Terrain.WaterLevel
+                || _terrain.GetSample(i, j + d) < Terrain.WaterLevel || _terrain.GetSample(i, j - d) < Terrain.WaterLevel) return true;
+        return false;
+    }
+
+    static Color TerrainColor(float height, float normalY, bool nearWater)
     {
         var grass = new Color(0.42f, 0.58f, 0.34f);
         var upland = new Color(0.5f, 0.55f, 0.32f);
@@ -937,7 +925,7 @@ public partial class SimHost : Node3D
         var bed = new Color(0.45f, 0.42f, 0.32f);
         var shore = new Color(0.74f, 0.69f, 0.5f);
         if (height < Terrain.WaterLevel) return bed.Lerp(shore, Mathf.Clamp(1f + height / 3f, 0f, 1f)); // sand at the edge, mud in the deep
-        if (height < Terrain.WaterLevel + 1.2f) return shore.Lerp(grass, (height - Terrain.WaterLevel) / 1.2f);
+        if (nearWater && height < Terrain.WaterLevel + 1.5f) return shore.Lerp(grass, (height - Terrain.WaterLevel) / 1.5f);
         Color c = height < 40f ? grass.Lerp(upland, height / 40f) : upland.Lerp(rock, Mathf.Clamp((height - 40f) / 40f, 0f, 1f));
         if (height > 85f) c = c.Lerp(snow, Mathf.Clamp((height - 85f) / 25f, 0f, 1f));
         return c.Lerp(rock, Mathf.Clamp((0.9f - normalY) * 4f, 0f, 0.8f)); // steep ground shows rock

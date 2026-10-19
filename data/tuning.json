@@ -12,7 +12,9 @@
     "brakeJerk": 15.0,          // braking builds up at most this fast (m/s^3): drivers need a moment to react
     "minInteractionGap": 0.01,  // gaps are clamped to this before the IDM division
     "junctionRange": 40.0,      // within this distance of a junction a vehicle yields to conflicting traffic
-    "junctionMargin": 2.0       // extra clearance on top of a vehicle length when yielding to conflicting traffic
+    "junctionMargin": 2.0,      // extra clearance on top of a vehicle length when yielding to conflicting traffic
+    "turnLateralAcceleration": 4.0, // m/s^2 a driver accepts when turning: sets the speed through a junction from the radius of the turn
+    "minTurnSpeed": 3.0         // never slower than this because of a turn
   },
 
   // Ambient traffic placed by SeedTraffic.

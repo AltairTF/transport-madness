@@ -88,3 +88,6 @@ A Player action applied to the simulation between steps (build, remove, upgrade,
 
 **Bridge / Tunnel**:
 A stretch of road carried over water or a deep valley (Bridge), or through a hill (Tunnel), instead of being cut or filled into the ground. Chosen automatically when a road is planned, priced per metre, and leaves the ground as it was.
+
+**Junction path**:
+The line a vehicle follows from one lane through a junction to the next. Vehicles drive along it, slowing for tight turns, and give way to vehicles whose paths cross or merge with theirs.

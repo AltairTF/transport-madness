@@ -28,6 +28,7 @@ public sealed partial class Simulation
     public const float VehicleLength = 4.5f;
     public const float VehicleWidth = 1.9f;
     public const float LaneWidth = RoadNetwork.LaneWidth;
+    const float TurnLookahead = 150f; // metres before a junction at which a vehicle starts to consider the turn
 
     readonly RoadNetwork _net;
     // Tuning comes from the network (data/tuning.json); the sections are cached because the hot loops read them.
@@ -47,6 +48,12 @@ public sealed partial class Simulation
     float[] _laneLimit = Array.Empty<float>();
     int[] _laneEndNode = Array.Empty<int>();
     int[] _laneRoad = Array.Empty<int>();
+    // Junctions are driven through: a lane has a tail past its end, the path through the junction, that starts
+    // _laneZoneStart metres along it and is _moveLength long for the chosen next lane (see ZoneEnd).
+    float[] _laneZoneStart = Array.Empty<float>();
+    float[] _laneReach = Array.Empty<float>(); // how far into this lane a vehicle comes out of a junction
+    float[] _moveLength = Array.Empty<float>(); // per move (see _nextLanes): length of its junction path
+    float[] _moveLimit = Array.Empty<float>(); // per move: the speed its turn allows, infinite when it is straight
     // Neighbouring lanes, -1 for none.
     int[] _laneOncoming = Array.Empty<int>();
     int[] _laneLeft = Array.Empty<int>();
@@ -269,6 +276,37 @@ public sealed partial class Simulation
     /// <summary>Lane the vehicle came from at the junction it last crossed, or none (for drawing the turn).</summary>
     public LaneId PreviousLaneOf(int id) => new(_prevLane[id]);
 
+    /// <summary>Where a vehicle is while it drives through a junction: its place on the path between two lanes.</summary>
+    /// <param name="Distance">Metres along the path from where it starts, <see cref="RoadNetwork.JunctionReach"/> before the end of <paramref name="From"/>.</param>
+    public readonly record struct JunctionPose(float X, float Z, float Heading, LaneId From, LaneId To, float Distance, float Length);
+
+    /// <summary>
+    /// The pose of the middle of a vehicle (<paramref name="centre"/> metres along its lane, which can be a little off
+    /// the front bumper position) when that is inside a junction: on the path to its next lane once past the start of the
+    /// junction, or still on the path it came by while it is less than one reach into its lane. Null on the open road.
+    /// </summary>
+    public JunctionPose? JunctionPoseOf(int vehicle, float centre)
+    {
+        int lane = _lane[vehicle];
+        int from, to;
+        float distance;
+        if (centre > _laneZoneStart[lane])
+        {
+            from = lane;
+            to = _nextLane[vehicle];
+            distance = centre - _laneZoneStart[lane];
+        }
+        else if (centre < _laneReach[lane] && _prevLane[vehicle] >= 0)
+        {
+            from = _prevLane[vehicle];
+            to = lane;
+            distance = _net.JunctionLength(new LaneId(from), new LaneId(to)) - (_laneReach[lane] - centre);
+        }
+        else return null;
+        var (x, z, heading) = _net.JunctionPointAt(new LaneId(from), new LaneId(to), distance);
+        return new JunctionPose(x, z, heading, new LaneId(from), new LaneId(to), distance, _net.JunctionLength(new LaneId(from), new LaneId(to)));
+    }
+
     public VehicleState GetVehicle(int id) =>
         new(new LaneId(_lane[id]), _pos[id], _speed[id], _lat[id], (OvertakePhase)_phase[id], _kind[id], _shift[id]);
 
@@ -309,10 +347,25 @@ public sealed partial class Simulation
         Tick++;
     }
 
+    /// <summary>Speed a turn of the given path length and total heading change allows, from its mean radius.</summary>
+    float TurnLimit(float length, float turn)
+    {
+        if (turn < 0.05f) return float.PositiveInfinity;
+        return MathF.Max(_drive.MinTurnSpeed, MathF.Sqrt(_drive.TurnLateralAcceleration * length / turn));
+    }
+
     /// <summary>The speed a driver aims for when nothing is in the way.</summary>
     float FreeSpeed(int i)
     {
         float v0 = _laneLimit[_lane[i]] * _factor[i];
+        // Slow down for the turn at the end of the lane: the speed it allows, rising with the distance left to brake in.
+        float toTurn = _laneZoneStart[_lane[i]] - _pos[i];
+        if (toTurn < TurnLookahead)
+        {
+            int move = MoveIndex(_lane[i], _nextLane[i]);
+            if (move >= 0 && _moveLimit[move] < v0)
+                v0 = MathF.Min(v0, MathF.Sqrt(_moveLimit[move] * _moveLimit[move] + 2f * _drive.ComfortDecel * MathF.Max(0f, toTurn)));
+        }
         if (_phase[i] != 0) v0 *= OvertakeBoost(i);
         return MathF.Min(v0, _desired[i]);
     }
@@ -388,12 +441,23 @@ public sealed partial class Simulation
             int j = _order[r];
             if (_lat[j] >= HomeLaneLat) continue;
             leader = j;
-            gap = _laneLength[lane] - _pos[i] + _pos[j] - VehicleLength;
+            gap = GapAcrossJunction(lane, next, _pos[i], _pos[j]);
             leadSpeed = _speed[j];
             return true;
         }
         return false;
     }
+
+    /// <summary>Where on <paramref name="lane"/> a vehicle bound for <paramref name="next"/> has finished crossing the junction and moves on to <paramref name="next"/>.</summary>
+    float ZoneEnd(int lane, int next)
+    {
+        int move = MoveIndex(lane, next);
+        return _laneZoneStart[lane] + (move >= 0 ? _moveLength[move] : _laneReach[lane] + _laneReach[next]);
+    }
+
+    /// <summary>Bumper to bumper distance from a vehicle at <paramref name="followerPos"/> on <paramref name="lane"/> to one at <paramref name="leaderPos"/> on <paramref name="next"/>, going through the junction.</summary>
+    float GapAcrossJunction(int lane, int next, float followerPos, float leaderPos) =>
+        ZoneEnd(lane, next) - followerPos + leaderPos - _laneReach[next] - VehicleLength;
 
     /// <summary>
     /// Picks up roads built since the last call. Vehicles whose planned turn no longer exists (a dead end that
@@ -410,6 +474,8 @@ public sealed partial class Simulation
         Array.Resize(ref _laneLimit, lanes);
         Array.Resize(ref _laneEndNode, lanes);
         Array.Resize(ref _laneRoad, lanes);
+        Array.Resize(ref _laneZoneStart, lanes);
+        Array.Resize(ref _laneReach, lanes);
         Array.Resize(ref _laneOncoming, lanes);
         Array.Resize(ref _laneLeft, lanes);
         Array.Resize(ref _laneRight, lanes);
@@ -423,6 +489,8 @@ public sealed partial class Simulation
             _laneLimit[l] = lane.SpeedLimit;
             _laneEndNode[l] = lane.EndNode;
             _laneRoad[l] = lane.Road.Value;
+            _laneReach[l] = RoadNetwork.JunctionReach(lane.Length);
+            _laneZoneStart[l] = lane.Length - _laneReach[l];
         }
         SyncLinks();
 
@@ -458,6 +526,7 @@ public sealed partial class Simulation
         int total = 0;
         for (int l = 0; l < lanes; l++) total += _net.GetLane(new LaneId(l)).Next.Length;
         if (_nextLanes.Length != total) _nextLanes = new int[total];
+        if (_moveLength.Length != total) { _moveLength = new float[total]; _moveLimit = new float[total]; }
         int n = 0;
         for (int l = 0; l < lanes; l++)
         {
@@ -466,7 +535,12 @@ public sealed partial class Simulation
             _laneLeft[l] = lane.Left.Value;
             _laneRight[l] = lane.Right.Value;
             _nextStart[l] = n;
-            foreach (var next in lane.Next) _nextLanes[n++] = next.Value;
+            foreach (var next in lane.Next)
+            {
+                _moveLength[n] = _net.JunctionLength(lane.Id, next);
+                _moveLimit[n] = TurnLimit(_moveLength[n], _net.JunctionTurn(lane.Id, next));
+                _nextLanes[n++] = next.Value;
+            }
         }
         _nextStart[lanes] = n;
         SyncConflictTables();
@@ -546,9 +620,10 @@ public sealed partial class Simulation
 
     void AdvanceLane(int i)
     {
-        while (_pos[i] >= _laneLength[_lane[i]])
+        // A vehicle is on its lane until it has driven through the junction; then it is _laneReach metres into the next one.
+        while (_pos[i] >= ZoneEnd(_lane[i], _nextLane[i]))
         {
-            _pos[i] -= _laneLength[_lane[i]];
+            _pos[i] += _laneReach[_nextLane[i]] - ZoneEnd(_lane[i], _nextLane[i]);
             _prevLane[i] = _lane[i];
             _lane[i] = _nextLane[i];
             _nextLane[i] = ChooseNextLane(_lane[i]);

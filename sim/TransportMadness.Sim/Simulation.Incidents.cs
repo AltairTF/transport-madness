@@ -222,7 +222,7 @@ public sealed partial class Simulation
             {
                 int j = _order[r];
                 if (_lat[j] >= HomeLaneLat) continue;
-                if (_laneLength[lane] - _pos[follower] + _pos[j] - VehicleLength < 0f)
+                if (GapAcrossJunction(lane, next, _pos[follower], _pos[j]) < 0f)
                     Collide(follower, j, IncidentKind.RearEnd);
                 break;
             }

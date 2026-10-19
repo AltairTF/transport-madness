@@ -1,6 +1,6 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: water, bridges and tunnels added; M0 closed out (flat per-lane lookups, local lane-change reordering) and the M1 cleanup done (downgrade, speed-limit change, move node, flat junction conflict tables, vehicles drawn along junction paths, camera that follows the ground, chunked terrain mesh); player actions are now commands in a replayable log, and tuning and prices live in `data/tuning.json`. Polish items listed in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: vehicles drive through junctions along real paths, with turn speeds; water, bridges and tunnels added; M0 closed out (flat per-lane lookups, local lane-change reordering) and the M1 cleanup done (downgrade, speed-limit change, move node, flat junction conflict tables, vehicles drawn along junction paths, camera that follows the ground, chunked terrain mesh); player actions are now commands in a replayable log, and tuning and prices live in `data/tuning.json`. Polish items listed in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
@@ -62,7 +62,7 @@ Rendering: roads are boxes with a centre line (avenues get a median); every vehi
 - `TwoLane`: one lane per direction, opposing lanes linked as `Oncoming` (overtaking allowed). `Avenue2x2`: two lanes per direction, linked `Left`/`Right`, no `Oncoming`.
 - Junction connections are rebuilt whenever a road is added: each incoming lane connects to the lane of every other road at the node, same lane index where possible; a dead end turns traffic around onto the opposite lane.
 - `MovesConflict(inA, outA, inB, outB)`: two moves conflict if they enter the same lane (merge) or their paths cross. Each move has a path: a cubic curve from where the incoming lane enters the junction area (8 m before the node, at the lane's own offset) to where the outgoing lane leaves it, keeping each lane's heading. Two moves conflict when their paths cross (segment intersection on 12-point polylines), so lane offsets, junction width and arcs count, and the left turn against oncoming straight traffic is a conflict. Results are cached per move pair (lane geometry never changes). The simulation keeps its own flat copy: each node has a small square table over its moves (an incoming lane with one of its next lanes), filled on first use and laid out again when the network changes (`SyncConflictTables`); a step with 1000 vehicles got about 7 percent faster.
-- `JunctionPoint(from, to, fraction)` gives the pose along the same path; the game draws vehicles with it inside a junction (`JunctionReach`: 8 m, or half a short lane). The simulation still moves a vehicle across the node in one step.
+- `JunctionLength`, `JunctionTurn` and `JunctionPointAt(from, to, distance)` describe the same path (length, total heading change, pose at a distance; heading is blended between the polyline's pieces so it changes smoothly). `JunctionReach` is 8 m, or half a short lane. Vehicles drive along these paths, see 5.9.
 - `BuildRoad` plans first (null means "cannot build"): snaps to nodes within 0.5 m at its ends, finds every road it ends on or crosses, splits those roads, then adds the pieces. Refused when shorter than `MinRoadLength` (10 m), when a piece duplicates an existing road, or when it would cross within 10 m of another junction.
 - `SplitRoad` retires the old road and lanes and records for each old lane its two replacements and the split distance. Vehicles migrate in `Simulation.SyncNetwork`.
 
@@ -73,7 +73,7 @@ Step order: `SyncNetwork`; `DecideManoeuvres`; `PrepareOvertakes` (observe oncom
 
 Car-following is the Intelligent Driver Model, taking the most restrictive of: the leader in the lane (or the rearmost vehicle on the lane about to be entered), an oncoming overtaker, and junction yielding. Braking is capped at 9 m/s^2 and builds up at most 15 m/s^3, so drivers need a moment to react; that delay is what makes some situations unrecoverable.
 
-Junctions are uncontrolled and zipper-style: within 40 m of a junction a vehicle yields to any vehicle on another approach that is closer to it and whose move conflicts, treating it as a virtual leader.
+Junctions are uncontrolled and zipper-style: within 40 m of a junction a vehicle yields to any vehicle on another approach that is closer to it (nearer the node, which can be a negative distance for one already inside) and whose move conflicts, treating it as a virtual leader. Vehicles drive through junctions (5.9).
 
 ### 5.3 Manoeuvres
 - **Lane change** (avenues): evaluated every 0.5 s per vehicle (staggered by id) when held up by a slower leader; gap checks ahead and behind in the target lane; returns to the right lane once the way is clear. Not within 30 m of either end of a lane. The sim swaps lanes instantly; `VehicleState.Shift` carries a 3.5 m offset that fades over 1.25 s so the renderer can show a smooth move.
@@ -90,6 +90,14 @@ Junctions are uncontrolled and zipper-style: within 40 m of a junction a vehicle
 One seeded RNG (`SimRandom`, xoshiro256** seeded through SplitMix64, own implementation so it never depends on the runtime), vehicles processed in id order, no wall-clock or Godot values inside a step. `StateHash()` is FNV-1a over all vehicle state, incident and depot state, the network version and the RNG state. Roads built while running are picked up at the next step or spawn.
 
 Player actions are commands (`SimCommand`: `BuildRoadCommand`, `RemoveRoadCommand`, `UpgradeRoadCommand`, `DowngradeRoadCommand`, `SetSpeedLimitCommand`, `MoveNodeCommand`, `AddDepotCommand`, `SeedTrafficCommand`, `CrashSomeoneCommand`). `Simulation.Execute` applies one between steps and appends it to `CommandLog` with the tick it ran at (refused commands too: they change nothing and are refused again on replay). `Simulation.Replay(log, untilTick)` runs a fresh simulation (same seed, same initial network) to a tick, executing the log at the recorded ticks. `DeterminismTests` builds its whole world through commands, so the log plus the seed alone reproduces the run. Anything that changes the network or the simulation without going through `Execute` is not replayable; the game's `DemoWorld` grid is the one such initial world (the demo's depots and traffic are commands).
+
+### 5.9 Driving through junctions (M1)
+- A vehicle stays on its lane while it crosses a junction: the lane has a tail past its end, the path to the next lane. The tail starts `reach` metres before the lane's end (`reach` = `JunctionReach`, 8 m) and is `P` long, the length of the path for the chosen next lane (`_moveLength`, per move). When the front bumper passes `zoneStart + P` (`ZoneEnd`) the vehicle is on the next lane, `reach` metres into it, with the overshoot carried over (`AdvanceLane`). For a straight crossing `P` is exactly the old jump (`reachIn + reachOut`), so only turns change length. `VehicleState.Position` can therefore exceed the lane length by up to the tail.
+- Following: a vehicle in the tail is an ordinary leader for those behind it in the lane; across the junction the gap to the rearmost vehicle on the next lane is `ZoneEnd - pos + theirPos - reach - length` (`GapAcrossJunction`, also used by the rear-end check). Yielding is unchanged (5.2) but now sees real positions: a vehicle inside the junction is more advanced than any that has not reached the node.
+- Turn speed: each move has a speed limit from the mean radius of its path, `sqrt(turnLateralAcceleration * P / turn)` (floor `minTurnSpeed`, none under 0.05 rad of turn). `FreeSpeed` lets a vehicle approach it at `sqrt(limit^2 + 2 * comfortDecel * distanceLeft)`, so it brakes smoothly; IDM tracks that profile with up to about 25 percent overshoot at the start of the tail. At 4 m/s^2 a right-angle turn is taken at about 7 m/s.
+- Drawing: `Simulation.JunctionPoseOf(vehicle, centre)` gives the pose of the vehicle's middle on the path (on the path to its next lane past the start of the tail, or on the path it came by while less than one reach into its lane); the game uses it instead of the lane's line, so cars really turn.
+- Effects seen: grids see fewer overtakes (about 10 per 25 minutes with 600 cars on an 8 x 8 grid, against about 35 before) because everyone slows for each turn; a saturated small grid jams as before and recovers more often; a 10 x 10 grid with 1000 cars has no incidents and about 8 percent lower mean speed. Crossing paths are not checked for collisions, only yielded to; `JunctionDrivingTests` checks that no two cars ever overlap inside a junction in a dense cross.
+- Not done: nothing stops a vehicle entering a junction whose exit lane is full (it queues in the junction), and left-turn waiting in the middle is not modelled.
 
 ### 5.8 Water, bridges and tunnels (M1)
 - **Water.** `Terrain.WaterLevel` is 0: ground below it is under water (`Terrain.IsWater`). `Generate(seed, water: true)` keeps the plains 2.5 m above the water and cuts lakes (a noise high) and rivers (a thin band around the middle of another noise field) into the lowlands only, up to 4 m deep, so water never carves through hills; roughly 6 to 27 percent of a map is water depending on the seed. There is one water level for the whole map, so rivers do not run downhill. `Terrain.Create(cells, cellSize, shape)` builds a hand-shaped map for tests.
@@ -133,7 +141,7 @@ Demo world: 10 x 10 grid, 250 m spacing, an avenue on every third row, 4 simple 
 
 ## 7. Tests
 
-151 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
+154 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
 
 | File | Covers |
 |---|---|
@@ -146,6 +154,7 @@ Demo world: 10 x 10 grid, 250 m spacing, an avenue on every third row, 4 simple 
 | `TrafficTests`, `ScenarioTests` | Seeded determinism, sanity bounds, step-time budget, no lock-up on a dense map, long runs with overtaking, accidents and clearing |
 | `DeterminismTests` | Ten-minute scenario built entirely by commands (build, upgrade, remove, depots, traffic, crashes, crews, overtaking): two runs agree, replaying the command log reproduces the run, a pinned golden hash; a second pinned hash for an avenue scenario that exercises lane changes |
 | `ReshapeRoadTests`, `DepotClosureTests` | Downgrade (lanes, refusals, cost, no overlap, no false crash, removal of a vehicle with no room), speed-limit change, the commands, depot closing and the lost crew |
+| `JunctionDrivingTests` | A car crosses a junction smoothly whichever way it goes, turns are slowed to their limit and straight crossings are not, no two cars overlap inside a junction and nothing crashes in a dense cross |
 | `MoveNodeTests`, `JunctionPointTests`, `TerrainChunkTests`, `FindNodeTests` | Moving a node (rebuild, refusals, crossing, price, vehicles, replay, hills and grade), the pose along a junction path, changed terrain chunks, nodes no road reaches |
 | `TuningTests` | The shipped file loads, a missing or unknown key fails, prices and crew counts follow the tuning, driving tuning changes behaviour |
 
@@ -153,7 +162,7 @@ The suite is the main safeguard for tuning: the traffic model is sensitive (a sm
 
 ## 8. Tuning values
 
-`data/tuning.json` is the only place the behaviour numbers and prices live. It is embedded in the simulation assembly (so the sim stays free of file paths and Godot) and read by `Tuning.Load()` into typed records; the network owns the `Tuning` (`RoadNetwork(terrain, tuning)`, default is the shipped file) and the simulation reads it from there. Every key is required and unknown keys are rejected, so a typo fails at load. Sections: `driving` (IDM, braking, junction yielding), `traffic` (spawning and driver speed spread), `manoeuvres` (decision interval, lateral rate, stall), `laneChange`, `overtake` (every threshold and driver-trait formula), `crews` (timings, crews per depot level), `roads` (speed limit and price per type, earthworks, demolition, upgrade refund, downgrade and re-signing prices, bridge and tunnel thresholds and prices). A change to a number is a behaviour change: the golden hash in `DeterminismTests` will move and the traffic tests must still pass (see section 7).
+`data/tuning.json` is the only place the behaviour numbers and prices live. It is embedded in the simulation assembly (so the sim stays free of file paths and Godot) and read by `Tuning.Load()` into typed records; the network owns the `Tuning` (`RoadNetwork(terrain, tuning)`, default is the shipped file) and the simulation reads it from there. Every key is required and unknown keys are rejected, so a typo fails at load. Sections: `driving` (IDM, braking, junction yielding, turn speed), `traffic` (spawning and driver speed spread), `manoeuvres` (decision interval, lateral rate, stall), `laneChange`, `overtake` (every threshold and driver-trait formula), `crews` (timings, crews per depot level), `roads` (speed limit and price per type, earthworks, demolition, upgrade refund, downgrade and re-signing prices, bridge and tunnel thresholds and prices). A change to a number is a behaviour change: the golden hash in `DeterminismTests` will move and the traffic tests must still pass (see section 7).
 
 Still in code, on purpose: step 0.05 s (ADR 0003); vehicle 4.5 x 1.9 m and lane width 3.5 m (vehicle sizes move to the vehicle roster at M2); the lateral thresholds `HomeLaneLat` 0.5 and `OncomingSightLat` 0.3 (they define when a vehicle counts as being in the other lane); road geometry rules in `RoadNetwork` (minimum length, maximum grade, minimum radius, maximum sweep, curve comfort). Vehicle roster, eras and economy data come later as their own files.
 
@@ -174,7 +183,7 @@ Behaviour:
 - Accident causes are limited to overtaking, rear-ending and junction merges; no curves, weather, signals, level crossings or condition.
 - Crews are abstract (a straight line from the depot, no road travel, no return trip); depot level only sets crews (Complex has 2).
 - Removal and moving leave the terrain as it was carved, on purpose: demolishing a road does not rebuild the hill (decision, not a gap); moving a node straightens curved roads and drops the vehicles on them; no money exists yet, costs are only numbers.
-- Junction paths decide conflicts and are used to draw turns, but the simulation still moves vehicles across the node in one step (so conflict checks use lane speeds, not real closing speeds), and the lane length is the centre-line length for every lane of a curve.
+- Crossing paths are yielded to, not collision-checked, and a vehicle can enter a junction whose exit lane is full; the lane length is the centre-line length for every lane of a curve.
 - An overtaker alongside its target at a lane end can reappear overlapping it.
 - Tiny dense networks (a few roads, dozens of cars) still produce occasional pile-ups at junctions.
 
@@ -199,11 +208,11 @@ Open: none.
 **M1: terrain and road building with cut and fill**
 Done (water, bridges and tunnels: 5.8): seeded heightmap, lane elevation and grade with speed limits, cut and fill cost and terrain carving, build tool shows the cost, picking and drawing on terrain.
 Also done: circular arcs with curve speed limits, junction conflicts from real path geometry, road removal and upgrade.
-Cleanup done: downgrade, speed-limit change and moving a node (commands, costs, tests, tools `Downgrade`, `Faster`, `Slower`, `Move`); a depot closes when its node loses every road; `MovesConflict` flattened into per-node tables; vehicles are drawn along the junction path; camera focus follows the ground; terrain drawn in chunks.
+Done: vehicles drive through junctions along the paths (5.9). Cleanup done: downgrade, speed-limit change and moving a node (commands, costs, tests, tools `Downgrade`, `Faster`, `Slower`, `Move`); a depot closes when its node loses every road; `MovesConflict` flattened into per-node tables; vehicles are drawn along the junction path; camera focus follows the ground; terrain drawn in chunks.
 Open:
 - Grade-separated crossings: a road cannot cross a bridge or tunnel, or join it in the middle.
 - One water level for the whole map (no rivers that run downhill, no sea with tides); bridges do not check boats because there are none.
-- Vehicles still cross the node in one step; following the junction path in the simulation (a position inside the junction) would let `MovesConflict` use real closing speeds.
+- Junctions: keep the box clear (do not enter when the exit lane is full), collision checks for crossing paths, and priorities or signals (M4).
 - Moving a node keeps no curves and loses the vehicles on its roads; a node cannot be dragged across another road.
 
 **M2: stations, lines, player vehicles, basic economy**

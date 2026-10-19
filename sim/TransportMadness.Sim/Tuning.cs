@@ -50,6 +50,8 @@ public sealed record DrivingTuning
     public required float BrakeJerk { get; init; }
     public required float MinInteractionGap { get; init; }
     public required float JunctionRange { get; init; }
+    public required float TurnLateralAcceleration { get; init; }
+    public required float MinTurnSpeed { get; init; }
     public required float JunctionMargin { get; init; }
 }
 
