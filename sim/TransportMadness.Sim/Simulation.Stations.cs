@@ -96,21 +96,22 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// Cargo appears at stations: on a map with towns from the buildings each covers; on one without, every active
-    /// station produces each cargo at its fixed rate. Either way up to a limit.
+    /// Cargo appears at stations: on a map with towns or industries, passengers from the buildings each covers (industries
+    /// hand over their output in <see cref="UpdateIndustries"/>); on one without, every active station produces each cargo
+    /// at its fixed rate. Either way up to a limit.
     /// </summary>
     void GenerateCargo()
     {
-        bool towns = _buildings.Count > 0;
-        if (towns && (_coverageDirty || _stationRate.Count != _stations.Count)) RefreshCoverage();
+        bool settled = Settled;
+        if (settled && (_coverageDirty || _stationRate.Count != _stations.Count)) RefreshCoverage();
         for (int s = 0; s < _stations.Count; s++)
         {
             var station = _stations[s];
             if (!station.Active) continue;
             for (int c = 0; c < _cargo.Count; c++)
             {
-                float perStep = towns ? _stationRate[s][c] * StepSeconds : _cargo[c].SupplyPerDay * StepSeconds / _economy.DayLength;
-                station.Waiting[c] = MathF.Min(station.Waiting[c] + perStep, _cargo[c].MaxWaiting);
+                float perStep = settled ? _stationRate[s][c] * StepSeconds : _cargo[c].SupplyPerDay * StepSeconds / _economy.DayLength;
+                if (perStep > 0f) station.Waiting[c] = MathF.Min(station.Waiting[c] + perStep, _cargo[c].MaxWaiting);
             }
         }
     }

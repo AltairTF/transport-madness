@@ -149,10 +149,18 @@
   },
 
   // Pay is quantity times distance (straight line between the stations) times the rate, reduced when the trip took long.
+  // supplyPerDay is only for maps with neither towns nor industries: there every station produces that much of the cargo.
   "cargo": [
     { "id": "passengers", "payPerUnitKm": 40.0, "freeSeconds": 240.0, "zeroSeconds": 1200.0, "minPayShare": 0.3, "supplyPerDay": 240.0, "maxWaiting": 120.0 },
-    { "id": "goods", "payPerUnitKm": 55.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 140.0, "maxWaiting": 80.0 }
+    { "id": "goods", "payPerUnitKm": 55.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 140.0, "maxWaiting": 80.0 },
+    { "id": "wood", "payPerUnitKm": 30.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "planks", "payPerUnitKm": 40.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "stone", "payPerUnitKm": 25.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "materials", "payPerUnitKm": 45.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "grain", "payPerUnitKm": 28.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
+    { "id": "food", "payPerUnitKm": 50.0, "freeSeconds": 400.0, "zeroSeconds": 2000.0, "minPayShare": 0.2, "supplyPerDay": 0.0, "maxWaiting": 200.0 }
   ],
+
 
   // Towns: generated with the map, made of buildings on lots beside their streets (M3a). Satisfaction is 0 to 100 per town.
   "towns": {
@@ -169,6 +177,9 @@
     "accessRadius": 40.0,           // a building has road access when a road's centre line is this close to its middle
     "inactiveMonths": 3,            // months without road access before a building is marked abandoned ...
     "abandonedMonths": 1,           // ... and months after that before the town demolishes it
+    "unmetPenalty": 3.0,            // satisfaction lost each month if none of the buildings' needs were met; less in proportion to what was
+    "initialStockMonths": 1.5,      // months of its monthly needs a building starts with in stock
+    "sustainStockMonths": 2.0,      // months of its monthly needs a building keeps in stock at most
 
     // Where and how a town is laid out: a square grid of streets (the middle one an avenue) with two lots per block side.
     "generation": {
@@ -193,30 +204,79 @@
     ],
 
     // One list per kind of building, three sizes each. size: half the side of the square it stands on, in metres.
-    // people live in a home; jobs are in commerce and industry. The two supplies are what a station covering the building
-    // collects each day until trip groups replace them (M3c).
+    // people live in a home; jobs are in commerce and industry. passengersPerDay is what a station covering the building
+    // collects each day until trip groups replace it (M3c). sustain: what the building uses up each month (a shortfall
+    // lowers the town's satisfaction); construction: how much it can hold of what building (M3d) will spend.
     "buildingTypes": [
       { "id": "home", "tiers": [
-        { "size": 8.0, "height": 6.0, "people": 8, "jobs": 0, "demolitionPrice": 3000, "passengersPerDay": 100.0, "goodsPerDay": 0.0 },
-        { "size": 10.0, "height": 12.0, "people": 20, "jobs": 0, "demolitionPrice": 7000, "passengersPerDay": 250.0, "goodsPerDay": 0.0 },
-        { "size": 12.0, "height": 24.0, "people": 50, "jobs": 0, "demolitionPrice": 16000, "passengersPerDay": 600.0, "goodsPerDay": 0.0 }
+        { "size": 8.0, "height": 6.0, "people": 8, "jobs": 0, "demolitionPrice": 3000, "passengersPerDay": 100.0,
+          "sustain": [{ "cargo": "food", "amount": 20 }, { "cargo": "goods", "amount": 10 }],
+          "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
+        { "size": 10.0, "height": 12.0, "people": 20, "jobs": 0, "demolitionPrice": 7000, "passengersPerDay": 250.0,
+          "sustain": [{ "cargo": "food", "amount": 50 }, { "cargo": "goods", "amount": 25 }],
+          "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
+        { "size": 12.0, "height": 24.0, "people": 50, "jobs": 0, "demolitionPrice": 16000, "passengersPerDay": 600.0,
+          "sustain": [{ "cargo": "food", "amount": 120 }, { "cargo": "goods", "amount": 60 }],
+          "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
       ] },
       { "id": "commerce", "tiers": [
-        { "size": 8.0, "height": 6.0, "people": 0, "jobs": 6, "demolitionPrice": 4000, "passengersPerDay": 160.0, "goodsPerDay": 60.0 },
-        { "size": 10.0, "height": 10.0, "people": 0, "jobs": 16, "demolitionPrice": 9000, "passengersPerDay": 400.0, "goodsPerDay": 140.0 },
-        { "size": 12.0, "height": 18.0, "people": 0, "jobs": 40, "demolitionPrice": 20000, "passengersPerDay": 1000.0, "goodsPerDay": 300.0 }
+        { "size": 8.0, "height": 6.0, "people": 0, "jobs": 6, "demolitionPrice": 4000, "passengersPerDay": 160.0,
+          "sustain": [{ "cargo": "goods", "amount": 30 }],
+          "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
+        { "size": 10.0, "height": 10.0, "people": 0, "jobs": 16, "demolitionPrice": 9000, "passengersPerDay": 400.0,
+          "sustain": [{ "cargo": "goods", "amount": 80 }],
+          "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
+        { "size": 12.0, "height": 18.0, "people": 0, "jobs": 40, "demolitionPrice": 20000, "passengersPerDay": 1000.0,
+          "sustain": [{ "cargo": "goods", "amount": 180 }],
+          "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
       ] },
       { "id": "industry", "tiers": [
-        { "size": 9.0, "height": 6.0, "people": 0, "jobs": 10, "demolitionPrice": 5000, "passengersPerDay": 40.0, "goodsPerDay": 200.0 },
-        { "size": 11.0, "height": 8.0, "people": 0, "jobs": 25, "demolitionPrice": 11000, "passengersPerDay": 100.0, "goodsPerDay": 500.0 },
-        { "size": 12.0, "height": 10.0, "people": 0, "jobs": 60, "demolitionPrice": 25000, "passengersPerDay": 250.0, "goodsPerDay": 1200.0 }
+        { "size": 9.0, "height": 6.0, "people": 0, "jobs": 10, "demolitionPrice": 5000, "passengersPerDay": 40.0,
+          "sustain": [{ "cargo": "planks", "amount": 30 }],
+          "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
+        { "size": 11.0, "height": 8.0, "people": 0, "jobs": 25, "demolitionPrice": 11000, "passengersPerDay": 100.0,
+          "sustain": [{ "cargo": "planks", "amount": 70 }],
+          "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
+        { "size": 12.0, "height": 10.0, "people": 0, "jobs": 60, "demolitionPrice": 25000, "passengersPerDay": 250.0,
+          "sustain": [{ "cargo": "planks", "amount": 150 }],
+          "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
       ] }
     ]
   },
 
-  // The vehicles the company can buy at a depot.
+  // Industries: the producers and processors of the cargo chains (M3b), placed by the generator on level dry land away from
+  // towns. A primary industry has no inputs and produces perMonth into its output stock; a processor makes at most perMonth
+  // of its output, each unit using up the listed amounts of its inputs, and stops when an input runs out or the output is
+  // full. Stations covering an industry share its output; deliveries to a station fill the inputs of the industries it covers.
+  "industries": {
+    "generation": {
+      "attempts": 500,
+      "edgeMargin": 250.0,
+      "townClearance": 150.0,       // from the edge of a town's grid
+      "minSpacing": 350.0,          // between industries
+      "maxHeightRange": 5.0         // highest minus lowest ground under it
+    },
+    // How many of each type, in the order of 'types', for the three settings of the new-game screen.
+    "counts": {
+      "few":    [1, 1, 1, 1, 1, 1, 1],
+      "normal": [2, 1, 2, 1, 1, 1, 1],
+      "many":   [3, 2, 3, 2, 2, 2, 2]
+    },
+    "types": [
+      { "id": "forest", "name": "Forest", "size": 30.0, "height": 8.0, "output": "wood", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.20, 0.45, 0.22] },
+      { "id": "quarry", "name": "Quarry", "size": 28.0, "height": 6.0, "output": "stone", "perMonth": 3600.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.55, 0.52, 0.48] },
+      { "id": "farm", "name": "Farm", "size": 30.0, "height": 5.0, "output": "grain", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.82, 0.72, 0.30] },
+      { "id": "sawmill", "name": "Sawmill", "size": 22.0, "height": 12.0, "output": "planks", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [{ "cargo": "wood", "amount": 1.0 }], "maxInput": 600.0, "color": [0.62, 0.42, 0.24] },
+      { "id": "cementworks", "name": "Cement works", "size": 22.0, "height": 16.0, "output": "materials", "perMonth": 3600.0, "maxOutput": 600.0, "inputs": [{ "cargo": "stone", "amount": 1.0 }], "maxInput": 600.0, "color": [0.70, 0.70, 0.74] },
+      { "id": "foodplant", "name": "Food plant", "size": 22.0, "height": 12.0, "output": "food", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [{ "cargo": "grain", "amount": 1.0 }], "maxInput": 600.0, "color": [0.85, 0.45, 0.35] },
+      { "id": "factory", "name": "Factory", "size": 22.0, "height": 14.0, "output": "goods", "perMonth": 3600.0, "maxOutput": 600.0, "inputs": [{ "cargo": "planks", "amount": 1.0 }], "maxInput": 600.0, "color": [0.40, 0.45, 0.62] }
+    ]
+  },
+
+  // The vehicles the company can buy at a depot. A model that carries 'freight' takes whichever freight cargo (anything but
+  // passengers) is waiting at a stop and wanted at the next one.
   "vehicles": [
     { "id": "bus", "name": "Bus", "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 400.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
-    { "id": "truck", "name": "Truck", "cargo": "goods", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 450.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 }
+    { "id": "truck", "name": "Truck", "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 450.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 }
   ]
 }

@@ -50,4 +50,5 @@ public sealed class Line
 /// <param name="NextStop">Index into the line's stops of the station it is heading for (or standing at).</param>
 /// <param name="Loading">Standing at a station.</param>
 /// <param name="Load">Units of cargo on board.</param>
-public readonly record struct FleetInfo(int Line, int Model, int NextStop, bool Loading, int Load);
+/// <param name="Cargo">What it is (index into the cargo list), -1 when empty.</param>
+public readonly record struct FleetInfo(int Line, int Model, int NextStop, bool Loading, int Load, int Cargo = -1);

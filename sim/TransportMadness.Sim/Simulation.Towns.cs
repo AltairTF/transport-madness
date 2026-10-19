@@ -9,7 +9,8 @@ public sealed partial class Simulation
     readonly List<Town> _towns = new();
     readonly List<Building> _buildings = new();
     readonly Dictionary<long, List<int>> _buildingCells = new();
-    readonly int _passengerCargo, _goodsCargo; // indices into the cargo list, -1 when the roster has none
+    readonly int _passengerCargo; // index into the cargo list, -1 when the roster has none
+    bool _worldAdded;
     RoadIndex? _roadIndex;
     // What each station collects per second from the buildings in its coverage, by cargo; refreshed when buildings or stations change.
     readonly List<float[]> _stationRate = new();
@@ -33,12 +34,14 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// Puts the generated towns into the world. Part of setting the world up, like the first roads: it is done once,
-    /// before the first step, and not recorded in the command log (a replay generates the same towns from the same seed).
+    /// Puts the generated towns and industries into the world. Part of setting the world up, like the first roads: it is
+    /// done once, before the first step, and not recorded in the command log (a replay generates the same ones from the
+    /// same seed).
     /// </summary>
     public void AddTowns(WorldPlan plan)
     {
-        if (Tick != 0 || _towns.Count != 0) throw new InvalidOperationException("Towns are added once, before the simulation runs.");
+        if (Tick != 0 || _worldAdded) throw new InvalidOperationException("Towns are added once, before the simulation runs.");
+        _worldAdded = true;
         SyncNetwork();
         foreach (var townPlan in plan.Towns)
         {
@@ -48,11 +51,13 @@ public sealed partial class Simulation
             {
                 float y = _net.Terrain?.HeightAt(b.X, b.Z) ?? 0f;
                 var building = new Building(_buildings.Count, town.Id, b.Type, b.Tier, b.X, y, b.Z, b.Facing);
+                StockBuilding(building);
                 _buildings.Add(building);
                 town.BuildingIds.Add(building.Id);
                 CellList(b.X, b.Z, create: true)!.Add(building.Id);
             }
         }
+        if (plan.Industries != null) AddIndustries(plan.Industries);
         _coverageDirty = true;
         BuildingsVersion++;
         EvaluateAccess();
@@ -157,8 +162,11 @@ public sealed partial class Simulation
                 Demolish(b);
         }
         if ((Day + 1) % _economy.DaysPerMonth == 0)
+        {
+            ConsumeNeeds();
             foreach (var town in _towns)
                 town.Satisfaction = MathF.Min(_townTuning.MaxSatisfaction, town.Satisfaction + _townTuning.RecoveryPerMonth);
+        }
     }
 
     void Dissatisfy(int town, float amount)
@@ -235,29 +243,65 @@ public sealed partial class Simulation
         }
     }
 
-    // ---- What stations collect -------------------------------------------------------------------------------
+    // ---- What stations cover, collect and accept -------------------------------------------------------------
 
-    /// <summary>On a map with towns, a station collects passengers and goods from the buildings within its coverage radius.</summary>
+    /// <summary>
+    /// Works out, for every station, the standing buildings and the industries within its coverage radius, the
+    /// passengers it collects from them each second (a stopgap until trip groups) and the cargo it accepts.
+    /// </summary>
     void RefreshCoverage()
     {
         _coverageDirty = false;
-        while (_stationRate.Count < _stations.Count) _stationRate.Add(new float[_cargo.Count]);
+        while (_stationRate.Count < _stations.Count)
+        {
+            _stationRate.Add(new float[_cargo.Count]);
+            _stationBuildings.Add(Array.Empty<int>());
+            _stationIndustries.Add(Array.Empty<int>());
+            _stationAccepts.Add(new bool[_cargo.Count]);
+        }
+        var perIndustry = new List<int>[_industries.Count];
+        for (int i = 0; i < perIndustry.Length; i++) perIndustry[i] = new List<int>();
+        float radius = _stationTuning.CoverageRadius;
         for (int s = 0; s < _stations.Count; s++)
         {
             var rate = _stationRate[s];
+            var accepts = _stationAccepts[s];
             Array.Clear(rate);
+            Array.Clear(accepts);
+            _stationBuildings[s] = Array.Empty<int>();
+            _stationIndustries[s] = Array.Empty<int>();
             var station = _stations[s];
             if (!station.Active) continue;
             var (x, z) = _net.GetNode(station.Node);
-            foreach (int id in BuildingsNear(x, z, _stationTuning.CoverageRadius))
+
+            var buildings = new List<int>();
+            foreach (int id in BuildingsNear(x, z, radius))
             {
                 var b = _buildings[id];
                 if (b.State != BuildingState.Active) continue;
-                var tier = _townTuning.Of(b.Type, b.Tier);
-                if (_passengerCargo >= 0) rate[_passengerCargo] += tier.PassengersPerDay / _economy.DayLength;
-                if (_goodsCargo >= 0) rate[_goodsCargo] += tier.GoodsPerDay / _economy.DayLength;
+                buildings.Add(id);
+                if (_passengerCargo >= 0)
+                {
+                    rate[_passengerCargo] += _townTuning.Of(b.Type, b.Tier).PassengersPerDay / _economy.DayLength;
+                    accepts[_passengerCargo] = true;
+                }
+                var sustain = _sustainNeed[(int)b.Type][b.Tier];
+                var construction = _constructionCap[(int)b.Type][b.Tier];
+                for (int c = 0; c < accepts.Length; c++)
+                    if (sustain[c] > 0f || construction[c] > 0f) accepts[c] = true;
             }
+            var industries = new List<int>();
+            foreach (var industry in _industries)
+            {
+                if ((industry.X - x) * (industry.X - x) + (industry.Z - z) * (industry.Z - z) > radius * radius) continue;
+                industries.Add(industry.Id);
+                perIndustry[industry.Id].Add(s);
+                foreach (var (cargo, _) in _industryInputs[industry.Type]) accepts[cargo] = true;
+            }
+            _stationBuildings[s] = buildings.ToArray();
+            _stationIndustries[s] = industries.ToArray();
         }
+        _industryStations = perIndustry.Select(l => l.ToArray()).ToList();
     }
 
     /// <summary>The buildings an active station covers (active ones only), in id order.</summary>
@@ -265,6 +309,13 @@ public sealed partial class Simulation
     {
         var (x, z) = _net.GetNode(station.Node);
         return BuildingsNear(x, z, _stationTuning.CoverageRadius).Where(id => _buildings[id].State == BuildingState.Active).ToList();
+    }
+
+    /// <summary>The industries within the coverage radius of a station, by id.</summary>
+    public IReadOnlyList<int> IndustriesCoveredBy(Station station)
+    {
+        if (_coverageDirty || _stationBuildings.Count != _stations.Count) RefreshCoverage();
+        return _stationIndustries[station.Id];
     }
 
     ulong TownHash()

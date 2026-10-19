@@ -7,7 +7,7 @@ public sealed partial class Simulation
     const float ArrivalWatch = 40f; // a new vehicle is only put on the road when nothing is within this distance of the junction it leaves
 
     readonly IReadOnlyList<VehicleModelTuning> _models;
-    readonly int[] _modelCargo; // per model: index of the cargo it carries
+    readonly int[] _modelCargo; // per model: index of the cargo it carries, or FreightAny
     readonly List<Line> _lines = new();
 
     // Per vehicle slot; -1 line means ambient traffic.
@@ -16,6 +16,7 @@ public sealed partial class Simulation
     int[] _stopIndex = new int[64]; // index into the line's stops of the station it is heading for or standing at
     int[] _dwell = new int[64];     // ticks left of loading, 0 when driving
     int[] _load = new int[64];
+    int[] _loadCargo = FilledWith(64, -1); // the cargo on board, -1 when empty
     int[] _loadFrom = new int[64];  // station the cargo on board was picked up at
     long[] _loadTick = new long[64];
     long[] _income = new long[64];
@@ -28,10 +29,10 @@ public sealed partial class Simulation
         var cargo = new int[tuning.Vehicles.Count];
         for (int m = 0; m < cargo.Length; m++)
         {
-            cargo[m] = -1;
+            cargo[m] = tuning.Vehicles[m].Cargo == "freight" ? FreightAny : -1;
             for (int c = 0; c < tuning.Cargo.Count; c++)
                 if (tuning.Cargo[c].Id == tuning.Vehicles[m].Cargo) cargo[m] = c;
-            if (cargo[m] < 0) throw new ArgumentException($"Vehicle '{tuning.Vehicles[m].Id}' carries unknown cargo '{tuning.Vehicles[m].Cargo}'.");
+            if (cargo[m] == -1) throw new ArgumentException($"Vehicle '{tuning.Vehicles[m].Id}' carries unknown cargo '{tuning.Vehicles[m].Cargo}'.");
         }
         return cargo;
     }
@@ -44,6 +45,7 @@ public sealed partial class Simulation
         Array.Resize(ref _stopIndex, n);
         Array.Resize(ref _dwell, n);
         Array.Resize(ref _load, n);
+        Array.Resize(ref _loadCargo, n);
         Array.Resize(ref _loadFrom, n);
         Array.Resize(ref _loadTick, n);
         Array.Resize(ref _income, n);
@@ -152,7 +154,7 @@ public sealed partial class Simulation
     /// <summary>Length of a vehicle in metres: that of its model for the company's vehicles, a car's for ambient traffic.</summary>
     public float LengthOf(int vehicle) => _length[vehicle];
 
-    public FleetInfo GetFleetInfo(int vehicle) => new(_line[vehicle], _model[vehicle], _stopIndex[vehicle], _dwell[vehicle] > 0, _load[vehicle]);
+    public FleetInfo GetFleetInfo(int vehicle) => new(_line[vehicle], _model[vehicle], _stopIndex[vehicle], _dwell[vehicle] > 0, _load[vehicle], _loadCargo[vehicle]);
 
     /// <summary>Money this vehicle has earned so far.</summary>
     public long IncomeOf(int vehicle) => _income[vehicle];
@@ -171,6 +173,7 @@ public sealed partial class Simulation
         _stopIndex[id] = 0;
         _dwell[id] = 0;
         _load[id] = 0;
+        _loadCargo[id] = -1;
         _loadFrom[id] = -1;
         _loadTick[id] = 0;
         _income[id] = 0;
@@ -215,15 +218,23 @@ public sealed partial class Simulation
     {
         var station = TargetStation(i)!;
         var spec = _models[_model[i]];
-        int cargo = _modelCargo[_model[i]];
-        int unloaded = _load[i];
-        if (unloaded > 0) Deliver(i, station);
+        int unloaded = 0;
+        if (_load[i] > 0 && Accepts(station, _loadCargo[i])) unloaded = Deliver(i, station);
 
-        int loaded = Math.Min(spec.Capacity, (int)MathF.Floor(station.Waiting[cargo]));
-        station.Waiting[cargo] -= loaded;
-        _load[i] = loaded;
-        _loadFrom[i] = loaded > 0 ? station.Id : -1;
-        _loadTick[i] = Tick;
+        int loaded = 0;
+        if (_load[i] == 0)
+        {
+            int cargo = CargoToLoad(i, station);
+            if (cargo >= 0)
+            {
+                loaded = Math.Min(spec.Capacity, (int)MathF.Floor(station.Waiting[cargo]));
+                station.Waiting[cargo] -= loaded;
+                _load[i] = loaded;
+                _loadCargo[i] = cargo;
+                _loadFrom[i] = station.Id;
+                _loadTick[i] = Tick;
+            }
+        }
 
         _speed[i] = 0f;
         _accel[i] = 0f;
@@ -231,11 +242,38 @@ public sealed partial class Simulation
         _dwell[i] = (int)Math.Max(1, Ticks(spec.DwellSeconds + spec.SecondsPerUnit * (unloaded + loaded)));
     }
 
-    /// <summary>Pays for the cargo on board at the station it has reached: quantity times distance times the rate, less for a slow trip.</summary>
-    void Deliver(int i, Station station)
+    /// <summary>
+    /// The cargo an empty vehicle takes on at a station: what its model carries, or for a freight model whichever freight
+    /// cargo has the most waiting; only cargo that the next stop on the line accepts. -1 when there is none.
+    /// </summary>
+    int CargoToLoad(int i, Station station)
     {
-        int cargo = _modelCargo[_model[i]];
+        int fixedCargo = _modelCargo[_model[i]];
+        var line = _lines[_line[i]];
+        var next = _stations[line.Stops[(_stopIndex[i] + 1) % line.Stops.Count]];
+        int best = -1;
+        float bestWaiting = 1f; // at least one whole unit
+        for (int c = 0; c < _cargo.Count; c++)
+        {
+            if (fixedCargo >= 0 ? c != fixedCargo : c == _passengerCargo) continue;
+            if (station.Waiting[c] < bestWaiting || !Accepts(next, c)) continue;
+            best = c;
+            bestWaiting = station.Waiting[c];
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Unloads the cargo on board at the station it has reached and is paid for what is taken: quantity times distance times
+    /// the rate, less for a slow trip. Where buildings or industries are what takes it, only what they have room for is taken
+    /// and the rest is lost. Returns the units on board before unloading.
+    /// </summary>
+    int Deliver(int i, Station station)
+    {
+        int cargo = _loadCargo[i];
         var type = _cargo[cargo];
+        int onBoard = _load[i];
+        int taken = Settled && cargo != _passengerCargo ? Distribute(station, cargo, onBoard) : onBoard;
         var (x0, z0) = _net.GetNode(_stations[_loadFrom[i]].Node);
         var (x1, z1) = _net.GetNode(station.Node);
         float km = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)) / 1000f;
@@ -243,15 +281,17 @@ public sealed partial class Simulation
         float share = seconds <= type.FreeSeconds ? 1f
             : seconds >= type.ZeroSeconds ? type.MinPayShare
             : 1f - (1f - type.MinPayShare) * (seconds - type.FreeSeconds) / (type.ZeroSeconds - type.FreeSeconds);
-        long pay = (long)MathF.Round(_load[i] * km * type.PayPerUnitKm * share);
+        long pay = (long)MathF.Round(taken * km * type.PayPerUnitKm * share);
 
         Earn(pay, LedgerEntry.Income);
         var line = _lines[_line[i]];
         line.Income += pay;
-        line.Delivered += _load[i];
+        line.Delivered += taken;
         _income[i] += pay;
         _load[i] = 0;
+        _loadCargo[i] = -1;
         _loadFrom[i] = -1;
+        return onBoard;
     }
 
     /// <summary>Loading is done: head for the next open station on the line.</summary>
@@ -304,6 +344,7 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)_stopIndex[i];
             h = h * 31 + (ulong)_dwell[i];
             h = h * 31 + (ulong)_load[i];
+            h = h * 31 + (ulong)(_loadCargo[i] + 1);
             h = h * 31 + (ulong)_loadTick[i];
             h = h * 31 + (ulong)_income[i];
         }

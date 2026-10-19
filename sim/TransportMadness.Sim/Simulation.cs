@@ -130,11 +130,16 @@ public sealed partial class Simulation
         _stationTuning = tuning.Stations;
         _cargo = tuning.Cargo;
         _townTuning = tuning.Towns;
+        _industryTuning = tuning.Industries;
+        _industryOutput = tuning.Industries.Types.Select(t => CargoIndex(tuning, t.Output)).ToArray();
+        _industryInputs = ResolveIndustryInputs(tuning);
+        _sustainNeed = ResolveNeeds(tuning, t => t.Sustain, 1f);
+        _constructionCap = ResolveNeeds(tuning, t => t.Construction, 1f);
         _passengerCargo = FindCargo(tuning, "passengers");
-        _goodsCargo = FindCargo(tuning, "goods");
         _models = tuning.Vehicles;
         _modelCargo = ResolveModelCargo(tuning);
         _ticksPerDay = (long)MathF.Round(_economy.DayLength / StepSeconds);
+        _productionPerTick = 1.0 / (_ticksPerDay * _economy.DaysPerMonth);
         Company = new Company(_economy.StartingMoney);
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;
@@ -214,6 +219,7 @@ public sealed partial class Simulation
         Mix(IncidentHash());
         Mix(StationHash());
         if (_buildings.Count > 0) Mix(TownHash());
+        if (_industries.Count > 0 || _buildings.Count > 0) Mix(IndustryHash());
         Mix(FleetHash());
         Mix((ulong)Company.Money);
         Mix((ulong)Company.Loan);
@@ -340,6 +346,7 @@ public sealed partial class Simulation
         DecideManoeuvres();
         PrepareOvertakes();
         GenerateCargo();
+        UpdateIndustries();
         UpdateFleet();
         for (int i = 0; i < _count; i++)
         {

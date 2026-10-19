@@ -192,7 +192,8 @@ public class TownTests
     [Fact]
     public void Satisfaction_RecoversEveryMonth_UpToTheMaximum()
     {
-        var (sim, _, _, _) = SmallTown();
+        var shipped = Tuning.Load();
+        var (sim, _, _, _) = SmallTown(shipped with { Towns = shipped.Towns with { UnmetPenalty = 0f } });
         var t = sim.TownTuning;
         int daysPerMonth = sim.Network.Tuning.Economy.DaysPerMonth;
         float start = sim.Towns[0].Satisfaction;
@@ -283,7 +284,7 @@ public class TownTests
 
         float expectedHome = sim.TownTuning.Of(BuildingType.Home, 0).PassengersPerDay * 0.5f;
         Assert.Equal(expectedHome, sim.Stations[a].Waiting[passengers], 1);
-        Assert.Equal(0f, sim.Stations[a].Waiting[1], 3); // a home makes no goods
+        Assert.Equal(0f, sim.Stations[a].Waiting[1], 3); // goods come from factories, not from homes
     }
 
     [Fact]

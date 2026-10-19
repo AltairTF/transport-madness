@@ -27,8 +27,8 @@ public class TuningTests
         Assert.Equal(12, t.Economy.MonthsPerYear);
         Assert.Equal(1000000, t.Economy.StartingMoney);
         Assert.Equal(new[] { "bus", "truck" }, t.Vehicles.Select(v => v.Id));
-        Assert.Equal(new[] { "passengers", "goods" }, t.Cargo.Select(c => c.Id));
-        Assert.All(t.Vehicles, v => Assert.Contains(t.Cargo, c => c.Id == v.Cargo));
+        Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food" }, t.Cargo.Select(c => c.Id));
+        Assert.All(t.Vehicles, v => Assert.True(v.Cargo == "freight" || t.Cargo.Any(c => c.Id == v.Cargo)));
         Assert.True(t.Economy.DepotPrice.For(DepotLevel.Complex) > t.Economy.DepotPrice.For(DepotLevel.Simple));
     }
 
@@ -66,6 +66,25 @@ public class TuningTests
         Assert.All(t.Rings, ring => Assert.Equal(Enum.GetValues<BuildingType>().Length, ring.Mix.Count));
         Assert.True(t.Names.Count >= 10);
         Assert.True(t.Generation.LotWidth * 2f < t.Generation.BlockLength); // the two lots on a side fit, with the corners left free
+    }
+
+    [Fact]
+    public void ShippedFile_HasTheFourChains()
+    {
+        var t = Tuning.Load().Industries;
+
+        Assert.Equal(new[] { "forest", "quarry", "farm", "sawmill", "cementworks", "foodplant", "factory" }, t.Types.Select(x => x.Id));
+        Assert.Equal(new[] { "wood", "stone", "grain", "planks", "materials", "food", "goods" }, t.Types.Select(x => x.Output));
+        Assert.Equal(new[] { 0, 0, 0, 1, 1, 1, 1 }, t.Types.Select(x => x.Inputs.Count));
+        Assert.All(new[] { t.Counts.Few, t.Counts.Normal, t.Counts.Many }, counts => Assert.Equal(t.Types.Count, counts.Count));
+    }
+
+    [Fact]
+    public void ABuildingNeed_ForAnUnknownCargo_IsRejected()
+    {
+        var text = ShippedText().Replace("\"cargo\": \"food\", \"amount\": 20", "\"cargo\": \"gravy\", \"amount\": 20");
+
+        Assert.Throws<ArgumentException>(() => new Simulation(new RoadNetwork(Terrain.Flat(), Tuning.FromJson(text)), 1));
     }
 
     [Fact]

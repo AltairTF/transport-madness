@@ -29,6 +29,7 @@ public sealed record Tuning
     public required EconomyTuning Economy { get; init; }
     public required StationTuning Stations { get; init; }
     public required TownsTuning Towns { get; init; }
+    public required IndustriesTuning Industries { get; init; }
     public required IReadOnlyList<CargoTuning> Cargo { get; init; }
     public required IReadOnlyList<VehicleModelTuning> Vehicles { get; init; }
 
@@ -45,6 +46,7 @@ public sealed record Tuning
     {
         var tuning = JsonSerializer.Deserialize<Tuning>(json, Options) ?? throw new JsonException("Tuning file is empty");
         tuning.Towns.Validate();
+        tuning.Industries.Validate();
         return tuning;
     }
 }
@@ -272,6 +274,9 @@ public sealed record TownsTuning
     public required float AccessRadius { get; init; }
     public required int InactiveMonths { get; init; }
     public required int AbandonedMonths { get; init; }
+    public required float UnmetPenalty { get; init; }
+    public required float InitialStockMonths { get; init; }
+    public required float SustainStockMonths { get; init; }
     public required TownGenerationTuning Generation { get; init; }
     public required IReadOnlyList<RingTuning> Rings { get; init; }
     public required IReadOnlyList<BuildingTypeTuning> BuildingTypes { get; init; }
@@ -338,8 +343,69 @@ public sealed record TierTuning
     public required int Jobs { get; init; }
     public required long DemolitionPrice { get; init; }
     public required float PassengersPerDay { get; init; }
-    public required float GoodsPerDay { get; init; }
+    public required IReadOnlyList<CargoAmount> Sustain { get; init; }
+    public required IReadOnlyList<CargoAmount> Construction { get; init; }
 
     /// <summary>Radius of the ground a building of this size takes: a road closer than this to its middle (less the road's half width) runs through it.</summary>
     public float Footprint => Size * 1.2f;
+}
+
+/// <summary>An amount of a cargo, named by its id in the cargo list.</summary>
+public sealed record CargoAmount
+{
+    public required string Cargo { get; init; }
+    public required float Amount { get; init; }
+}
+
+public enum IndustryAmount { Few, Normal, Many }
+
+public sealed record IndustriesTuning
+{
+    public required IndustryGenerationTuning Generation { get; init; }
+    public required IndustryCounts Counts { get; init; }
+    public required IReadOnlyList<IndustryTypeTuning> Types { get; init; }
+
+    internal void Validate()
+    {
+        if (Types.Count == 0) throw new JsonException("industries.types is empty");
+        foreach (var counts in new[] { Counts.Few, Counts.Normal, Counts.Many })
+            if (counts.Count != Types.Count) throw new JsonException("industries.counts needs one number per industry type");
+    }
+}
+
+public sealed record IndustryGenerationTuning
+{
+    public required int Attempts { get; init; }
+    public required float EdgeMargin { get; init; }
+    public required float TownClearance { get; init; }
+    public required float MinSpacing { get; init; }
+    public required float MaxHeightRange { get; init; }
+}
+
+public sealed record IndustryCounts
+{
+    public required IReadOnlyList<int> Few { get; init; }
+    public required IReadOnlyList<int> Normal { get; init; }
+    public required IReadOnlyList<int> Many { get; init; }
+
+    public IReadOnlyList<int> Of(IndustryAmount amount) => amount switch
+    {
+        IndustryAmount.Few => Few,
+        IndustryAmount.Normal => Normal,
+        _ => Many,
+    };
+}
+
+public sealed record IndustryTypeTuning
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required float Size { get; init; }
+    public required float Height { get; init; }
+    public required string Output { get; init; }
+    public required float PerMonth { get; init; }
+    public required float MaxOutput { get; init; }
+    public required IReadOnlyList<CargoAmount> Inputs { get; init; }
+    public required float MaxInput { get; init; }
+    public required IReadOnlyList<float> Color { get; init; }
 }
