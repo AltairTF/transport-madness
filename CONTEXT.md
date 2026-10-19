@@ -21,10 +21,10 @@ Anything that is not people and is moved between industries and towns.
 A person moving between a home and a place of work or leisure.
 
 **Station**:
-A place where vehicles load and unload, covering nearby buildings within a coverage radius.
+A place on the road network where vehicles load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. Until towns exist it produces passengers and goods at a fixed rate.
 
 **Line**:
-A recurring route that a group of vehicles runs between stations.
+A recurring route that a group of vehicles runs between stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own.
 
 **Contract**:
 A time-limited request for specific cargo or passengers, with a reward.
@@ -46,7 +46,7 @@ A purely visual figure shown on streets and platforms to make the flow of Trip g
 
 **Depot**:
 A building where vehicles are serviced and from which a Rescue crew is dispatched. Comes in three levels of capability: a Simple Depot only does basic corrections (Patch) to keep the fleet running, a Workshop also does a Service, and a Complex can do an Overhaul. A Complex also keeps two Rescue crews, the other levels one.
-A Depot closes when every road at its node has been torn down or moved away; a crew already on its way is lost.
+A Depot closes when every road at its node has been torn down; a crew already on its way is lost. When the node is moved, the Depot moves with it.
 _Avoid_: "complete Depot" (the top level is called Complex)
 
 **Rescue crew**:
@@ -77,17 +77,37 @@ The road equivalent of an Overhaul, done by a road crew. Closes or narrows the r
 A vehicle kept past its Era. It has no permanent wear limit, but it burns more fuel and its Patch, Service and Overhaul costs are higher than when new.
 
 **Command**:
-A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
+A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, create or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
+
+**Company vehicle**:
+A bus or truck the Company owns, bought at a Depot for a Line. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.
+_Avoid_: "player vehicle" (ambiguous with the camera), "fleet car"
+
+**Pay**:
+Money earned for cargo or passengers delivered: quantity times straight-line distance between the stations times the cargo's rate, reduced when the trip took longer than the cargo tolerates.
+
+**Day**:
+60 seconds of simulated time. Upkeep and loan interest are paid at the turn of a day.
+
+**Loan**:
+Money borrowed, up to a limit, that costs interest every day. A Company whose net worth stays below minus the debt limit for two years goes bankrupt (the sandbox carries on).
+
+**Bridge / Tunnel**:
+A stretch of road carried over water or a deep valley (Bridge), or through a hill (Tunnel), instead of being cut or filled into the ground. Chosen automatically when a road is planned, priced per metre, and leaves the ground as it was. Other roads can join one in the middle or pass over or under it.
+
+**Grade-separated crossing**:
+A place where one road passes over or under another with no junction between them. Built automatically when the two surfaces are far enough apart in height and there is a Bridge above or a Tunnel below.
+
+**Water surface**:
+The height water stands at. It falls gently toward a Sea along one side of the map, so Rivers run downhill. Ground below it is water (lake, river, sea). There are no tides and no boats.
+
+**Junction path**:
+The line a vehicle follows from one lane through a junction to the next. Vehicles drive along it, slowing for tight turns. Two paths that cross, merge or run closer than a vehicle is wide conflict; the vehicle that would reach the junction second waits at its edge until the other has passed the place where they meet, and nobody enters a junction whose exit lane is full. Two vehicles that do meet inside a junction crash (a Junction Incident).
 
 ## Relationships
 
 - A **Town** is served by **Stations**; a **Station** belongs to one or more **Lines**.
 - A **Town** needs **Cargo** deliveries to grow, and its **Passengers** need to reach work and leisure.
 - A **Contract** names an **Industry** or **Town** as source and destination.
+- A **Line** is run by **Company vehicles**, bought at a **Depot**; they earn **Pay** and cost upkeep every **Day**.
 - An **Era** gates which vehicles and road types the **Company** may buy.
-
-**Bridge / Tunnel**:
-A stretch of road carried over water or a deep valley (Bridge), or through a hill (Tunnel), instead of being cut or filled into the ground. Chosen automatically when a road is planned, priced per metre, and leaves the ground as it was.
-
-**Junction path**:
-The line a vehicle follows from one lane through a junction to the next. Vehicles drive along it, slowing for tight turns, and give way to vehicles whose paths cross or merge with theirs.
