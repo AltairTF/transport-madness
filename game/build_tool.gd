@@ -1,12 +1,14 @@
 extends Node
 ## Turns mouse input into build commands on the simulation host. Straight roads snap to existing nodes
-## (that is how junctions are made) and otherwise to 15 degree steps and 5 m lengths. Curves take three
+## (that is how junctions are made); otherwise the road follows the mouse in any direction, pulled onto a 15 degree
+## step when within 1.5 degrees of one (Shift forces the step), with 5 m lengths. Curves take three
 ## clicks: start, a point on the curve, end. Road tools (upgrade, downgrade, remove, speed limit) act on the road
 ## piece under the mouse; Move takes two clicks: the junction to pick up, then where to put it. Station builds on the
 ## road under the mouse (splitting it); New line takes stations one click at a time and Enter finishes the line.
 
 const NODE_SNAP_RADIUS := 20.0
 const ANGLE_STEP := deg_to_rad(15.0)
+const ANGLE_PULL := deg_to_rad(1.5) ## a road within this of a 15 degree step is pulled onto it; Shift forces the step
 const LENGTH_STEP := 5.0
 const PICK_RADIUS := 24.0
 const STATION_PICK_RADIUS := 40.0
@@ -125,7 +127,10 @@ func _target_point(screen: Vector2) -> Variant:
 	if _start != null and not _is_curve():
 		var offset: Vector3 = p - _start
 		offset.y = 0.0
-		var angle := roundf(atan2(offset.z, offset.x) / ANGLE_STEP) * ANGLE_STEP
+		var angle := atan2(offset.z, offset.x)
+		var stepped := roundf(angle / ANGLE_STEP) * ANGLE_STEP
+		if Input.is_key_pressed(KEY_SHIFT) or absf(angle - stepped) <= ANGLE_PULL:
+			angle = stepped
 		var length := maxf(LENGTH_STEP * 2.0, roundf(offset.length() / LENGTH_STEP) * LENGTH_STEP)
 		return _ground(_start.x + cos(angle) * length, _start.z + sin(angle) * length)
 	return _ground(roundf(p.x / LENGTH_STEP) * LENGTH_STEP, roundf(p.z / LENGTH_STEP) * LENGTH_STEP)
