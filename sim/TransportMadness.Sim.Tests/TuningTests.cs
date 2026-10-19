@@ -22,7 +22,9 @@ public class TuningTests
     {
         var t = Tuning.Load();
 
-        Assert.Equal(60f, t.Economy.DayLength);
+        Assert.Equal(600f, t.Economy.DayLength);
+        Assert.Equal(30, t.Economy.DaysPerMonth);
+        Assert.Equal(12, t.Economy.MonthsPerYear);
         Assert.Equal(1000000, t.Economy.StartingMoney);
         Assert.Equal(new[] { "bus", "truck" }, t.Vehicles.Select(v => v.Id));
         Assert.Equal(new[] { "passengers", "goods" }, t.Cargo.Select(c => c.Id));

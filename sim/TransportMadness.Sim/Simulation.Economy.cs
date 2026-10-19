@@ -12,6 +12,23 @@ public sealed partial class Simulation
     public long Day => Tick / _ticksPerDay;
     public float DayLengthSeconds => _economy.DayLength;
 
+    /// <summary>Position in the calendar, derived from <see cref="Day"/>: years and months count from 1, the day of the month too.</summary>
+    public readonly record struct Date(int Year, int Month, int DayOfMonth);
+
+    public Date Today => DateOfDay(Day);
+
+    public Date DateOfDay(long day)
+    {
+        long month = day / _economy.DaysPerMonth;
+        return new Date((int)(month / _economy.MonthsPerYear) + 1, (int)(month % _economy.MonthsPerYear) + 1, (int)(day % _economy.DaysPerMonth) + 1);
+    }
+
+    /// <summary>Whole months that have passed; changes on the first day of each month.</summary>
+    public long MonthIndex => Day / _economy.DaysPerMonth;
+
+    /// <summary>How far through the current day it is, 0 at midnight up to (not including) 1.</summary>
+    public float TimeOfDay => (float)(Tick % _ticksPerDay) / _ticksPerDay;
+
     /// <summary>Whether the company has at least this much money (the cost of a command is rounded up to whole units).</summary>
     public bool CanAfford(float cost) => Company.Money >= Price(cost);
 

@@ -179,7 +179,7 @@ public class FleetTests
 
         Run(sim, 3);
 
-        long perDay = 40 + 2 * 15; // the bus and the two stations
+        long perDay = 400 + 2 * 150; // the bus and the two stations
         Assert.Equal(upkeepBefore - 3 * perDay, sim.Company.Total(LedgerEntry.Upkeep));
         Assert.Equal(3, sim.Day);
     }
@@ -267,7 +267,7 @@ public class FleetTests
 
         var net = new RoadNetwork(Terrain.Flat());
         var replay = new Simulation(net, 5);
-        replay.Replay(log, 8L * 1200);
+        replay.Replay(log, (long)Math.Round(8 * replay.DayLengthSeconds / Simulation.StepSeconds));
 
         Assert.Equal(first, second);
         Assert.Equal(first, replay.StateHash());

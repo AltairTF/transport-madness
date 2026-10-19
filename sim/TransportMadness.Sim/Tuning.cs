@@ -196,6 +196,8 @@ public sealed record EconomyTuning
     public required long StartingMoney { get; init; }
     public required long MaxLoan { get; init; }
     public required float DayLength { get; init; }
+    public required int DaysPerMonth { get; init; }
+    public required int MonthsPerYear { get; init; }
     public required float InterestPerDay { get; init; }
     public required long DebtLimit { get; init; }
     public required int BankruptcyDays { get; init; }

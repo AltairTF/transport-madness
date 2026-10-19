@@ -7,6 +7,12 @@ public class EconomyTests
 {
     static Simulation NewSim(Tuning? tuning = null) => new(new RoadNetwork(Terrain.Flat(), tuning), 1);
 
+    static void RunDays(Simulation sim, int days)
+    {
+        long ticks = (long)Math.Round(days * sim.DayLengthSeconds / Simulation.StepSeconds);
+        for (long t = 0; t < ticks; t++) sim.Step();
+    }
+
     [Fact]
     public void TheCompanyStartsWithTheTunedMoney_AndNoLoan()
     {
@@ -105,11 +111,11 @@ public class EconomyTests
     public void InterestIsChargedEveryDay_OnTheLoanOnly()
     {
         var sim = NewSim();
-        for (int t = 0; t < 1200; t++) sim.Step();
+        RunDays(sim, 1);
         Assert.Equal(0, sim.Company.Total(LedgerEntry.Interest)); // no loan, no interest
 
         sim.Execute(new TakeLoanCommand(500000));
-        for (int t = 0; t < 1200; t++) sim.Step();
+        RunDays(sim, 1);
 
         Assert.Equal(-(long)Math.Ceiling(500000 * sim.Network.Tuning.Economy.InterestPerDay), sim.Company.Total(LedgerEntry.Interest));
     }
@@ -122,11 +128,11 @@ public class EconomyTests
         var sim = NewSim(tuning);
         sim.Execute(new TakeLoanCommand(100000));
 
-        for (int t = 0; t < 4 * 1200; t++) sim.Step();
+        RunDays(sim, 4);
         Assert.False(sim.Company.Bankrupt);
 
         // Money 100000, loan 100000: net worth 0. Interest pushes it below zero every day.
-        for (int t = 0; t < 3 * 1200; t++) sim.Step();
+        RunDays(sim, 3);
 
         Assert.True(sim.Company.Bankrupt);
         Assert.True(sim.Company.InsolventDays >= 5);
@@ -147,5 +153,33 @@ public class EconomyTests
         Assert.NotEqual(node, sim.Stations[0].Node);
         var (x, z) = sim.Network.GetNode(sim.Stations[0].Node);
         Assert.Equal((0f, 80f), (x, z));
+    }
+
+    [Theory]
+    [InlineData(0, 1, 1, 1)]
+    [InlineData(29, 1, 1, 30)]
+    [InlineData(30, 1, 2, 1)]
+    [InlineData(359, 1, 12, 30)]
+    [InlineData(360, 2, 1, 1)]
+    public void TheCalendar_IsDerivedFromTheDayCount(long day, int year, int month, int dayOfMonth)
+    {
+        var date = NewSim().DateOfDay(day);
+
+        Assert.Equal(new Simulation.Date(year, month, dayOfMonth), date);
+    }
+
+    [Fact]
+    public void TimeOfDay_RunsFromMidnightAndWrapsAtTheTurnOfTheDay()
+    {
+        var sim = NewSim();
+        Assert.Equal(0f, sim.TimeOfDay);
+        long ticksPerDay = (long)Math.Round(sim.DayLengthSeconds / Simulation.StepSeconds);
+
+        for (long t = 0; t < ticksPerDay / 2; t++) sim.Step();
+        Assert.Equal(0.5f, sim.TimeOfDay, 3);
+
+        for (long t = 0; t < ticksPerDay / 2; t++) sim.Step();
+        Assert.Equal(0f, sim.TimeOfDay);
+        Assert.Equal(1, sim.Day);
     }
 }
