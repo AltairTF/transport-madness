@@ -238,6 +238,10 @@ public sealed record StationTuning
     public required float StopMargin { get; init; }
     public required float ArrivalGap { get; init; }
     public required float ArrivalSpeed { get; init; }
+    public required long BayPrice { get; init; }
+    public required float BayUpkeepPerDay { get; init; }
+    public required int BayCapacity { get; init; }
+    public required float BayExitGap { get; init; }
 }
 
 public sealed record CargoTuning
@@ -466,11 +470,16 @@ public sealed record TripsTuning
     public required int CarSpawnAttempts { get; init; }
     public required float CarArriveRange { get; init; }
     public required float CarTimeoutSeconds { get; init; }
+    public required float CarStuckSeconds { get; init; }
+    public required float CongestionSmoothing { get; init; }
+    public required float MaxCongestion { get; init; }
 
     internal void Validate()
     {
         if (GroupSize < 1 || PeoplePerCar < 1 || MaxCars < 0) throw new JsonException("trips.groupSize, peoplePerCar and maxCars are out of range");
         if (WalkSpeed <= 0f || WalkDetour < 1f) throw new JsonException("trips.walkSpeed and walkDetour are out of range");
+        if (CarStuckSeconds <= 0f) throw new JsonException("trips.carStuckSeconds must be positive");
+        if (CongestionSmoothing < 0f || CongestionSmoothing > 1f || MaxCongestion < 1f) throw new JsonException("trips.congestionSmoothing and maxCongestion are out of range");
         for (int leg = 0; leg < 4; leg++)
         {
             var w = Windows.Of(leg);

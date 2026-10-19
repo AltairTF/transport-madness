@@ -363,4 +363,37 @@ public class FleetTests
         Assert.False(sim.IsClearFor(state.Lane, front + 6f, Simulation.VehicleLength, 3f)); // too close in front of it
         Assert.True(sim.IsClearFor(state.Lane, front + 8f, Simulation.VehicleLength, 3f));
     }
+
+    [Fact]
+    public void ALongVehicleThatMergedInFromAnotherStreet_IsNotRearEnded_ByACarWaitingAtTheEdge()
+    {
+        // A car waits at the junction edge on the south arm to turn into the west arm. A 10 m bus that came from the east has
+        // just entered that exit lane. Measured along the car's own (short) turn, the bus's body would reach back to the car,
+        // but the bus is on another street: it was counted as a rear-end collision and wrecked.
+        for (ulong seed = 1; seed < 60; seed++)
+        {
+            var net = new RoadNetwork(Terrain.Flat());
+            var sim = new Simulation(net, seed);
+            Assert.Equal(1, sim.Execute(new BuildRoadCommand(-600, 0, 600, 0, RoadType.TwoLane, 14f)));
+            Assert.True(sim.Execute(new BuildRoadCommand(0, -600, 0, 600, RoadType.TwoLane, 14f)) > 0);
+            int centre = net.FindNodeNear(0, 0, 1f);
+            var south = net.IncomingLanes(centre).First(l => net.GetNode(net.GetLane(l).StartNode).Z < -1f);
+            float edge = net.GetLane(south).Length - RoadNetwork.JunctionReach(net.GetLane(south).Length);
+            int car = sim.SpawnVehicle(south, edge, 0f);
+            sim.SetHalted(car, true);
+            var exit = sim.NextLaneOf(car);
+            if (net.GetNode(net.GetLane(exit).EndNode).X > -1f) continue; // this seed sends it somewhere else
+
+            int bus = sim.SpawnVehicle(exit, RoadNetwork.JunctionReach(net.GetLane(exit).Length) + 0.1f, 0f);
+            sim.SetLength(bus, 10f);
+            sim.SetHalted(bus, true);
+            Assert.True(net.JunctionLength(south, exit) + 0.1f < 10f, "the car's turn must be shorter than the bus for this to be the case in question");
+
+            sim.Step();
+
+            Assert.Empty(sim.Incidents);
+            return;
+        }
+        Assert.Fail("no seed sent the car into the west arm");
+    }
 }

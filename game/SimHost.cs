@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Godot;
 using TransportMadness.Sim;
 
@@ -466,16 +468,16 @@ public partial class SimHost : Node3D
 
     public bool RepayLoan(long amount) => Sim.Execute(new RepayLoanCommand(amount)) == 1;
 
-    /// <summary>Where a station clicked at (x, z) would stand: {valid, x, y, z, price, affordable, radius}.</summary>
-    public Godot.Collections.Dictionary StationPreview(float x, float z)
+    /// <summary>Where a station clicked at (x, z) would stand: {valid, x, y, z, price, affordable, radius, covered, industries}, the price with bays if asked.</summary>
+    public Godot.Collections.Dictionary StationPreview(float x, float z, bool bays)
     {
         if (Sim.FindStationSite(x, z) is not { } site) return new Godot.Collections.Dictionary { ["valid"] = false };
         return new Godot.Collections.Dictionary
         {
             ["valid"] = true,
             ["x"] = site.X, ["y"] = site.Y, ["z"] = site.Z,
-            ["price"] = Sim.StationPrice,
-            ["affordable"] = Sim.CanAfford(Sim.StationPrice),
+            ["price"] = Sim.StationPrice + (bays ? Sim.StationBayPrice : 0),
+            ["affordable"] = Sim.CanAfford(Sim.StationPrice + (bays ? Sim.StationBayPrice : 0)),
             ["radius"] = Sim.Network.Tuning.Stations.CoverageRadius,
             ["covered"] = CoveredCount(site.X, site.Z),
             ["industries"] = Sim.IndustriesNear(site.X, site.Z, Sim.Network.Tuning.Stations.CoverageRadius).Count,
@@ -491,10 +493,10 @@ public partial class SimHost : Node3D
         return n;
     }
 
-    /// <summary>Builds a station at the node or road point near (x, z). Returns its id, -1 when refused.</summary>
-    public int BuildStation(float x, float z)
+    /// <summary>Builds a station at the node or road point near (x, z), with bays for loading vehicles if asked. Returns its id, -1 when refused.</summary>
+    public int BuildStation(float x, float z, bool bays)
     {
-        int id = Sim.Execute(new BuildStationCommand(x, z));
+        int id = Sim.Execute(new BuildStationCommand(x, z, bays));
         if (id >= 0) RebuildRoads();
         return id;
     }
@@ -527,6 +529,45 @@ public partial class SimHost : Node3D
 
     public bool DeleteLine(int line) => Sim.Execute(new DeleteLineCommand(line)) == 1;
 
+    /// <summary>Changes the stations a line serves. False when refused (fewer than two, a closed station, the same twice in a row).</summary>
+    public bool EditLine(int line, int[] stations) => Sim.Execute(new EditLineCommand(line, stations)) == 1;
+
+    public bool RenameLine(int line, string name) => Sim.Execute(new RenameLineCommand(line, name)) == 1;
+
+    /// <summary>Sells a company vehicle. False when it is not one in working order.</summary>
+    public bool SellVehicle(int vehicle) => Sim.Execute(new SellVehicleCommand(vehicle)) >= 0;
+
+    // Stations are named for the town (or industry) they stand beside and their number there: "Ashford 2". A name is made once.
+    readonly Dictionary<int, string> _stationNames = new();
+
+    /// <summary>The name of a station: the nearest town within 500 m, else the nearest industry within 300 m, followed by its number among the stations named for it.</summary>
+    public string StationName(int station)
+    {
+        for (int s = 0; s <= station; s++)
+        {
+            if (_stationNames.ContainsKey(s)) continue;
+            var (x, z) = Sim.Network.GetNode(Sim.Stations[s].Node);
+            string place = "Station";
+            float best = float.MaxValue;
+            foreach (var town in Sim.Towns)
+            {
+                float d = (town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z);
+                if (d < best && d < 500f * 500f) { best = d; place = town.Name; }
+            }
+            if (best == float.MaxValue)
+                foreach (var industry in Sim.Industries)
+                {
+                    float d = (industry.X - x) * (industry.X - x) + (industry.Z - z) * (industry.Z - z);
+                    if (d < best && d < 300f * 300f) { best = d; place = Sim.IndustryTuning.Types[industry.Type].Name; }
+                }
+            int number = 1;
+            foreach (var (other, name) in _stationNames)
+                if (name.StartsWith(place + " ") && int.TryParse(name.AsSpan(place.Length + 1), out _)) number++;
+            _stationNames[s] = $"{place} {number}";
+        }
+        return _stationNames[station];
+    }
+
     /// <summary>The vehicles the company can buy: for each {id, name, price, capacity, upkeep, cargo}.</summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetVehicleModels()
     {
@@ -550,7 +591,7 @@ public partial class SimHost : Node3D
         return -1;
     }
 
-    /// <summary>The open lines: for each {id, color, stations (names), income, upkeep, profit, delivered, vehicles, loading}.</summary>
+    /// <summary>The open lines: for each {id, name, color, stations (names), stop_ids, income, upkeep, profit, delivered, vehicles, loading}.</summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetLines()
     {
         var vehicles = new int[Sim.Lines.Count];
@@ -567,12 +608,15 @@ public partial class SimHost : Node3D
         {
             if (!line.Active) continue;
             var names = new Godot.Collections.Array<string>();
-            foreach (int s in line.Stops) names.Add($"S{s + 1}");
+            var ids = new Godot.Collections.Array<int>();
+            foreach (int s in line.Stops) { names.Add(StationName(s)); ids.Add(s); }
             lines.Add(new Godot.Collections.Dictionary
             {
                 ["id"] = line.Id,
+                ["name"] = line.Name,
                 ["color"] = LineColor(line.Id),
                 ["stations"] = names,
+                ["stop_ids"] = ids,
                 ["income"] = line.Income,
                 ["upkeep"] = line.Upkeep,
                 ["profit"] = line.Profit,
@@ -584,7 +628,43 @@ public partial class SimHost : Node3D
         return lines;
     }
 
-    /// <summary>Open stations: for each {id, name, x, y, z, waiting, accepts, waiting_for} where waiting is the units of each cargo and accepts whether the station takes it, in the order of <see cref="GetCargoNames"/>, and waiting_for the people queueing for a ride as {name, count} by the station they are going to.</summary>
+    /// <summary>
+    /// The company's vehicles: for each {id, model, line, line_name, color, load, capacity, cargo, income, upkeep, profit,
+    /// state, x, y, z} where state is "Wrecked", "Loading at ..." or "Heading for ...".
+    /// </summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> GetVehicles()
+    {
+        var list = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        for (int v = 0; v < Sim.VehicleCount; v++)
+        {
+            if (!Sim.IsCompanyVehicle(v)) continue;
+            var state = Sim.GetVehicle(v);
+            var info = Sim.GetFleetInfo(v);
+            var model = Sim.VehicleModels[info.Model];
+            bool wrecked = state.Kind != VehicleKind.Car;
+            int target = Sim.TargetStationOf(v);
+            string where = target < 0 ? "" : StationName(target);
+            string what = wrecked ? "Wrecked, waiting for a crew" : info.Loading ? $"Loading at {where}" : $"Heading for {where}";
+            float pos = Math.Min(state.Position, _laneLength[state.Lane.Value]);
+            LaneFrame(state.Lane.Value, pos, out float x, out float z, out _, out _);
+            list.Add(new Godot.Collections.Dictionary
+            {
+                ["id"] = v, ["model"] = model.Name, ["line"] = info.Line, ["line_name"] = Sim.Lines[info.Line].Name, ["color"] = LineColor(info.Line),
+                ["load"] = info.Load, ["capacity"] = model.Capacity, ["cargo"] = info.Cargo >= 0 ? Sim.CargoTypes[info.Cargo].Name : "",
+                ["income"] = Sim.IncomeOf(v), ["upkeep"] = Sim.UpkeepPaidFor(v), ["profit"] = Sim.IncomeOf(v) - Sim.UpkeepPaidFor(v),
+                ["state"] = what, ["wrecked"] = wrecked, ["x"] = x, ["y"] = _laneY[state.Lane.Value] + _laneGrade[state.Lane.Value] * pos, ["z"] = z,
+            });
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// Open stations: for each {id, name, x, y, z, waiting, accepts, waiting_for, lines, homes, shops, workplaces, industries,
+    /// boarded, alighted, gave_up, boarded_today, alighted_today, gave_up_today} where waiting is the units of each cargo and accepts
+    /// whether the station takes it, in the order of <see cref="GetCargoNames"/>, waiting_for the people queueing for a ride as {name, count}
+    /// by the station they are going to, lines the {name, color} of the lines that stop here, and the counts of homes, shops, other workplaces
+    /// and industries it covers; the people counts are for the day before, and for today so far.
+    /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetStations()
     {
         var stations = new Godot.Collections.Array<Godot.Collections.Dictionary>();
@@ -597,9 +677,28 @@ public partial class SimHost : Node3D
             for (int c = 0; c < Sim.CargoTypes.Count; c++) accepts.Add(Sim.Accepts(station, c));
             var waitingFor = new Godot.Collections.Array<Godot.Collections.Dictionary>();
             foreach (var (dest, count) in station.WaitingFor())
-                waitingFor.Add(new Godot.Collections.Dictionary { ["name"] = $"S{dest + 1}", ["count"] = count });
+                waitingFor.Add(new Godot.Collections.Dictionary { ["name"] = StationName(dest), ["count"] = count });
+            var lines = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+            foreach (var line in Sim.Lines)
+                if (line.Active && line.Stops.Contains(station.Id))
+                    lines.Add(new Godot.Collections.Dictionary { ["name"] = line.Name, ["color"] = LineColor(line.Id) });
+            int homes = 0, shops = 0, workplaces = 0;
+            foreach (int b in Sim.CoveredBy(station))
+                switch (Sim.Buildings[b].Type)
+                {
+                    case BuildingType.Home: homes++; break;
+                    case BuildingType.Commerce: shops++; break;
+                    default: workplaces++; break;
+                }
             var p = StationPosition(station.Id);
-            stations.Add(new Godot.Collections.Dictionary { ["id"] = station.Id, ["name"] = $"S{station.Id + 1}", ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["waiting"] = waiting, ["accepts"] = accepts, ["waiting_for"] = waitingFor });
+            stations.Add(new Godot.Collections.Dictionary
+            {
+                ["id"] = station.Id, ["name"] = StationName(station.Id), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["bays"] = station.HasBays, ["in_bay"] = station.InBay,
+                ["waiting"] = waiting, ["accepts"] = accepts, ["waiting_for"] = waitingFor, ["lines"] = lines,
+                ["homes"] = homes, ["shops"] = shops, ["workplaces"] = workplaces, ["industries"] = Sim.IndustriesCoveredBy(station).Count,
+                ["boarded"] = station.Yesterday.Boarded, ["alighted"] = station.Yesterday.Alighted, ["gave_up"] = station.Yesterday.GaveUp,
+                ["boarded_today"] = station.Today.Boarded, ["alighted_today"] = station.Today.Alighted, ["gave_up_today"] = station.Today.GaveUp,
+            });
         }
         return stations;
     }
@@ -808,6 +907,8 @@ public partial class SimHost : Node3D
         return true;
     }
 
+    const float BayOffset = 3.4f; // how far to the right of its lane a vehicle in a station's bay is drawn
+
     void DrawVehicles(float stepFraction)
     {
         int count = Sim.VehicleCount;
@@ -834,6 +935,7 @@ public partial class SimHost : Node3D
             float length = Sim.LengthOf(i);
             float pos = v.Position + v.Speed * Simulation.StepSeconds * stepFraction - length * 0.5f;
             float side = -Simulation.LaneWidth * v.Lateral + v.Shift;
+            if (Sim.InBay(i)) side += BayOffset; // standing in the bay, to the right of the lane
             float cx, cz, dx, dz, baseY;
             if (TurnPose(i, pos, out cx, out cz, out float heading, out baseY))
             {

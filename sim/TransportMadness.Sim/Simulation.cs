@@ -75,6 +75,7 @@ public sealed partial class Simulation
 
     int _count; // slots in use, including removed ones
     int _active; // vehicles that currently exist
+    int _orderCount; // vehicles in the lane ordering: all but those standing in a station's bay
     readonly Stack<int> _freeSlots = new();
     int[] _lane = new int[64];
     float[] _pos = new float[64];
@@ -707,13 +708,13 @@ public sealed partial class Simulation
     {
         Array.Clear(_laneStart);
         for (int i = 0; i < _count; i++)
-            if (_lane[i] >= 0) _laneStart[_lane[i] + 1]++;
+            if (_lane[i] >= 0 && !_bay[i]) _laneStart[_lane[i] + 1]++;
         for (int l = 0; l < _net.LaneCount; l++) _laneStart[l + 1] += _laneStart[l];
 
         // Counting sort by lane, in vehicle-id order (stable, deterministic).
         for (int l = 0; l < _cursor.Length; l++) _cursor[l] = _laneStart[l];
         for (int i = 0; i < _count; i++)
-            if (_lane[i] >= 0) _order[_cursor[_lane[i]]++] = i;
+            if (_lane[i] >= 0 && !_bay[i]) _order[_cursor[_lane[i]]++] = i;
 
         // Insertion sort by position within each lane; input is nearly sorted between steps.
         for (int l = 0; l < _net.LaneCount; l++)
@@ -730,7 +731,8 @@ public sealed partial class Simulation
                 _order[b + 1] = v;
             }
         }
-        for (int r = 0; r < _active; r++) _rankInOrder[_order[r]] = r;
+        _orderCount = _laneStart[_net.LaneCount];
+        for (int r = 0; r < _orderCount; r++) _rankInOrder[_order[r]] = r;
     }
 
     /// <summary>

@@ -20,6 +20,8 @@ public sealed partial class Simulation
     int _tripVehicles;
     int _transitVersion; // changes when lines, their vehicles or what stations cover change: the mode choices are made again
     readonly Dictionary<long, ModeChoice> _choices = new();
+    // How many times longer than on empty roads a car trip took, as people have come to expect it for each hour of the day.
+    readonly float[] _congestion = Enumerable.Repeat(1f, 24).ToArray();
     List<int[]> _buildingStations = new(); // by building id: the active stations that cover it
 
     // Per vehicle slot: the trip group a car belongs to (-1 for other traffic), the node it is bound for, how many people it
@@ -28,6 +30,8 @@ public sealed partial class Simulation
     int[] _tripDest = FilledWith(64, -1);
     int[] _tripPeople = new int[64];
     long[] _tripDeadline = new long[64];
+    long[] _tripMoved = new long[64]; // the last tick the car was moving
+    const float StuckSpeed = 0.3f;    // slower than this counts as standing still
 
     enum TripEventKind : byte { Arrive, JoinQueue }
 
@@ -35,7 +39,7 @@ public sealed partial class Simulation
     readonly record struct TripEvent(TripEventKind Kind, int Group, int People, int StationA, int StationB);
 
     /// <summary>How a pair of buildings is travelled between, cached until the roads or the lines change.</summary>
-    readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version);
+    readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version, float FreeRide = 0f);
 
     public IReadOnlyList<TripGroup> TripGroups => _groups;
     public TripsTuning TripTuning => _trips;
@@ -49,6 +53,7 @@ public sealed partial class Simulation
         Array.Resize(ref _tripDest, n);
         Array.Resize(ref _tripPeople, n);
         Array.Resize(ref _tripDeadline, n);
+        Array.Resize(ref _tripMoved, n);
         for (int i = old; i < n; i++) { _tripGroup[i] = -1; _tripDest[i] = -1; }
     }
 
@@ -58,6 +63,7 @@ public sealed partial class Simulation
         _tripDest[id] = -1;
         _tripPeople[id] = 0;
         _tripDeadline[id] = 0;
+        _tripMoved[id] = 0;
     }
 
     // ---- Making the groups ---------------------------------------------------------------------------------------
@@ -270,6 +276,7 @@ public sealed partial class Simulation
             case TripMode.Car:
                 g.OriginNode = choice.OriginNode;
                 g.DestNode = choice.DestNode;
+                g.FreeRide = choice.FreeRide;
                 g.ToDispatch = g.People;
                 g.NextSpawnTick = Tick;
                 _carQueue.Add(g.Id);
@@ -314,6 +321,7 @@ public sealed partial class Simulation
         }
         g.LastTripSeconds = (Tick - g.DepartTick) * StepSeconds;
         g.LastMode = g.Mode;
+        if (g.Mode == TripMode.Car && g.FreeRide > 0f) LearnCongestion(g);
         if (IsOutbound(g.NextLeg) && g.LastTripSeconds <= _growth.TimeBudgetSeconds) g.ReachedMonth = MonthIndex;
         Advance(g, leg, Tick);
     }
@@ -331,6 +339,11 @@ public sealed partial class Simulation
     /// <summary>Daily upkeep of the groups: yesterday's trip counts, new places for groups whose workplace is gone, and a new look for groups with nothing to do.</summary>
     void CloseDayForTrips()
     {
+        foreach (var station in _stations)
+        {
+            station.Yesterday = station.Today;
+            station.Today = default;
+        }
         if (_groups.Count == 0) return;
         foreach (var town in _towns)
         {
@@ -358,6 +371,22 @@ public sealed partial class Simulation
 
     // ---- Choosing how to travel -------------------------------------------------------------------------------
 
+    int HourOf(long tick) => (int)(tick % _ticksPerDay * 24 / _ticksPerDay);
+
+    /// <summary>A car trip has ended: the estimate for the hour it set out in moves toward how many times the empty-road time it took.</summary>
+    internal void LearnCongestion(TripGroup g)
+    {
+        float ratio = Math.Clamp((Tick - g.DepartTick) * StepSeconds / g.FreeRide, 1f, _trips.MaxCongestion);
+        int hour = HourOf(g.DepartTick);
+        _congestion[hour] += (ratio - _congestion[hour]) * _trips.CongestionSmoothing;
+    }
+
+    /// <summary>How many times the empty-road time people expect a car trip to take, for trips setting out now.</summary>
+    public float ExpectedCongestion => _congestion[HourOf(Tick)];
+
+    /// <summary>The same estimate for an hour of the day (0 to 23).</summary>
+    public float CongestionAt(int hour) => _congestion[hour];
+
     /// <summary>How people living at <paramref name="from"/> would go to <paramref name="to"/> now: the mode and the seconds it takes.</summary>
     public (TripMode Mode, float Seconds) ModeFor(int from, int to, bool hasCar)
     {
@@ -369,15 +398,17 @@ public sealed partial class Simulation
     {
         SyncNetwork();
         if (_coverageDirty || _buildingStations.Count != _buildings.Count) RefreshCoverage();
-        long key = ((long)from << 33) | ((long)to << 1) | (hasCar ? 1L : 0L);
-        long version = ((long)_syncedNetworkVersion << 24) + _transitVersion;
+        int hour = HourOf(Tick);
+        long key = ((long)hour << 58) | ((long)from << 33) | ((long)to << 1) | (hasCar ? 1L : 0L);
+        // The estimate of the hour is part of the version, in quarters: a choice is made again when people's idea of the jam moves.
+        long version = ((long)(_congestion[hour] * 4f) << 50) + ((long)_syncedNetworkVersion << 24) + _transitVersion;
         if (_choices.TryGetValue(key, out var cached) && cached.Version == version) return cached;
-        var choice = ComputeMode(_buildings[from], _buildings[to], hasCar) with { Version = version };
+        var choice = ComputeMode(_buildings[from], _buildings[to], hasCar, _congestion[hour]) with { Version = version };
         _choices[key] = choice;
         return choice;
     }
 
-    ModeChoice ComputeMode(Building a, Building b, bool hasCar)
+    ModeChoice ComputeMode(Building a, Building b, bool hasCar, float congestion)
     {
         float d = Distance(a, b);
         if (d <= _trips.WalkRadius)
@@ -392,9 +423,9 @@ public sealed partial class Simulation
         float bestCost = float.PositiveInfinity;
         if (hasCar && CarSeconds(a, b, out int on, out int dn, out float rideSeconds))
         {
-            float seconds = rideSeconds + _trips.CarOverheadSeconds;
+            float seconds = rideSeconds * congestion + _trips.CarOverheadSeconds;
             bestCost = seconds + _trips.MoneyWeight * _trips.CarCostPerKm * d / 1000f;
-            best = new ModeChoice(TripMode.Car, seconds, on, dn, -1, -1, 0f, 0);
+            best = new ModeChoice(TripMode.Car, seconds, on, dn, -1, -1, 0f, 0, rideSeconds);
         }
         if (TransitSeconds(a, b, out int sa, out int sb, out float total, out float walk))
         {
@@ -489,6 +520,7 @@ public sealed partial class Simulation
         _tripDest[id] = g.DestNode;
         _tripPeople[id] = people;
         _tripDeadline[id] = Tick + Ticks(_trips.CarTimeoutSeconds);
+        _tripMoved[id] = Tick;
         _factor[id] = _traffic.DriverSpeedFactorMin + _traffic.DriverSpeedFactorRange * _tripRng.NextFloat();
         _patience[id] = _tripRng.NextFloat();
         _aggression[id] = _tripRng.NextFloat();
@@ -504,12 +536,15 @@ public sealed partial class Simulation
     void CheckTripCars()
     {
         bool removed = false;
+        long stuck = Ticks(_trips.CarStuckSeconds);
         for (int i = 0; i < _count; i++)
         {
             if (_tripGroup[i] < 0 || _kind[i] != VehicleKind.Car || _lane[i] < 0) continue;
             int lane = _lane[i];
             bool there = _laneEndNode[lane] == _tripDest[i] && _laneLength[lane] - _pos[i] <= _trips.CarArriveRange;
-            if (!there && Tick < _tripDeadline[i]) continue;
+            if (_speed[i] > StuckSpeed) _tripMoved[i] = Tick;
+            bool jammed = Tick - _tripMoved[i] > stuck;
+            if (!there && !jammed && Tick < _tripDeadline[i]) continue;
             RemoveVehicle(i);
             removed = true;
         }
@@ -564,6 +599,7 @@ public sealed partial class Simulation
                     h = h * 31 + (ulong)lot.Dest;
                 }
         h = h * 31 + (ulong)_tripVehicles;
+        foreach (float level in _congestion) h = h * 31 + BitConverter.SingleToUInt32Bits(level);
         h = h * 31 + (ulong)_tripEvents.Count;
         h = h * 31 + (ulong)_eventOrder;
         var (a, b, c, d) = _tripRng.State;

@@ -60,6 +60,9 @@ M3 is built in four vertical slices; each leaves a playable, tested game. Number
   - Lots are now the same places whatever stands on them (the setback is that of the biggest size), so a building can grow in place; this moved the buildings of generated towns a little.
   - Thresholds: satisfaction at least 50, connectivity at least 0.6. A town that stalls says why in the Towns window.
 
+### First balance pass (after the play-test)
+- Coverage radius 90 to 150 m, passenger pay 40 to 65, freight pay about 55 percent of before, a congestion estimate in the car's cost, cars that stand still for 90 s taken off, and two junction and spawn bugs that wrecked buses. Measurements, tests and what was not changed are in `project-status.md` 5.15.
+
 ## Cross-cutting
 - Slice order is fixed: real trips (M3c) come before growth (M3d) so growth is built on real connectivity.
 - Update `project-status.md` and `CONTEXT.md` at the end of each slice; keep the golden hashes honest (record why each change).

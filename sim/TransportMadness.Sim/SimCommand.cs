@@ -33,11 +33,17 @@ public sealed record SeedTrafficCommand(int Count) : SimCommand;
 /// <summary>Breaks down a moving car, picked from the current tick so the choice replays. Result: the vehicle id, -1 when none qualifies.</summary>
 public sealed record CrashSomeoneCommand : SimCommand;
 
-/// <summary>Builds a station at the node near (X, Z), or on the road there. Result: the station id, -1 when refused.</summary>
-public sealed record BuildStationCommand(float X, float Z) : SimCommand;
+/// <summary>Builds a station at the node near (X, Z), or on the road there, with bays for loading vehicles if asked (it costs more). Result: the station id, -1 when refused.</summary>
+public sealed record BuildStationCommand(float X, float Z, bool Bays = false) : SimCommand;
 
 /// <summary>Creates a line through stations (ids, in order; the line returns to the first after the last). Result: the line id, -1 when refused.</summary>
 public sealed record CreateLineCommand(int[] Stations) : SimCommand;
+
+/// <summary>Changes the stations a line serves (the same rules as creating one). Vehicles carry on toward the station they were heading for when it is still on the line, else toward the stop at the same place in the new list. Result: 1, 0 when refused.</summary>
+public sealed record EditLineCommand(int Line, int[] Stations) : SimCommand;
+
+/// <summary>Gives a line a name of one to 24 characters. Result: 1, 0 when refused.</summary>
+public sealed record RenameLineCommand(int Line, string Name) : SimCommand;
 
 /// <summary>Closes a line and sells its vehicles. Result: 1, 0 when there is no such line.</summary>
 public sealed record DeleteLineCommand(int Line) : SimCommand;

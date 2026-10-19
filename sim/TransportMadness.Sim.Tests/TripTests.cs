@@ -443,35 +443,72 @@ public class TripTests
         Assert.True(clock.ElapsedMilliseconds < 2000, $"{clock.ElapsedMilliseconds} ms for 400 steps with {sim.TripVehicleCount} trip cars");
     }
 
+    // ---- Jams -----------------------------------------------------------------------------------------------------
+
     [Fact]
-    public void BusesOnALinkBetweenTwoTowns_SurviveADayOfTrafficAmongTheTripCars()
+    public void ACarTripThatTakesLongerThanOnEmptyRoads_RaisesTheEstimateForThatHour()
     {
-        // A 10 m bus entering a street that a car is waiting to merge into used to be counted as rear-ended by that car (the
-        // gap across the junction was measured along the car's short turn, though the bus was on another street). On this
-        // map the first bus was wrecked in the evening of the first day.
-        var net = new RoadNetwork(DryLevelMap());
-        var plan = TownGenerator.Generate(net, 1, 4);
-        var sim = new Simulation(net, 1);
-        sim.AddTowns(plan);
-        var (a, b) = (sim.Towns[0], sim.Towns[2]); // the closest pair on this seed, 765 m apart
-        float dx = b.X - a.X, dz = b.Z - a.Z, len = MathF.Sqrt(dx * dx + dz * dz);
-        dx /= len; dz /= len;
-        var (ax, az) = net.GetNode(net.FindNodeNear(a.X + dx * 250f, a.Z + dz * 250f, 400f, withRoadsOnly: true));
-        var (bx, bz) = net.GetNode(net.FindNodeNear(b.X - dx * 250f, b.Z - dz * 250f, 400f, withRoadsOnly: true));
-        Assert.True(sim.Execute(new BuildRoadCommand(ax, az, bx, bz, RoadType.TwoLane, 14f)) > 0);
-        int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(ax, az, 5f, withRoadsOnly: true), DepotLevel.Simple));
-        var (sax, saz) = net.GetNode(net.FindNodeNear(a.X, a.Z, 200f, withRoadsOnly: true));
-        var (sbx, sbz) = net.GetNode(net.FindNodeNear(b.X, b.Z, 200f, withRoadsOnly: true));
-        int sa = sim.Execute(new BuildStationCommand(sax, saz)), sb = sim.Execute(new BuildStationCommand(sbx, sbz));
-        int line = sim.Execute(new CreateLineCommand(new[] { sa, sb }));
-        Assert.True(depot >= 0 && sa >= 0 && sb >= 0 && line >= 0);
-        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", line)) >= 0);
-        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", line)) >= 0);
+        var tuning = With(t => t with { CongestionSmoothing = 0.5f });
+        var (sim, _, _, _, _) = Corridor(tuning);
+        Run(sim, 0.8);
+        var group = sim.TripGroups[0];
+        group.FreeRide = 100f;
+        group.DepartTick = sim.Tick - (long)(300f / Simulation.StepSeconds); // took three times as long
+        int hour = (int)(group.DepartTick % (long)(sim.DayLengthSeconds / Simulation.StepSeconds) * 24 / (long)(sim.DayLengthSeconds / Simulation.StepSeconds));
+        float before = sim.CongestionAt(hour), other = sim.CongestionAt((hour + 12) % 24);
 
-        Run(sim, 1);
+        sim.LearnCongestion(group);
 
-        var company = Enumerable.Range(0, sim.VehicleCount).Where(sim.IsCompanyVehicle).ToList();
-        Assert.Equal(2, company.Count);
-        Assert.All(company, v => Assert.Equal(VehicleKind.Car, sim.GetVehicle(v).Kind));
+        Assert.Equal(before + (3f - before) * 0.5f, sim.CongestionAt(hour), 0.01f); // half way to three times
+        Assert.Equal(other, sim.CongestionAt((hour + 12) % 24));                      // other hours are left alone
+    }
+
+    [Fact]
+    public void WhenTheRoadsAreJammed_PeopleWithACarTakeTheBusInstead()
+    {
+        var tuning = With(t => t with { CarShare = 1f, CongestionSmoothing = 1f });
+        var (sim, depot, a, b, c) = Corridor(tuning);
+        int line = sim.Execute(new CreateLineCommand(new[] { a, c }));
+        for (int k = 0; k < 4; k++) sim.Execute(new BuyVehicleCommand(depot, "bus", line));
+        Run(sim, 0.3);
+        var before = sim.ModeFor(0, 3, hasCar: true);
+        Assert.Equal(TripMode.Car, before.Mode); // empty roads: the car is quicker
+
+        var group = sim.TripGroups[0];
+        group.FreeRide = 0.15f;
+        group.DepartTick = sim.Tick - 20; // a second for a ride that should take a seventh of one: far too long (the estimate stops at its limit)
+        sim.LearnCongestion(group);
+
+        Assert.True(sim.ExpectedCongestion > 3f);
+        var after = sim.ModeFor(0, 3, hasCar: true);
+        Assert.True(after.Mode == TripMode.Transit, $"{after.Mode} {after.Seconds} s after, {before.Seconds} s before");
+    }
+
+    [Fact]
+    public void ACarThatHasHardlyMovedForAWhile_IsTakenOffTheRoad_SoAJamDoesNotLastForDays()
+    {
+        int MostCars(float stuckSeconds)
+        {
+            var tuning = With(t => t with { CarShare = 1f, LeisureChance = 0f, WalkRadius = 10f, CarStuckSeconds = stuckSeconds });
+            var (sim, _, _, _, _) = Corridor(tuning);
+            var net = sim.Network;
+            int node = net.FindNodeNear(800, 0, 1f);
+            var east = net.IncomingLanes(node).First(l => net.GetNode(net.GetLane(l).StartNode).X < 700f);
+            int blocker = sim.SpawnVehicle(east, net.GetLane(east).Length - 60f, 0f);
+            sim.SetHalted(blocker, true); // a car broken down in the middle of the road that everyone drives along
+            int most = 0;
+            for (long t = 0; t < 8000; t++)
+            {
+                sim.Step();
+                if (sim.TripVehicleCount > most) most = sim.TripVehicleCount;
+            }
+            return most;
+        }
+
+        int patient = MostCars(100000f);
+        int impatient = MostCars(3f);
+
+        Assert.True(patient >= 6, $"the jam never formed ({patient} cars)");
+        Assert.True(impatient < patient, $"{impatient} cars with a short patience, {patient} without");
     }
 }

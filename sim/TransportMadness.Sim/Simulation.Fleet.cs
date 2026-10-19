@@ -20,6 +20,9 @@ public sealed partial class Simulation
     int[] _loadFrom = new int[64];  // station the cargo on board was picked up at
     long[] _loadTick = new long[64];
     long[] _income = new long[64];
+    long[] _upkeepPaid = new long[64];
+    bool[] _bay = new bool[64];     // standing in a station's bay: out of the lane, so out of its ordering
+    int[] _bayStation = FilledWith(64, -1);
 
     public IReadOnlyList<Line> Lines => _lines;
     public IReadOnlyList<VehicleModelTuning> VehicleModels => _models;
@@ -49,6 +52,11 @@ public sealed partial class Simulation
         Array.Resize(ref _loadFrom, n);
         Array.Resize(ref _loadTick, n);
         Array.Resize(ref _income, n);
+        Array.Resize(ref _upkeepPaid, n);
+        Array.Resize(ref _bay, n);
+        int oldBay = _bayStation.Length;
+        Array.Resize(ref _bayStation, n);
+        for (int k = oldBay; k < n; k++) _bayStation[k] = -1;
         GrowTripArrays(n);
         GrowTransitArrays(n);
     }
@@ -68,19 +76,59 @@ public sealed partial class Simulation
         return -1;
     }
 
-    /// <summary>Creates a line through these stations in order. Returns its id, -1 when refused: fewer than two stations, one that does not exist or is closed, or the same station twice in a row.</summary>
-    int CreateLine(int[] stations)
+    bool ValidStops(int[] stations)
     {
-        if (stations.Length < 2) return -1;
+        if (stations.Length < 2) return false;
         for (int k = 0; k < stations.Length; k++)
         {
             int s = stations[k];
-            if (s < 0 || s >= _stations.Count || !_stations[s].Active) return -1;
-            if (s == stations[(k + 1) % stations.Length]) return -1;
+            if (s < 0 || s >= _stations.Count || !_stations[s].Active) return false;
+            if (s == stations[(k + 1) % stations.Length]) return false;
         }
+        return true;
+    }
+
+    /// <summary>Creates a line through these stations in order. Returns its id, -1 when refused: fewer than two stations, one that does not exist or is closed, or the same station twice in a row.</summary>
+    int CreateLine(int[] stations)
+    {
+        if (!ValidStops(stations)) return -1;
         _lines.Add(new Line(_lines.Count, (int[])stations.Clone()));
         _transitVersion++;
         return _lines.Count - 1;
+    }
+
+    /// <summary>
+    /// Changes the stations of a line. A vehicle keeps heading for its station when the new list has it, otherwise for the stop at
+    /// the same place in the list (the last when the list is shorter); it takes the new turn at the next junction it has not yet
+    /// entered. People on board whose station is gone are put down at the next stop. Returns 1, 0 when refused.
+    /// </summary>
+    int EditLine(int line, int[] stations)
+    {
+        if (line < 0 || line >= _lines.Count || !_lines[line].Active || !ValidStops(stations)) return 0;
+        var current = _lines[line];
+        var before = current.Stops;
+        current.Stops = (int[])stations.Clone();
+        _transitVersion++;
+        for (int i = 0; i < _count; i++)
+        {
+            if (_line[i] != line || _kind[i] != VehicleKind.Car) continue;
+            int heading = before[_stopIndex[i]];
+            int at = Array.IndexOf(stations, heading);
+            _stopIndex[i] = at >= 0 ? at : Math.Min(_stopIndex[i], stations.Length - 1);
+            // Not while it is in the middle of a junction: its path to the next lane is already set.
+            if (at < 0 && _dwell[i] == 0 && _lane[i] >= 0 && _pos[i] < _laneZoneStart[_lane[i]])
+                _nextLane[i] = RouteNextLane(i, _lane[i]);
+        }
+        return 1;
+    }
+
+    /// <summary>Names a line. Returns 1, 0 when there is no such line or the name is empty or longer than 24 characters.</summary>
+    int RenameLine(int line, string name)
+    {
+        name = name?.Trim() ?? "";
+        if (line < 0 || line >= _lines.Count || !_lines[line].Active || name.Length == 0 || name.Length > 24) return 0;
+        _lines[line].Name = name;
+        return 1;
     }
 
     /// <summary>Closes a line and sells its vehicles. Returns 1, 0 when there is no such line.</summary>
@@ -188,10 +236,19 @@ public sealed partial class Simulation
     /// <summary>Length of a vehicle in metres: that of its model for the company's vehicles, a car's for ambient traffic.</summary>
     public float LengthOf(int vehicle) => _length[vehicle];
 
+    /// <summary>Gives a vehicle another length (for tests that need a long body without buying a bus).</summary>
+    internal void SetLength(int vehicle, float length) => _length[vehicle] = length;
+
     public FleetInfo GetFleetInfo(int vehicle) => new(_line[vehicle], _model[vehicle], _stopIndex[vehicle], _dwell[vehicle] > 0, _load[vehicle], _loadCargo[vehicle]);
 
     /// <summary>Money this vehicle has earned so far.</summary>
     public long IncomeOf(int vehicle) => _income[vehicle];
+
+    /// <summary>Upkeep the company has paid for this vehicle so far.</summary>
+    public long UpkeepPaidFor(int vehicle) => _upkeepPaid[vehicle];
+
+    /// <summary>The id of the station a company vehicle is heading for or standing at, -1 for ambient traffic.</summary>
+    public int TargetStationOf(int vehicle) => TargetStation(vehicle)?.Id ?? -1;
 
     /// <summary>The station a company vehicle is heading for or standing at, null for ambient traffic.</summary>
     Station? TargetStation(int vehicle)
@@ -211,6 +268,9 @@ public sealed partial class Simulation
         _loadFrom[id] = -1;
         _loadTick[id] = 0;
         _income[id] = 0;
+        _upkeepPaid[id] = 0;
+        _bay[id] = false;
+        _bayStation[id] = -1;
         _length[id] = VehicleLength;
         ResetTripSlot(id);
         _riders[id] = null;
@@ -224,7 +284,11 @@ public sealed partial class Simulation
             if (_line[i] < 0 || _kind[i] != VehicleKind.Car) continue;
             if (_dwell[i] > 0)
             {
-                if (--_dwell[i] == 0) Depart(i);
+                if (--_dwell[i] == 0)
+                {
+                    if (_bay[i] && !BayExitClear(i)) _dwell[i] = 1; // waits in the bay for a gap in the traffic
+                    else Depart(i);
+                }
             }
             else if (!TargetStation(i)!.Active) Retarget(i);
             else if (ArrivedAtStop(i)) BeginStop(i);
@@ -280,7 +344,41 @@ public sealed partial class Simulation
         _accel[i] = 0f;
         _halted[i] = true;
         _dwell[i] = (int)Math.Max(1, Ticks(spec.DwellSeconds + spec.SecondsPerUnit * (unloaded + loaded)));
+
+        // At a station with bays a vehicle on the right-most lane pulls out of the lane while it loads, if there is a free bay.
+        if (station.HasBays && station.InBay < _stationTuning.BayCapacity && _net.GetLane(new LaneId(_lane[i])).Index == 0)
+        {
+            _bay[i] = true;
+            _bayStation[i] = station.Id;
+            station.InBay++;
+            RebuildOrder();
+        }
     }
+
+    /// <summary>Whether a vehicle standing in a bay can pull back into the lane: nothing overlaps it or is close ahead, and nothing is within the exit gap behind.</summary>
+    bool BayExitClear(int i)
+    {
+        int lane = _lane[i];
+        float front = _pos[i], rear = front - _length[i], gap = _stationTuning.BayExitGap;
+        for (int r = _laneStart[lane]; r < _laneStart[lane + 1]; r++)
+        {
+            int j = _order[r];
+            if (_pos[j] > rear - gap && _pos[j] - _length[j] < front + _traffic.SpawnClearance) return false;
+        }
+        return true;
+    }
+
+    /// <summary>Takes a vehicle out of its bay (it is leaving, or going from the world); the caller puts the lane ordering right.</summary>
+    void LeaveBay(int vehicle)
+    {
+        if (!_bay[vehicle]) return;
+        _bay[vehicle] = false;
+        if (_bayStation[vehicle] >= 0) _stations[_bayStation[vehicle]].InBay--;
+        _bayStation[vehicle] = -1;
+    }
+
+    /// <summary>Whether a vehicle is standing in a station's bay, beside the lane.</summary>
+    public bool InBay(int vehicle) => vehicle >= 0 && vehicle < _count && _bay[vehicle];
 
     /// <summary>
     /// The cargo an empty vehicle takes on at a station: what its model carries, or for a freight model whichever freight
@@ -346,6 +444,11 @@ public sealed partial class Simulation
     /// <summary>Loading is done: head for the next open station on the line.</summary>
     void Depart(int i)
     {
+        if (_bay[i])
+        {
+            LeaveBay(i);
+            RebuildOrder();
+        }
         _halted[i] = false;
         Retarget(i);
     }
@@ -370,6 +473,7 @@ public sealed partial class Simulation
             long upkeep = Price(_models[_model[i]].UpkeepPerDay);
             Charge(upkeep, LedgerEntry.Upkeep);
             _lines[_line[i]].Upkeep += upkeep;
+            _upkeepPaid[i] += upkeep;
         }
     }
 
@@ -396,6 +500,8 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)(_loadCargo[i] + 1);
             h = h * 31 + (ulong)_loadTick[i];
             h = h * 31 + (ulong)_income[i];
+            h = h * 31 + (ulong)_upkeepPaid[i];
+            if (_bay[i]) h = h * 31 + 11UL;
         }
         return h;
     }

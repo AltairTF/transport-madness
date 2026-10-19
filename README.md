@@ -9,7 +9,7 @@ Hosted at https://github.com/AltairTF/transport-madness (private), branch `main`
 ```sh
 gh auth login                                   # as AltairTF
 git clone https://github.com/AltairTF/transport-madness.git
-cd transport-madness/sim && dotnet test         # 281 tests
+cd transport-madness/sim && dotnet test         # 308 tests
 ```
 
 `.godot/`, `bin/` and `obj/` are ignored, so Godot imports the project on first open.

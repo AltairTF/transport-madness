@@ -7,6 +7,11 @@ signal tool_selected(tool_name: String)
 signal action_requested(action: String)
 ## A line row button: kind is "buy" (with a vehicle model id) or "delete".
 signal line_action(kind: String, line: int, model: String)
+## The Lines window changed a line's stations (the new list of station ids) or its name.
+signal line_edit(line: int, stops: Array)
+signal line_rename(line: int, new_name: String)
+## A vehicle row button: kind is "sell".
+signal vehicle_action(kind: String, vehicle: int)
 signal menu_requested
 ## The Towns window asks the camera to go to a town.
 signal town_focus(x: float, z: float)
@@ -30,13 +35,14 @@ const TOOL_CATEGORIES := [
 	{"name": "Transport", "tools": [
 		["Depot", "depot", "Build a depot at a junction: vehicles are bought and repaired there."],
 		["Station", "station", "Build a station on a road."],
+		["Station with bays", "station_bays", "Build a station where loading vehicles pull out of the lane, so they do not hold up the road. Costs more to build and keep."],
 		["New line", "line", "Click stations in order, then press Enter."]]},
 ]
 ## Windows opened from the top bar. A page of null text is built by its own code (Company, Lines).
 const WINDOWS := [
 	["Company", "company", ""],
 	["Lines", "lines", ""],
-	["Vehicles", "vehicles", "The whole fleet in one list: condition, age, where each vehicle is, sell and replace. Planned."],
+	["Vehicles", "vehicles", ""],
 	["Stations", "stations", ""],
 	["Towns", "towns", ""],
 	["Industries", "industries", ""],
@@ -65,6 +71,10 @@ var _lines_empty: Label
 var _line_rows: Dictionary = {} # line id -> {"row": Control, "label": Label, "separator": Control}
 var _models: Array = []
 var _cargo_names: Array = []
+var _stations_known: Array = [] # [{id, name}] of the open stations, for the "add a stop" choices of the lines
+var _vehicles_box: VBoxContainer
+var _vehicles_empty: Label
+var _vehicle_rows: Dictionary = {} # vehicle id -> {"row": Control, "label": Label, "separator": Control}
 var _industries_box: VBoxContainer
 var _industries_empty: Label
 var _industry_rows: Dictionary = {} # industry id -> {"row": Control, "label": Label, "separator": Control}
@@ -193,6 +203,8 @@ func _build_window_panel() -> void:
 				page = _build_industries_page()
 			"stations":
 				page = _build_stations_page()
+			"vehicles":
+				page = _build_vehicles_page()
 			_:
 				page = _placeholder(entry[2])
 		page.visible = false
@@ -252,6 +264,16 @@ func _build_stations_page() -> Control:
 	_stations_empty.text = "No stations yet. Build one on a road beside a town or an industry."
 	_stations_box.add_child(_stations_empty)
 	return _stations_box
+
+
+func _build_vehicles_page() -> Control:
+	_vehicles_box = VBoxContainer.new()
+	_vehicles_empty = Label.new()
+	_vehicles_empty.theme_type_variation = "Dim"
+	_vehicles_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_vehicles_empty.text = "No vehicles yet. Make a line, then buy a bus or a truck for it in the Lines window."
+	_vehicles_box.add_child(_vehicles_empty)
+	return _vehicles_box
 
 
 func _placeholder(text: String) -> Control:
@@ -471,6 +493,10 @@ func _add_industry_row(id: int, industry: Dictionary) -> void:
 ## One row per station: the cargo waiting there and what it accepts.
 func show_stations(stations: Array) -> void:
 	var seen := {}
+	var known: Array = []
+	for station in stations:
+		known.append({"id": station["id"], "name": station["name"]})
+	_stations_known = known
 	for station in stations:
 		var id: int = station["id"]
 		seen[id] = true
@@ -483,13 +509,29 @@ func show_stations(stations: Array) -> void:
 				waiting += ("" if waiting.is_empty() else ", ") + "%d %s" % [station["waiting"][c], _cargo_names[c].to_lower()]
 			if station["accepts"][c]:
 				accepts += ("" if accepts.is_empty() else ", ") + _cargo_names[c].to_lower()
-		_station_rows[id]["label"].text = "%s\nwaiting   %s\naccepts   %s" % [
-			station["name"], "nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
+		var label: Label = _station_rows[id]["label"]
+		label.text = station["name"]
+		var served := ""
+		for line in station.get("lines", []):
+			served += ("" if served.is_empty() else ", ") + line["name"]
+		if station["bays"]:
+			label.text += "\nbays   %d in use" % station["in_bay"]
+		label.text += "\nlines   %s" % ("none" if served.is_empty() else served)
+		label.text += "\ncovers   %d homes   %d shops   %d other workplaces   %d industries" % [
+			station["homes"], station["shops"], station["workplaces"], station["industries"]]
+		label.text += "\nwaiting   %s\naccepts   %s" % ["nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
 		var bound_for := ""
 		for queue in station.get("waiting_for", []):
 			bound_for += ("" if bound_for.is_empty() else ", ") + "%d to %s" % [queue["count"], queue["name"]]
 		if not bound_for.is_empty():
-			_station_rows[id]["label"].text += "\npeople for   %s" % bound_for
+			label.text += "\npeople for   %s" % bound_for
+		label.text += "\nyesterday   %d boarded   %d got off   %d gave up waiting" % [station["boarded"], station["alighted"], station["gave_up"]]
+		label.text += "\ntoday so far   %d boarded   %d got off   %d gave up waiting" % [station["boarded_today"], station["alighted_today"], station["gave_up_today"]]
+		if not served.is_empty():
+			var colour: Color = station["lines"][0]["color"]
+			label.add_theme_color_override("font_color", colour)
+		else:
+			label.remove_theme_color_override("font_color")
 	for id in _station_rows.keys():
 		if not seen.has(id):
 			_station_rows[id]["row"].queue_free()
@@ -589,7 +631,7 @@ func set_models(models: Array) -> void:
 		_remove_row(id)
 
 
-## One row per line: its colour, stations, fleet and money, with buttons to buy vehicles for it or delete it.
+## One row per line: its name, stops (with buttons to reorder, drop or add one), fleet and money, and buttons to buy vehicles for it or delete it.
 func show_lines(lines: Array) -> void:
 	var seen := {}
 	for line in lines:
@@ -597,24 +639,124 @@ func show_lines(lines: Array) -> void:
 		seen[id] = true
 		if not _line_rows.has(id):
 			_add_row(id)
-		var stations := ""
-		for station_name in line["stations"]:
-			stations += ("" if stations.is_empty() else " - ") + station_name
-		var label: Label = _line_rows[id]["label"]
-		label.text = "Line %d  %s\n%d vehicles (%d loading)   delivered %d\nincome %s   upkeep %s   profit %s" % [
-			id + 1, stations, line["vehicles"], line["loading"], line["delivered"],
+		var entry: Dictionary = _line_rows[id]
+		var colour: Color = line["color"]
+		entry["swatch"].color = colour
+		var name_edit: LineEdit = entry["name"]
+		if not name_edit.has_focus() and name_edit.text != line["name"]:
+			name_edit.text = line["name"]
+		var label: Label = entry["label"]
+		label.text = "%d vehicles (%d loading)   delivered %d\nincome %s   upkeep %s   profit %s" % [
+			line["vehicles"], line["loading"], line["delivered"],
 			_money_text(line["income"]), _money_text(line["upkeep"]), _money_text(line["profit"])]
-		label.add_theme_color_override("font_color", line["color"])
+		label.add_theme_color_override("font_color", colour)
+		_show_stops(id, line["stop_ids"], line["stations"])
+		_fill_stop_choices(id)
 	for id in _line_rows.keys():
 		if not seen.has(id):
 			_remove_row(id)
 	_lines_empty.visible = _line_rows.is_empty()
 
 
+## The stops of a line as rows with up, down and remove buttons; made again only when the stops change.
+func _show_stops(id: int, stop_ids: Array, stop_names: Array) -> void:
+	var entry: Dictionary = _line_rows[id]
+	if entry["stop_ids"] == stop_ids and entry["stop_names"] == stop_names:
+		return
+	entry["stop_ids"] = stop_ids.duplicate()
+	entry["stop_names"] = stop_names.duplicate()
+	var box: VBoxContainer = entry["stops"]
+	for child in box.get_children():
+		box.remove_child(child)
+		child.queue_free()
+	for i in stop_ids.size():
+		var stop := HBoxContainer.new()
+		var caption := Label.new()
+		caption.text = "%d  %s" % [i + 1, stop_names[i]]
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stop.add_child(caption)
+		for action in [["Up", -1], ["Down", 1], ["X", 0]]:
+			var button := Button.new()
+			button.text = action[0]
+			button.disabled = (action[1] == -1 and i == 0) or (action[1] == 1 and i == stop_ids.size() - 1)
+			button.tooltip_text = {"Up": "Move this stop earlier", "Down": "Move this stop later", "X": "Take this stop off the line"}[action[0]]
+			button.pressed.connect(_edit_stops.bind(id, i, action[1]))
+			stop.add_child(button)
+		box.add_child(stop)
+
+
+## Moves a stop one place (-1 earlier, 1 later) or takes it off (0) and asks for the line to be changed.
+func _edit_stops(id: int, index: int, move: int) -> void:
+	var stops: Array = _line_rows[id]["stop_ids"].duplicate()
+	if move == 0:
+		stops.remove_at(index)
+	else:
+		var other := index + move
+		var kept: int = stops[index]
+		stops[index] = stops[other]
+		stops[other] = kept
+	line_edit.emit(id, stops)
+
+
+## Fills the "add a stop" choice of a line with the open stations (again only when they have changed).
+func _fill_stop_choices(id: int) -> void:
+	var choice: OptionButton = _line_rows[id]["choice"]
+	var same := choice.item_count == _stations_known.size()
+	if same:
+		for i in _stations_known.size():
+			if choice.get_item_id(i) != _stations_known[i]["id"]:
+				same = false
+	if same:
+		return
+	var selected := choice.get_selected_id()
+	choice.clear()
+	for station in _stations_known:
+		choice.add_item(station["name"], station["id"])
+	if choice.item_count > 0:
+		choice.select(maxi(0, choice.get_item_index(selected)))
+
+
 func _add_row(id: int) -> void:
 	var row := VBoxContainer.new()
+	var header := HBoxContainer.new()
+	row.add_child(header)
+	var swatch := ColorRect.new()
+	swatch.custom_minimum_size = Vector2(10, 10)
+	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(swatch)
+	var name_edit := LineEdit.new()
+	name_edit.max_length = 24
+	name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_edit.tooltip_text = "Click to rename the line, Enter to keep the name."
+	name_edit.text_submitted.connect(func(text: String) -> void:
+		line_rename.emit(id, text)
+		name_edit.release_focus())
+	name_edit.focus_exited.connect(func() -> void: line_rename.emit(id, name_edit.text))
+	header.add_child(name_edit)
+	var remove_button := Button.new()
+	remove_button.text = "Delete"
+	remove_button.tooltip_text = "Close the line and sell its vehicles."
+	remove_button.pressed.connect(func() -> void: line_action.emit("delete", id, ""))
+	header.add_child(remove_button)
 	var label := Label.new()
 	row.add_child(label)
+	var stops := VBoxContainer.new()
+	row.add_child(stops)
+	var add := HBoxContainer.new()
+	row.add_child(add)
+	var choice := OptionButton.new()
+	choice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	add.add_child(choice)
+	var add_button := Button.new()
+	add_button.text = "Add stop"
+	add_button.tooltip_text = "Add the chosen station at the end of the line."
+	add_button.pressed.connect(func() -> void:
+		if choice.item_count == 0:
+			return
+		var stop_ids: Array = _line_rows[id]["stop_ids"].duplicate()
+		stop_ids.append(choice.get_selected_id())
+		line_edit.emit(id, stop_ids))
+	add.add_child(add_button)
 	var buttons := HFlowContainer.new()
 	row.add_child(buttons)
 	for model in _models:
@@ -622,14 +764,63 @@ func _add_row(id: int) -> void:
 		button.text = "+ %s (%s)" % [model["name"], _money_text(model["price"])]
 		button.pressed.connect(func() -> void: line_action.emit("buy", id, model["id"]))
 		buttons.add_child(button)
-	var remove_button := Button.new()
-	remove_button.text = "Delete"
-	remove_button.pressed.connect(func() -> void: line_action.emit("delete", id, ""))
-	buttons.add_child(remove_button)
 	var separator := HSeparator.new()
 	_lines_box.add_child(row)
 	_lines_box.add_child(separator)
-	_line_rows[id] = {"row": row, "label": label, "separator": separator}
+	_line_rows[id] = {"row": row, "label": label, "separator": separator, "swatch": swatch, "name": name_edit, "stops": stops,
+		"choice": choice, "stop_ids": [], "stop_names": []}
+
+
+## One row per company vehicle: what and where it is, what it carries and what it has earned, with buttons to go to it or sell it.
+func show_vehicles(vehicles: Array) -> void:
+	var seen := {}
+	for vehicle in vehicles:
+		var id: int = vehicle["id"]
+		seen[id] = true
+		if not _vehicle_rows.has(id):
+			_add_vehicle_row(id, vehicle)
+		var entry: Dictionary = _vehicle_rows[id]
+		var carrying := "empty"
+		if vehicle["load"] > 0:
+			carrying = "%d of %d %s" % [vehicle["load"], vehicle["capacity"], String(vehicle["cargo"]).to_lower()]
+		var label: Label = entry["label"]
+		label.text = "%s %d   %s\n%s\ncarrying %s\nearned %s   upkeep %s   profit %s" % [
+			vehicle["model"], id + 1, vehicle["line_name"], vehicle["state"], carrying,
+			_money_text(vehicle["income"]), _money_text(vehicle["upkeep"]), _money_text(vehicle["profit"])]
+		label.add_theme_color_override("font_color", vehicle["color"])
+		entry["go"].pressed.disconnect(entry["go_call"])
+		entry["go_call"] = func() -> void: town_focus.emit(vehicle["x"], vehicle["z"])
+		entry["go"].pressed.connect(entry["go_call"])
+		entry["sell"].disabled = vehicle["wrecked"]
+	for id in _vehicle_rows.keys():
+		if not seen.has(id):
+			_vehicle_rows[id]["row"].queue_free()
+			_vehicle_rows[id]["separator"].queue_free()
+			_vehicle_rows.erase(id)
+	_vehicles_empty.visible = _vehicle_rows.is_empty()
+
+
+func _add_vehicle_row(id: int, vehicle: Dictionary) -> void:
+	var row := VBoxContainer.new()
+	var label := Label.new()
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(label)
+	var buttons := HBoxContainer.new()
+	row.add_child(buttons)
+	var go := Button.new()
+	go.text = "Go to"
+	var go_call := func() -> void: town_focus.emit(vehicle["x"], vehicle["z"])
+	go.pressed.connect(go_call)
+	buttons.add_child(go)
+	var sell := Button.new()
+	sell.text = "Sell"
+	sell.tooltip_text = "Sell the vehicle for part of its price. What it carries is lost."
+	sell.pressed.connect(func() -> void: vehicle_action.emit("sell", id))
+	buttons.add_child(sell)
+	var separator := HSeparator.new()
+	_vehicles_box.add_child(row)
+	_vehicles_box.add_child(separator)
+	_vehicle_rows[id] = {"row": row, "label": label, "separator": separator, "go": go, "go_call": go_call, "sell": sell}
 
 
 func _remove_row(id: int) -> void:

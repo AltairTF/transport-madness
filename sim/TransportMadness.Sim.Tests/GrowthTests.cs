@@ -217,7 +217,9 @@ public class GrowthTests
     public void Growth_AppearsAroundTheStationThatDelivers()
     {
         var homes = Enumerable.Repeat<(BuildingType, int)?>((BuildingType.Home, 0), 8).ToArray();
-        var (sim, lots) = BlockTown(Quick(), homes);
+        var narrow = Quick();
+        narrow = narrow with { Stations = narrow.Stations with { CoverageRadius = 90f } }; // a station that covers only some of the homes
+        var (sim, lots) = BlockTown(narrow, homes);
         int station = sim.Execute(new BuildStationCommand(60, -60));
         Assert.True(station >= 0);
         var covered = sim.CoveredBy(sim.Stations[station]);

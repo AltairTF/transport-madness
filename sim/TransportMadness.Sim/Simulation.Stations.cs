@@ -44,16 +44,18 @@ public sealed partial class Simulation
     }
 
     public long StationPrice => _stationTuning.Price;
+    public long StationBayPrice => _stationTuning.BayPrice;
 
     /// <summary>
     /// Builds a station at the node nearest to (x, z), or on the road under that point, which is split there so the
     /// station has a node of its own (<see cref="FindStationSite"/>). Returns the station id, -1 when refused: no site,
     /// or not enough money.
     /// </summary>
-    int BuildStation(float x, float z)
+    int BuildStation(float x, float z, bool bays)
     {
         SyncNetwork();
-        if (!CanAfford(_stationTuning.Price) || FindStationSite(x, z) is not { } site) return -1;
+        long price = _stationTuning.Price + (bays ? _stationTuning.BayPrice : 0);
+        if (!CanAfford(price) || FindStationSite(x, z) is not { } site) return -1;
 
         int node = site.Node;
         if (node < 0)
@@ -62,8 +64,8 @@ public sealed partial class Simulation
             SyncNetwork();
         }
 
-        TrySpend(_stationTuning.Price, LedgerEntry.Stations);
-        _stations.Add(new Station(_stations.Count, node, _cargo.Count));
+        TrySpend(price, LedgerEntry.Stations);
+        _stations.Add(new Station(_stations.Count, node, _cargo.Count) { HasBays = bays });
         _coverageDirty = true;
         _fields.Add(Array.Empty<float>());
         _fieldVersion.Add(-1);
@@ -122,6 +124,7 @@ public sealed partial class Simulation
         {
             h = h * 31 + (ulong)station.Node;
             h = h * 31 + (station.Active ? 1UL : 0UL);
+            if (station.HasBays) h = h * 31 + 7UL;
             foreach (float w in station.Waiting) h = h * 31 + BitConverter.SingleToUInt32Bits(w);
         }
         return h;

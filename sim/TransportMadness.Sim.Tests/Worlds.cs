@@ -1,0 +1,136 @@
+using TransportMadness.Sim;
+
+namespace TransportMadness.Sim.Tests;
+
+/// <summary>Generated towns on level dry ground with roads, stations, depots and lines put in by commands, for the balance probe and the balance tests.</summary>
+internal static class Worlds
+{
+    internal static void Run(Simulation sim, double days)
+    {
+        long ticks = (long)Math.Round(days * sim.DayLengthSeconds / Simulation.StepSeconds);
+        for (long t = 0; t < ticks; t++) sim.Step();
+    }
+
+    internal static (Simulation Sim, WorldPlan Plan) World(ulong seed, int towns, Tuning? tuning = null, IndustryAmount? industries = null)
+    {
+        var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
+        var plan = TownGenerator.Generate(net, seed, towns);
+        if (industries != null) plan = IndustryGenerator.Generate(net, seed, plan, industries.Value);
+        var sim = new Simulation(net, seed);
+        sim.AddTowns(plan);
+        return (sim, plan);
+    }
+
+    /// <summary>Up to <paramref name="count"/> stations at road junctions near a point, at least 110 m apart, nearest first.</summary>
+    internal static List<int> StationsNear(Simulation sim, float x, float z, int count, float maxRadius = 300f)
+    {
+        var net = sim.Network;
+        var nodes = new List<(float D, int Node)>();
+        for (int n = 0; n < net.NodeCount; n++)
+        {
+            if (net.RoadsAt(n).Count < 3) continue;
+            var (nx, nz) = net.GetNode(n);
+            float d = MathF.Sqrt((nx - x) * (nx - x) + (nz - z) * (nz - z));
+            if (d <= maxRadius) nodes.Add((d, n));
+        }
+        nodes.Sort((p, q) => p.D.CompareTo(q.D));
+        var chosen = new List<int>();
+        var at = new List<(float X, float Z)>();
+        foreach (var (_, n) in nodes)
+        {
+            var (nx, nz) = net.GetNode(n);
+            if (at.Any(p => MathF.Sqrt((p.X - nx) * (p.X - nx) + (p.Z - nz) * (p.Z - nz)) < 110f)) continue;
+            int id = sim.Execute(new BuildStationCommand(nx, nz));
+            if (id < 0) continue;
+            chosen.Add(id);
+            at.Add((nx, nz));
+            if (chosen.Count == count) break;
+        }
+        return chosen;
+    }
+
+    internal static bool Connect(Simulation sim, Town a, Town b)
+    {
+        var net = sim.Network;
+        float dx = b.X - a.X, dz = b.Z - a.Z, len = MathF.Sqrt(dx * dx + dz * dz); dx /= len; dz /= len;
+        int na = net.FindNodeNear(a.X + dx * 250f, a.Z + dz * 250f, 400f, withRoadsOnly: true);
+        int nb = net.FindNodeNear(b.X - dx * 250f, b.Z - dz * 250f, 400f, withRoadsOnly: true);
+        if (na < 0 || nb < 0 || na == nb) return false;
+        var (ax, az) = net.GetNode(na); var (bx, bz) = net.GetNode(nb);
+        return sim.Execute(new BuildRoadCommand(ax, az, bx, bz, RoadType.TwoLane, 14f)) > 0;
+    }
+
+    internal static int Depot(Simulation sim, Town t)
+    {
+        var net = sim.Network;
+        int n = net.FindNodeNear(t.X, t.Z, 300f, withRoadsOnly: true);
+        var (x, z) = net.GetNode(n);
+        return sim.Execute(new AddDepotCommand(n, DepotLevel.Simple));
+    }
+
+    internal static int Buy(Simulation sim, int depot, string model, int line)
+    {
+        for (int tries = 0; tries < 40; tries++)
+        {
+            int v = sim.Execute(new BuyVehicleCommand(depot, model, line));
+            if (v >= 0) return v;
+            Run(sim, 0.005);
+        }
+        return -1;
+    }
+
+    internal static (int A, int B) ClosestPair(Simulation sim)
+    {
+        int bi = 0, bj = 1; float best = float.MaxValue;
+        for (int i = 0; i < sim.Towns.Count; i++)
+            for (int j = i + 1; j < sim.Towns.Count; j++)
+            {
+                float d = MathF.Sqrt(MathF.Pow(sim.Towns[i].X - sim.Towns[j].X, 2) + MathF.Pow(sim.Towns[i].Z - sim.Towns[j].Z, 2));
+                if (d < best) { best = d; bi = i; bj = j; }
+            }
+        return (bi, bj);
+    }
+
+    /// <summary>The two closest of four towns joined by a road, with <paramref name="stops"/> stations in each, one line through them all and buses bought for it.</summary>
+    internal static (Simulation Sim, int Line, Town A, Town B, int Bought, float Dist)? BusScenario(ulong seed, int stops, int buses, Tuning? tuning = null)
+    {
+        var (sim, _) = World(seed, 4, tuning);
+        sim.Execute(new TakeLoanCommand(1000000));
+        var (i, j) = ClosestPair(sim);
+        var ta = sim.Towns[i]; var tb = sim.Towns[j];
+        float dist = MathF.Sqrt(MathF.Pow(ta.X - tb.X, 2) + MathF.Pow(ta.Z - tb.Z, 2));
+        if (!Connect(sim, ta, tb)) return null;
+        var sa = StationsNear(sim, ta.X, ta.Z, stops);
+        var sb = StationsNear(sim, tb.X, tb.Z, stops);
+        int depot = Depot(sim, ta);
+        var order = sa.Concat(Enumerable.Reverse(sb)).ToArray();
+        if (order.Length < 2 || depot < 0) return null;
+        int line = sim.Execute(new CreateLineCommand(order));
+        int bought = 0;
+        for (int k = 0; k < buses; k++) if (Buy(sim, depot, "bus", line) >= 0) bought++;
+        return (sim, line, ta, tb, bought, dist);
+    }
+
+    /// <summary>A forest (or farm) and the nearest processor joined by a road, a station beside each, a depot at the first and one line with trucks.</summary>
+    internal static (Simulation Sim, int Line, int Bought, float Dist)? TruckScenario(ulong seed, int trucks, int primaryType = 0, int processorType = 3, Tuning? tuning = null)
+    {
+        var (sim, _) = World(seed, 3, tuning, IndustryAmount.Normal);
+        sim.Execute(new TakeLoanCommand(1000000));
+        var primaries = sim.Industries.Where(i => i.Type == primaryType).ToList();
+        var processors = sim.Industries.Where(i => i.Type == processorType).ToList();
+        if (primaries.Count == 0 || processors.Count == 0) return null;
+        var (pa, pb) = primaries.SelectMany(x => processors.Select(y => (x, y))).OrderBy(t => MathF.Sqrt(MathF.Pow(t.x.X - t.y.X, 2) + MathF.Pow(t.x.Z - t.y.Z, 2))).First();
+        float dist = MathF.Sqrt(MathF.Pow(pa.X - pb.X, 2) + MathF.Pow(pa.Z - pb.Z, 2));
+        if (sim.Execute(new BuildRoadCommand(pa.X, pa.Z, pb.X, pb.Z, RoadType.TwoLane, 14f)) <= 0) return null;
+        var net = sim.Network;
+        int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(pa.X, pa.Z, 5f, withRoadsOnly: true), DepotLevel.Simple));
+        float dx = (pb.X - pa.X) / dist, dz = (pb.Z - pa.Z) / dist;
+        int sa = sim.Execute(new BuildStationCommand(pa.X + dx * 60f, pa.Z + dz * 60f));
+        int sb = sim.Execute(new BuildStationCommand(pb.X - dx * 60f, pb.Z - dz * 60f));
+        if (depot < 0 || sa < 0 || sb < 0) return null;
+        int line = sim.Execute(new CreateLineCommand(new[] { sa, sb }));
+        int bought = 0;
+        for (int k = 0; k < trucks; k++) if (Buy(sim, depot, "truck", line) >= 0) bought++;
+        return (sim, line, bought, dist);
+    }
+}

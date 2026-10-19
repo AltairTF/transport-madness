@@ -65,6 +65,7 @@ func set_tool(tool_name: String) -> void:
 		"remove": message.emit("Remove: click a road piece (junction to junction) to tear it down")
 		"depot": message.emit("Depot: click near a junction")
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
+		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
 		"line": message.emit("New line: click the stations in order, Enter finishes the line, Esc cancels")
 		_: message.emit("")
 
@@ -150,9 +151,9 @@ func _click(screen: Vector2) -> void:
 	if tool == "move":
 		_click_move(screen)
 		return
-	if tool == "station":
-		var id: int = host.BuildStation(target.x, target.z)
-		message.emit("Station S%d built" % (id + 1) if id >= 0 else "Can't build a station there: it needs a road with room on both sides, no station already, and enough money")
+	if tool == "station" or tool == "station_bays":
+		var id: int = host.BuildStation(target.x, target.z, tool == "station_bays")
+		message.emit("Station %s built" % host.StationName(id) if id >= 0 else "Can't build a station there: it needs a road with room on both sides, no station already, and enough money")
 		_update_preview(screen)
 		return
 	if tool == "line":
@@ -257,7 +258,7 @@ func _update_preview(screen: Vector2) -> void:
 	if _is_road_tool():
 		_hover(screen)
 		return
-	if tool == "station":
+	if tool == "station" or tool == "station_bays":
 		_hover_station(screen)
 		return
 	if tool == "line":
@@ -324,7 +325,7 @@ func _hover_station(screen: Vector2) -> void:
 	if target == null:
 		_preview.visible = false
 		return
-	var site: Dictionary = host.StationPreview(target.x, target.z)
+	var site: Dictionary = host.StationPreview(target.x, target.z, tool == "station_bays")
 	if not site["valid"]:
 		_preview.visible = false
 		message.emit("No room for a station here: click a road, away from its ends and from other stations")
@@ -355,7 +356,7 @@ func _finish_line() -> void:
 		return
 	var line: int = host.CreateLine(PackedInt32Array(_line_stations))
 	if line >= 0:
-		message.emit("Line %d created: buy vehicles for it in the Lines panel" % (line + 1))
+		message.emit("Line %d created: buy vehicles for it in the Lines window, and rename it there" % (line + 1))
 		_reset()
 	else:
 		message.emit("Can't make that line: the last station may not be the same as the first")
@@ -365,7 +366,7 @@ func _show_line_draft() -> void:
 	var names := ""
 	var points := PackedVector3Array()
 	for id in _line_stations:
-		names += ("" if names.is_empty() else " - ") + "S%d" % (id + 1)
+		names += ("" if names.is_empty() else " - ") + host.StationName(id)
 		points.append(host.StationPosition(id))
 	message.emit("Line: %s   (click more stations, Enter finishes, Esc cancels)" % names)
 	_material.albedo_color = ROAD_COLORS["valid"]

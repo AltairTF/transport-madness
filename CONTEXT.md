@@ -42,8 +42,11 @@ A person moving between a home and a place of work or leisure, here one who has 
 **Station**:
 A place on the road network where vehicles load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. On a map with towns, Passengers queue at it for the Station they are going to and Cargo comes from the Industries it covers; on a map without, it produces them at a fixed rate.
 
+**Bay**:
+A place beside the right-most lane of a Station with bays where a loading vehicle waits out of the lane, so the traffic behind it drives on. A Station with bays has room for a few vehicles at once (the next one loads in the lane as at any Station); a vehicle pulls back into the lane when there is a gap. Costs more to build and to keep.
+
 **Line**:
-A recurring route that a group of vehicles runs between stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own.
+A recurring route that a group of vehicles runs between stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own. Has a name the Player can change, and its stations can be added, dropped and reordered while its vehicles run.
 
 **Contract**:
 A time-limited request for specific cargo or passengers, with a reward.
@@ -59,6 +62,9 @@ Vehicles not owned by the Company (private cars, etc.) that share the roads and 
 
 **Trip group**:
 A bundle of at most ten people of one Building who travel together from home to a workplace and a leisure place and back, four trips a day at times drawn once from the seed inside the windows of the tuning file. Chooses how to travel by time and money: on foot when the place is close, otherwise by ambient car (if the group has one) or by the Company's Lines. Has no individual identity.
+
+**Congestion estimate**:
+How many times longer than on empty roads people expect a car trip to take, kept for each hour of the day and moved toward what each finished car trip really took. The car's cost in the choice of Mode uses it, so a jammed rush hour sends people to the Lines, or nowhere.
 
 **Mode**:
 How a Trip group goes: on foot, by car or by public transport. Cached per pair of Buildings and chosen again when the roads or the Lines change. A trip that no mode can make is not made (the group stays); the way home is always made, on foot if need be.
@@ -99,7 +105,7 @@ The road equivalent of an Overhaul, done by a road crew. Closes or narrows the r
 A vehicle kept past its Era. It has no permanent wear limit, but it burns more fuel and its Patch, Service and Overhaul costs are higher than when new.
 
 **Command**:
-A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, create or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
+A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, create, edit, rename or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
 
 **Company vehicle**:
 A bus or truck the Company owns, bought at a Depot for a Line. A bus takes passengers; a truck takes whichever freight Cargo is waiting at a stop and wanted at the next one. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.

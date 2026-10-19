@@ -60,6 +60,9 @@ func _ready() -> void:
 	hud.set_models(host.GetVehicleModels())
 	hud.set_cargo_names(host.GetCargoNames())
 	hud.line_action.connect(_on_line_action)
+	hud.line_edit.connect(_on_line_edit)
+	hud.line_rename.connect(_on_line_rename)
+	hud.vehicle_action.connect(_on_vehicle_action)
 	hud.town_focus.connect(rig.focus_on)
 	if _world_note != "":
 		hud.show_message(_world_note)
@@ -106,6 +109,7 @@ func _process(delta: float) -> void:
 		hud.show_towns(host.GetTowns())
 		hud.show_industries(host.GetIndustries())
 		hud.show_stations(host.GetStations())
+		hud.show_vehicles(host.GetVehicles())
 
 	if _args.has("--shot") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
@@ -168,7 +172,26 @@ func _on_line_action(kind: String, line: int, model: String) -> void:
 			var id: int = host.BuyVehicle(model, line)
 			hud.show_message("Bought a %s for line %d" % [model, line + 1] if id >= 0 else "Can't buy that: not enough money, no depot connected by road to the line's first station, or its junction is busy (try again)")
 		"delete":
-			hud.show_message("Line %d deleted, its vehicles sold" % (line + 1) if host.DeleteLine(line) else "No such line")
+			hud.show_message("Line deleted, its vehicles sold" if host.DeleteLine(line) else "No such line")
+
+
+## The Lines window changed a line's stops: the new list of station ids.
+func _on_line_edit(line: int, stops: Array) -> void:
+	var ids := PackedInt32Array()
+	for stop in stops:
+		ids.append(int(stop))
+	if not host.EditLine(line, ids):
+		hud.show_message("Can't change the line that way: it needs at least two stops, and the same station can't follow itself")
+
+
+func _on_line_rename(line: int, new_name: String) -> void:
+	host.RenameLine(line, new_name)
+
+
+## Sells a vehicle: the button of the Vehicles window.
+func _on_vehicle_action(kind: String, vehicle: int) -> void:
+	if kind == "sell":
+		hud.show_message("Vehicle sold" if host.SellVehicle(vehicle) else "That vehicle can't be sold now")
 
 
 ## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.
@@ -224,8 +247,8 @@ func _selftest_lines() -> void:
 	host.NewEmptyWorld(Session.world_seed)
 	await get_tree().process_frame
 	print("SELFTEST lines: road built=%s depot=%s" % [host.BuildRoad(0, 0, 1200, 0, 0), host.BuildDepot(0, 0, 0)])
-	var a: int = host.BuildStation(150, 0)
-	var b: int = host.BuildStation(1050, 0)
+	var a: int = host.BuildStation(150, 0, false)
+	var b: int = host.BuildStation(1050, 0, true)
 	var bus_line: int = host.CreateLine(PackedInt32Array([a, b]))
 	var truck_line: int = host.CreateLine(PackedInt32Array([b, a]))
 	print("SELFTEST lines: stations %d %d, lines %d %d" % [a, b, bus_line, truck_line])

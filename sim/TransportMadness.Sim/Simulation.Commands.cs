@@ -75,9 +75,13 @@ public sealed partial class Simulation
                 if (!TrySpend(_economy.DepotPrice.For(c.Level), LedgerEntry.Depots)) return -1;
                 return AddDepot(c.Node, c.Level);
             case BuildStationCommand c:
-                return BuildStation(c.X, c.Z);
+                return BuildStation(c.X, c.Z, c.Bays);
             case CreateLineCommand c:
                 return CreateLine(c.Stations);
+            case EditLineCommand c:
+                return EditLine(c.Line, c.Stations);
+            case RenameLineCommand c:
+                return RenameLine(c.Line, c.Name);
             case DeleteLineCommand c:
                 return DeleteLine(c.Line);
             case BuyVehicleCommand c:

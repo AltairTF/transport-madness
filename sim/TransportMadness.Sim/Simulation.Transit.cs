@@ -120,6 +120,7 @@ public sealed partial class Simulation
                 var lot = station.Queue[k];
                 if (station.Active && _stations[lot.Dest].Active && Tick - lot.Since < limit) continue;
                 station.Queue.RemoveAt(k--);
+                station.Today = station.Today with { GaveUp = station.Today.GaveUp + lot.Count };
                 GiveUp(_groups[lot.Group], lot.Count, station.Id);
                 changed = true;
             }
@@ -142,10 +143,11 @@ public sealed partial class Simulation
         {
             var lot = riders[k];
             bool arrived = lot.Dest == here.Id;
-            if (!arrived && _stations[lot.Dest].Active) continue;
+            if (!arrived && _stations[lot.Dest].Active && LineHasStop(_lines[_line[vehicle]], lot.Dest)) continue; // else the line no longer goes there
             riders.RemoveAt(k--);
             unloaded += lot.Count;
             if (arrived) Pay(vehicle, _passengerCargo, lot.Count, _stations[lot.From], here, lot.Boarded);
+            here.Today = here.Today with { Alighted = here.Today.Alighted + lot.Count };
             var g = _groups[lot.Group];
             var (x, z) = _net.GetNode(here.Node);
             var to = _buildings[g.Destination];
@@ -188,6 +190,7 @@ public sealed partial class Simulation
         }
         RefreshWaiting(here);
         SetRiderLoad(vehicle);
+        here.Today = here.Today with { Boarded = here.Today.Boarded + boarded };
         return boarded;
     }
 

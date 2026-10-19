@@ -49,6 +49,7 @@ public sealed class TripGroup
     internal int ToDispatch;  // by car: people still to be put on the road
     internal long NextSpawnTick;
     internal long ReachedMonth = -1; // the last month in which a trip out made within the time budget was completed
+    internal float FreeRide;  // seconds the car trip would take on empty roads, to see how slow it really was
     internal int OriginNode = -1, DestNode = -1;
     internal int Origin = -1, Destination = -1; // buildings
 

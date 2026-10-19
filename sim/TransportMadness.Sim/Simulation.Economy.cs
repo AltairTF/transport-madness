@@ -77,7 +77,7 @@ public sealed partial class Simulation
     void CloseDay()
     {
         foreach (var station in _stations)
-            if (station.Active) Charge(Price(_stationTuning.UpkeepPerDay), LedgerEntry.Upkeep);
+            if (station.Active) Charge(Price(_stationTuning.UpkeepPerDay + (station.HasBays ? _stationTuning.BayUpkeepPerDay : 0f)), LedgerEntry.Upkeep);
         ChargeVehicleUpkeep();
         if (Company.Loan > 0) Charge(Price(Company.Loan * _economy.InterestPerDay), LedgerEntry.Interest);
 

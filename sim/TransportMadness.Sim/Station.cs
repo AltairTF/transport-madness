@@ -18,8 +18,15 @@ public sealed class Station
     public int Node { get; internal set; }
     /// <summary>False once every road at its node has been torn down.</summary>
     public bool Active { get; internal set; } = true;
+    /// <summary>Whether loading vehicles pull out of the lane into bays (<see cref="StationTuning.BayCapacity"/> at a time), so they do not block it.</summary>
+    public bool HasBays { get; internal set; }
+    /// <summary>Vehicles in the bays now.</summary>
+    public int InBay { get; internal set; }
     /// <summary>Cargo waiting to be picked up, by cargo type (index into <see cref="Tuning.Cargo"/>). Fractions build up between whole units.</summary>
     public float[] Waiting { get; }
+    /// <summary>People who boarded a bus here, got off one here, or gave up waiting here: today so far and the whole day before. Not part of the state hash.</summary>
+    public PeopleCounts Today { get; internal set; }
+    public PeopleCounts Yesterday { get; internal set; }
     // Passengers waiting for a ride to another station (a map with towns); their total is mirrored in Waiting[passengers].
     internal List<PaxLot> Queue { get; } = new();
 
@@ -32,6 +39,9 @@ public sealed class Station
     }
 }
 
+/// <summary>How many people boarded, got off and gave up at a station in a day.</summary>
+public readonly record struct PeopleCounts(int Boarded, int Alighted, int GaveUp);
+
 /// <summary>A recurring route: the company's vehicles on it visit the stations in order, and start over after the last.</summary>
 public sealed class Line
 {
@@ -39,10 +49,14 @@ public sealed class Line
     {
         Id = id;
         Stops = stops;
+        Name = $"Line {id + 1}";
     }
 
     public int Id { get; }
-    public IReadOnlyList<int> Stops { get; }
+    /// <summary>Chosen by the player; not part of the state hash.</summary>
+    public string Name { get; internal set; }
+    /// <summary>The station ids in order; changes when the line is edited.</summary>
+    public IReadOnlyList<int> Stops { get; internal set; }
     /// <summary>False once deleted; its vehicles are sold.</summary>
     public bool Active { get; internal set; } = true;
     /// <summary>Paid for cargo delivered by this line's vehicles.</summary>
