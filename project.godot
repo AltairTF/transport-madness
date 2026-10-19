@@ -11,16 +11,22 @@ config_version=5
 [application]
 
 config/name="transport-madness"
-run/main_scene="res://game/main.tscn"
+run/main_scene="res://game/main_menu.tscn"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
+Settings="*res://game/settings.gd"
+Session="*res://game/session.gd"
 
 [display]
 
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/window_width_override=1600
+window/size/window_height_override=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 

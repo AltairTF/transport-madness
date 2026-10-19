@@ -10,13 +10,13 @@ extends Node3D
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
 const VEHICLES := 1000
-const SEED := 1
 
 @onready var host: Node3D = $SimHost
 @onready var rig: Node3D = $CameraRig
 
 var hud: CanvasLayer
 var build_tool: Node
+var pause_menu: CanvasLayer
 var _elapsed := 0.0
 var _stats_timer := 0.0
 var _args := {}
@@ -41,10 +41,10 @@ func _ready() -> void:
 		var focus: PackedStringArray = _args["--focus"].split(",")
 		rig.position = Vector3(float(focus[0]), 0.0, float(focus[1]))
 	rig._apply()
+	var map: String = Session.map
 	if _args.has("--hills") or _args.has("--selftest-hills"):
-		host.NewHillsWorld(SEED)
-	else:
-		host.NewDemoWorld(SEED, VEHICLES)
+		map = "hills"
+	_new_world(map)
 	if _args.has("--focus"):
 		rig.focus_on(rig.position.x, rig.position.z) # now that the terrain exists, stand on it
 
@@ -63,6 +63,12 @@ func _ready() -> void:
 	hud.tool_selected.connect(build_tool.set_tool)
 	build_tool.tool_changed.connect(hud.select_tool)
 	hud.action_requested.connect(_on_action)
+
+	pause_menu = load("res://game/pause_menu.gd").new()
+	add_child(pause_menu)
+	pause_menu.main_menu_requested.connect(_leave_to_menu)
+	pause_menu.quit_requested.connect(get_tree().quit)
+	hud.menu_requested.connect(pause_menu.open)
 
 	if _args.has("--selftest-build"):
 		_selftest_build()
@@ -96,6 +102,29 @@ func _process(delta: float) -> void:
 		_run_bench(delta)
 
 
+## Esc with no tool in hand opens the pause menu. (A tool takes Esc itself, and marks it handled.)
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
+		pause_menu.open()
+
+
+func _leave_to_menu() -> void:
+	pause_menu.close()
+	get_tree().change_scene_to_file("res://game/main_menu.tscn")
+
+
+## Replaces the world: "demo" (street grid with traffic), "hills" or "empty".
+func _new_world(map: String) -> void:
+	match map:
+		"hills":
+			host.NewHillsWorld(Session.world_seed)
+		"empty":
+			host.NewEmptyWorld(Session.world_seed)
+		_:
+			host.NewDemoWorld(Session.world_seed, VEHICLES)
+
+
 func _on_action(action: String) -> void:
 	match action:
 		"traffic":
@@ -107,12 +136,8 @@ func _on_action(action: String) -> void:
 			hud.show_message("Borrowed 100,000" if host.TakeLoan(100000) else "The loan limit is reached")
 		"repay":
 			hud.show_message("Repaid 100,000" if host.RepayLoan(100000) else "Nothing to repay, or not enough money")
-		"empty":
-			host.NewEmptyWorld(SEED)
-		"hills":
-			host.NewHillsWorld(SEED)
-		"demo":
-			host.NewDemoWorld(SEED, VEHICLES)
+		"empty", "hills", "demo":
+			_new_world(action)
 
 
 ## Buys a vehicle for a line, or deletes the line (selling its vehicles): the buttons of the Lines panel.
@@ -127,7 +152,7 @@ func _on_line_action(kind: String, line: int, model: String) -> void:
 
 ## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.
 func _selftest_build() -> void:
-	host.NewEmptyWorld(SEED)
+	host.NewEmptyWorld(Session.world_seed)
 	rig.distance = float(_args.get("--distance", 400.0))
 	rig.pitch = -89.0
 	rig.position = Vector3.ZERO
@@ -175,7 +200,7 @@ func _selftest_build() -> void:
 
 ## Builds a road, a depot, two stations, a bus line and a truck line through the host API, runs them for 30 days and prints the books.
 func _selftest_lines() -> void:
-	host.NewEmptyWorld(SEED)
+	host.NewEmptyWorld(Session.world_seed)
 	await get_tree().process_frame
 	print("SELFTEST lines: road built=%s depot=%s" % [host.BuildRoad(0, 0, 1200, 0, 0), host.BuildDepot(0, 0, 0)])
 	var a: int = host.BuildStation(150, 0)

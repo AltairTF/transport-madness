@@ -96,6 +96,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if tool == "line":
 			_finish_line()
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()
 		if _start == null and _line_stations.is_empty():
 			set_tool("pointer")
 			tool_changed.emit("pointer")
