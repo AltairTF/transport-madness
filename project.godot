@@ -11,6 +11,7 @@ config_version=5
 [application]
 
 config/name="transport-madness"
+run/main_scene="res://game/main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 

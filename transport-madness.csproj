@@ -1,0 +1,13 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>TransportMadness</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- The simulation is its own assembly with no Godot dependency (ADR 0001) and has its own solution. -->
+    <Compile Remove="sim/**" />
+    <ProjectReference Include="sim/TransportMadness.Sim/TransportMadness.Sim.csproj" />
+  </ItemGroup>
+</Project>
