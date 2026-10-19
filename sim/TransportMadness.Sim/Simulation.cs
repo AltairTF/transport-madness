@@ -129,6 +129,9 @@ public sealed partial class Simulation
         _economy = tuning.Economy;
         _stationTuning = tuning.Stations;
         _cargo = tuning.Cargo;
+        _townTuning = tuning.Towns;
+        _passengerCargo = FindCargo(tuning, "passengers");
+        _goodsCargo = FindCargo(tuning, "goods");
         _models = tuning.Vehicles;
         _modelCargo = ResolveModelCargo(tuning);
         _ticksPerDay = (long)MathF.Round(_economy.DayLength / StepSeconds);
@@ -210,6 +213,7 @@ public sealed partial class Simulation
         }
         Mix(IncidentHash());
         Mix(StationHash());
+        if (_buildings.Count > 0) Mix(TownHash());
         Mix(FleetHash());
         Mix((ulong)Company.Money);
         Mix((ulong)Company.Loan);
@@ -517,6 +521,7 @@ public sealed partial class Simulation
             _laneZoneStart[l] = lane.Length - _laneReach[l];
         }
         SyncLinks();
+        EvaluateAccess();
 
         for (int i = 0; i < _count; i++)
         {

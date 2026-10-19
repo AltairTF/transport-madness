@@ -137,11 +137,11 @@
     "depotPrice": { "simple": 15000, "workshop": 40000, "complex": 90000 }
   },
 
-  // Stations stand at a road node. Until towns exist (M3) every station simply produces each cargo at a fixed rate.
+  // Stations stand at a road node. On a map without towns every station simply produces each cargo at its fixed rate (supplyPerDay below); with towns it collects from the buildings it covers.
   "stations": {
     "price": 8000,
     "upkeepPerDay": 150.0,
-    "coverageRadius": 90.0,         // buildings within this distance of the station are served (used from M3)
+    "coverageRadius": 90.0,         // buildings within this distance of the station are served
     "minApproach": 30.0,            // a stop lane shorter than this is not used, and a road is not split closer than this to its end
     "stopMargin": 3.0,              // a vehicle halts this far before the junction edge
     "arrivalGap": 3.5,              // the vehicle counts as arrived when its gap to the stop is this small ...
@@ -153,6 +153,66 @@
     { "id": "passengers", "payPerUnitKm": 40.0, "freeSeconds": 240.0, "zeroSeconds": 1200.0, "minPayShare": 0.3, "supplyPerDay": 240.0, "maxWaiting": 120.0 },
     { "id": "goods", "payPerUnitKm": 55.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 140.0, "maxWaiting": 80.0 }
   ],
+
+  // Towns: generated with the map, made of buildings on lots beside their streets (M3a). Satisfaction is 0 to 100 per town.
+  "towns": {
+    "names": [
+      "Ashford", "Brindle", "Carrow", "Dunmere", "Elmsworth", "Fallowby", "Garrick", "Hollin", "Ivybridge", "Jarrow",
+      "Kettering", "Lowmoor", "Marlow", "Norbury", "Oakhurst", "Pennick", "Quarley", "Redmarsh", "Stanwick", "Thornby",
+      "Uplands", "Verley", "Wexcombe", "Yarrow"
+    ],
+    "initialSatisfaction": 60.0,
+    "maxSatisfaction": 100.0,
+    "recoveryPerMonth": 1.0,        // satisfaction regained every month, up to the maximum
+    "demolishedPenalty": 0.5,       // lost for every building demolished to make room for a road
+    "abandonedPenalty": 2.0,        // lost for every building that is marked abandoned
+    "accessRadius": 40.0,           // a building has road access when a road's centre line is this close to its middle
+    "inactiveMonths": 3,            // months without road access before a building is marked abandoned ...
+    "abandonedMonths": 1,           // ... and months after that before the town demolishes it
+
+    // Where and how a town is laid out: a square grid of streets (the middle one an avenue) with two lots per block side.
+    "generation": {
+      "attempts": 600,              // random places tried for each town
+      "edgeMargin": 300.0,          // a town stays this far from the edge of the map
+      "minSpacing": 700.0,          // between town centres
+      "maxHeightRange": 12.0,       // highest minus lowest ground under the town
+      "waterMargin": 1.5,           // ground must stand this far above the water surface everywhere under the town
+      "blocksMin": 3,               // blocks along each side of the grid
+      "blocksMax": 5,
+      "blockLength": 120.0,         // street to street; buildings stand on all four sides of a block, two to a side
+      "lotWidth": 30.0,             // between the middles of the two buildings on one side of a block
+      "setbackGap": 2.0             // clear space between the paved edge of an avenue and a building
+    },
+
+    // From the middle of a town out. 'until' is the distance from the centre as a share of half the grid; 'fill' the
+    // share of lots that start built on; 'mix' the weights of home, commerce and industry; 'tiers' the weights of the sizes.
+    "rings": [
+      { "until": 0.35, "fill": 0.95, "mix": [0.35, 0.60, 0.05], "tiers": [0.2, 0.4, 0.4] },
+      { "until": 0.70, "fill": 0.80, "mix": [0.65, 0.25, 0.10], "tiers": [0.4, 0.4, 0.2] },
+      { "until": 1.00, "fill": 0.55, "mix": [0.70, 0.10, 0.20], "tiers": [0.7, 0.25, 0.05] }
+    ],
+
+    // One list per kind of building, three sizes each. size: half the side of the square it stands on, in metres.
+    // people live in a home; jobs are in commerce and industry. The two supplies are what a station covering the building
+    // collects each day until trip groups replace them (M3c).
+    "buildingTypes": [
+      { "id": "home", "tiers": [
+        { "size": 8.0, "height": 6.0, "people": 8, "jobs": 0, "demolitionPrice": 3000, "passengersPerDay": 100.0, "goodsPerDay": 0.0 },
+        { "size": 10.0, "height": 12.0, "people": 20, "jobs": 0, "demolitionPrice": 7000, "passengersPerDay": 250.0, "goodsPerDay": 0.0 },
+        { "size": 12.0, "height": 24.0, "people": 50, "jobs": 0, "demolitionPrice": 16000, "passengersPerDay": 600.0, "goodsPerDay": 0.0 }
+      ] },
+      { "id": "commerce", "tiers": [
+        { "size": 8.0, "height": 6.0, "people": 0, "jobs": 6, "demolitionPrice": 4000, "passengersPerDay": 160.0, "goodsPerDay": 60.0 },
+        { "size": 10.0, "height": 10.0, "people": 0, "jobs": 16, "demolitionPrice": 9000, "passengersPerDay": 400.0, "goodsPerDay": 140.0 },
+        { "size": 12.0, "height": 18.0, "people": 0, "jobs": 40, "demolitionPrice": 20000, "passengersPerDay": 1000.0, "goodsPerDay": 300.0 }
+      ] },
+      { "id": "industry", "tiers": [
+        { "size": 9.0, "height": 6.0, "people": 0, "jobs": 10, "demolitionPrice": 5000, "passengersPerDay": 40.0, "goodsPerDay": 200.0 },
+        { "size": 11.0, "height": 8.0, "people": 0, "jobs": 25, "demolitionPrice": 11000, "passengersPerDay": 100.0, "goodsPerDay": 500.0 },
+        { "size": 12.0, "height": 10.0, "people": 0, "jobs": 60, "demolitionPrice": 25000, "passengersPerDay": 250.0, "goodsPerDay": 1200.0 }
+      ] }
+    ]
+  },
 
   // The vehicles the company can buy at a depot.
   "vehicles": [

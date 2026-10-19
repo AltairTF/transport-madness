@@ -493,19 +493,7 @@ public sealed class RoadNetwork
         return best;
     }
 
-    static float NearestAlong(RoadGeometry g, float x, float z)
-    {
-        if (g.IsStraight)
-            return Math.Clamp((x - g.X) * MathF.Cos(g.Heading0) + (z - g.Z) * MathF.Sin(g.Heading0), 0f, g.Length);
-        // The centre of the arc lies k to the side the road turns toward, and a point at heading h is k * (sin h, -cos h) from it.
-        float k = g.Length / g.Sweep; // signed radius
-        float cx = g.X - k * MathF.Sin(g.Heading0), cz = g.Z + k * MathF.Cos(g.Heading0);
-        float sign = MathF.Sign(k);
-        float heading = MathF.Atan2((x - cx) * sign, -(z - cz) * sign);
-        float delta = heading - g.Heading0;
-        delta -= MathF.Tau * MathF.Floor((delta + MathF.PI) / MathF.Tau); // into [-pi, pi)
-        return Math.Clamp(delta / g.Sweep * g.Length, 0f, g.Length);
-    }
+    static float NearestAlong(RoadGeometry g, float x, float z) => g.NearestAlong(x, z);
 
     // ---- Planning and building ------------------------------------------------------------------------------
 
@@ -1059,6 +1047,10 @@ public sealed class RoadNetwork
         }
         return new RoadCost(length, cut, fill, money, bridge, tunnel);
     }
+
+    /// <summary>The roads a move would build (centre line and type), null when the move is refused. For finding what stands in their way.</summary>
+    public IReadOnlyList<(RoadGeometry Geometry, RoadType Type)>? PlannedMoveRoads(int node, float x, float z) =>
+        PlanMove(node, x, z)?.Select(m => (m.Geometry, m.Old.Type)).ToList();
 
     /// <summary>
     /// Drags a node to a new place (see <see cref="EstimateMoveNode"/>). Vehicles on the roads at the node carry on, in

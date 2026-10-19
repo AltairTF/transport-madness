@@ -23,9 +23,15 @@ public sealed partial class Simulation
             case BuildRoadCommand c:
             {
                 var cost = _net.EstimateCost(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.Sweep);
-                if (cost == null || !CanAfford(cost.Value.Money)) return 0;
+                if (cost == null) return 0;
+                var inTheWay = BuildingsInTheWay(new[] { (RoadGeometry.FromChord(c.X0, c.Z0, c.X1, c.Z1, c.Sweep), c.Type) });
+                if (!CanAfford(cost.Value.Money + DemolitionOf(inTheWay).Price)) return 0;
                 int built = _net.BuildRoad(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.SpeedLimit, c.Sweep).Count;
-                if (built > 0) Charge(Price(cost.Value.Money), LedgerEntry.Construction);
+                if (built > 0)
+                {
+                    Charge(Price(cost.Value.Money), LedgerEntry.Construction);
+                    DemolishForRoad(inTheWay);
+                }
                 return built;
             }
             case RemoveRoadCommand c:
@@ -49,9 +55,13 @@ public sealed partial class Simulation
             case MoveNodeCommand c:
             {
                 if (c.Node < 0 || c.Node >= _net.NodeCount) return 0;
-                if (_net.EstimateMoveNode(c.Node, c.X, c.Z) is not { } cost || !CanAfford(cost.Money)) return 0;
+                if (_net.EstimateMoveNode(c.Node, c.X, c.Z) is not { } cost) return 0;
+                var inTheWay = _net.PlannedMoveRoads(c.Node, c.X, c.Z) is { } rebuilt ? BuildingsInTheWay(rebuilt) : new List<int>();
+                if (!CanAfford(cost.Money + DemolitionOf(inTheWay).Price)) return 0;
                 if (!_net.MoveNode(c.Node, c.X, c.Z, out int moved)) return 0;
                 Charge(Price(cost.Money), LedgerEntry.Construction);
+                DemolishForRoad(inTheWay);
+                _coverageDirty = true;
                 foreach (var depot in _depots)
                     if (depot.Active && depot.Node == c.Node) depot.Node = moved; // the depot goes with its node
                 foreach (var station in _stations)

@@ -50,6 +50,25 @@ public class TuningTests
     }
 
     [Fact]
+    public void FromJson_RejectsBuildingTypesOutOfOrder()
+    {
+        var text = ShippedText().Replace("\"id\": \"home\"", "\"id\": \"shed\"");
+
+        Assert.Throws<JsonException>(() => Tuning.FromJson(text));
+    }
+
+    [Fact]
+    public void ShippedFile_HasThreeSizesOfEveryBuilding_AndRingsThatMatch()
+    {
+        var t = Tuning.Load().Towns;
+
+        Assert.All(t.BuildingTypes, type => Assert.Equal(TownsTuning.Tiers, type.Tiers.Count));
+        Assert.All(t.Rings, ring => Assert.Equal(Enum.GetValues<BuildingType>().Length, ring.Mix.Count));
+        Assert.True(t.Names.Count >= 10);
+        Assert.True(t.Generation.LotWidth * 2f < t.Generation.BlockLength); // the two lots on a side fit, with the corners left free
+    }
+
+    [Fact]
     public void FromJson_RejectsAnUnknownKey()
     {
         var text = ShippedText().Replace("\"driving\": {", "\"driving\": { \"mystery\": 1,");

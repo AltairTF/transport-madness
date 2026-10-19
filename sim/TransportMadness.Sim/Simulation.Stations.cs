@@ -64,6 +64,7 @@ public sealed partial class Simulation
 
         TrySpend(_stationTuning.Price, LedgerEntry.Stations);
         _stations.Add(new Station(_stations.Count, node, _cargo.Count));
+        _coverageDirty = true;
         _fields.Add(Array.Empty<float>());
         _fieldVersion.Add(-1);
         return _stations.Count - 1;
@@ -87,19 +88,29 @@ public sealed partial class Simulation
     void CloseOrphanedStations()
     {
         foreach (var station in _stations)
-            if (station.Active && _net.RoadsAt(station.Node).Count == 0) station.Active = false;
+            if (station.Active && _net.RoadsAt(station.Node).Count == 0)
+            {
+                station.Active = false;
+                _coverageDirty = true;
+            }
     }
 
-    /// <summary>Until towns exist, every active station produces each cargo at its fixed rate, up to a limit.</summary>
+    /// <summary>
+    /// Cargo appears at stations: on a map with towns from the buildings each covers; on one without, every active
+    /// station produces each cargo at its fixed rate. Either way up to a limit.
+    /// </summary>
     void GenerateCargo()
     {
-        foreach (var station in _stations)
+        bool towns = _buildings.Count > 0;
+        if (towns && (_coverageDirty || _stationRate.Count != _stations.Count)) RefreshCoverage();
+        for (int s = 0; s < _stations.Count; s++)
         {
+            var station = _stations[s];
             if (!station.Active) continue;
             for (int c = 0; c < _cargo.Count; c++)
             {
-                float next = station.Waiting[c] + _cargo[c].SupplyPerDay * StepSeconds / _economy.DayLength;
-                station.Waiting[c] = MathF.Min(next, _cargo[c].MaxWaiting);
+                float perStep = towns ? _stationRate[s][c] * StepSeconds : _cargo[c].SupplyPerDay * StepSeconds / _economy.DayLength;
+                station.Waiting[c] = MathF.Min(station.Waiting[c] + perStep, _cargo[c].MaxWaiting);
             }
         }
     }

@@ -28,6 +28,7 @@ public sealed record Tuning
     public required RoadTuning Roads { get; init; }
     public required EconomyTuning Economy { get; init; }
     public required StationTuning Stations { get; init; }
+    public required TownsTuning Towns { get; init; }
     public required IReadOnlyList<CargoTuning> Cargo { get; init; }
     public required IReadOnlyList<VehicleModelTuning> Vehicles { get; init; }
 
@@ -40,8 +41,12 @@ public sealed record Tuning
         return FromJson(reader.ReadToEnd());
     }
 
-    public static Tuning FromJson(string json) =>
-        JsonSerializer.Deserialize<Tuning>(json, Options) ?? throw new JsonException("Tuning file is empty");
+    public static Tuning FromJson(string json)
+    {
+        var tuning = JsonSerializer.Deserialize<Tuning>(json, Options) ?? throw new JsonException("Tuning file is empty");
+        tuning.Towns.Validate();
+        return tuning;
+    }
 }
 
 public sealed record DrivingTuning
@@ -254,4 +259,87 @@ public sealed record VehicleModelTuning
     public required float UpkeepPerDay { get; init; }
     public required float DwellSeconds { get; init; }
     public required float SecondsPerUnit { get; init; }
+}
+
+public sealed record TownsTuning
+{
+    public required IReadOnlyList<string> Names { get; init; }
+    public required float InitialSatisfaction { get; init; }
+    public required float MaxSatisfaction { get; init; }
+    public required float RecoveryPerMonth { get; init; }
+    public required float DemolishedPenalty { get; init; }
+    public required float AbandonedPenalty { get; init; }
+    public required float AccessRadius { get; init; }
+    public required int InactiveMonths { get; init; }
+    public required int AbandonedMonths { get; init; }
+    public required TownGenerationTuning Generation { get; init; }
+    public required IReadOnlyList<RingTuning> Rings { get; init; }
+    public required IReadOnlyList<BuildingTypeTuning> BuildingTypes { get; init; }
+
+    /// <summary>Sizes every kind of building comes in.</summary>
+    public const int Tiers = 3;
+
+    public BuildingTypeTuning Of(BuildingType type) => BuildingTypes[(int)type];
+
+    public TierTuning Of(BuildingType type, int tier) => BuildingTypes[(int)type].Tiers[tier];
+
+    internal void Validate()
+    {
+        if (Names.Count == 0) throw new JsonException("towns.names is empty");
+        var types = Enum.GetValues<BuildingType>();
+        if (BuildingTypes.Count != types.Length) throw new JsonException($"towns.buildingTypes must list {types.Length} types");
+        for (int i = 0; i < types.Length; i++)
+        {
+            if (!string.Equals(BuildingTypes[i].Id, types[i].ToString(), StringComparison.OrdinalIgnoreCase))
+                throw new JsonException($"towns.buildingTypes[{i}] must be '{types[i].ToString().ToLowerInvariant()}'");
+            if (BuildingTypes[i].Tiers.Count != Tiers) throw new JsonException($"towns.buildingTypes[{i}] must have {Tiers} tiers");
+        }
+        if (Rings.Count == 0) throw new JsonException("towns.rings is empty");
+        foreach (var ring in Rings)
+            if (ring.Mix.Count != types.Length || ring.Tiers.Count != Tiers)
+                throw new JsonException("towns.rings need one mix weight per building type and one tier weight per size");
+        if (Generation.BlocksMin < 1 || Generation.BlocksMax < Generation.BlocksMin) throw new JsonException("towns.generation blocks are out of order");
+    }
+}
+
+public sealed record TownGenerationTuning
+{
+    public required int Attempts { get; init; }
+    public required float EdgeMargin { get; init; }
+    public required float MinSpacing { get; init; }
+    public required float MaxHeightRange { get; init; }
+    public required float WaterMargin { get; init; }
+    public required int BlocksMin { get; init; }
+    public required int BlocksMax { get; init; }
+    public required float BlockLength { get; init; }
+    public required float LotWidth { get; init; }
+    public required float SetbackGap { get; init; }
+}
+
+public sealed record RingTuning
+{
+    public required float Until { get; init; }
+    public required float Fill { get; init; }
+    public required IReadOnlyList<float> Mix { get; init; }
+    public required IReadOnlyList<float> Tiers { get; init; }
+}
+
+public sealed record BuildingTypeTuning
+{
+    public required string Id { get; init; }
+    public required IReadOnlyList<TierTuning> Tiers { get; init; }
+}
+
+public sealed record TierTuning
+{
+    public required float Size { get; init; }
+    public required float Height { get; init; }
+    public required int People { get; init; }
+    public required int Jobs { get; init; }
+    public required long DemolitionPrice { get; init; }
+    public required float PassengersPerDay { get; init; }
+    public required float GoodsPerDay { get; init; }
+
+    /// <summary>Radius of the ground a building of this size takes: a road closer than this to its middle (less the road's half width) runs through it.</summary>
+    public float Footprint => Size * 1.2f;
 }

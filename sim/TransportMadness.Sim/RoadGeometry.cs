@@ -36,6 +36,28 @@ public readonly record struct RoadGeometry(float X, float Z, float Heading0, flo
         return (X + k * (MathF.Sin(h) - MathF.Sin(Heading0)), Z - k * (MathF.Cos(h) - MathF.Cos(Heading0)));
     }
 
+    /// <summary>Distance along the piece of the point on it nearest to (x, z).</summary>
+    public float NearestAlong(float x, float z)
+    {
+        if (IsStraight)
+            return Math.Clamp((x - X) * MathF.Cos(Heading0) + (z - Z) * MathF.Sin(Heading0), 0f, Length);
+        // The centre of the arc lies k to the side the road turns toward, and a point at heading h is k * (sin h, -cos h) from it.
+        float k = Length / Sweep; // signed radius
+        float cx = X - k * MathF.Sin(Heading0), cz = Z + k * MathF.Cos(Heading0);
+        float sign = MathF.Sign(k);
+        float heading = MathF.Atan2((x - cx) * sign, -(z - cz) * sign);
+        float delta = heading - Heading0;
+        delta -= MathF.Tau * MathF.Floor((delta + MathF.PI) / MathF.Tau); // into [-pi, pi)
+        return Math.Clamp(delta / Sweep * Length, 0f, Length);
+    }
+
+    /// <summary>How far (x, z) is from the centre line.</summary>
+    public float DistanceTo(float x, float z)
+    {
+        var (px, pz) = PointAt(NearestAlong(x, z));
+        return MathF.Sqrt((px - x) * (px - x) + (pz - z) * (pz - z));
+    }
+
     public (float X, float Z) End => PointAt(Length);
 
     /// <summary>The same centre line travelled the other way.</summary>
