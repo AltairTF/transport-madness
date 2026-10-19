@@ -77,16 +77,29 @@ public sealed class Depot
 
 public sealed partial class Simulation
 {
+    // The incidents still remembered, in id order; ids count from the first ever made, so one is at id - _incidentBase. Cleared
+    // incidents are dropped from the front, in batches, once more than crews.incidentsKept (plus a few) are held (never one that is still open, so a
+    // very old open incident holds back the ones after it); what was dropped stays in the state hash through _droppedHash.
     readonly List<Incident> _incidents = new();
+    int _incidentBase;
+    ulong _droppedHash;
     readonly List<int> _openIncidents = new(); // not yet cleared, in id order
     readonly List<(int Vehicle, JunctionPose Pose)> _inJunction = new();
     readonly List<Depot> _depots = new();
     readonly List<(int Lane, float Position, int Incident)> _pendingDebris = new();
 
+    /// <summary>The incidents still remembered, oldest first: every open one and the last cleared ones (<c>crews.incidentsKept</c>).</summary>
     public IReadOnlyList<Incident> Incidents => _incidents;
+    /// <summary>How many incidents there have been in all, dropped ones included.</summary>
+    public int IncidentCount => _incidentBase + _incidents.Count;
+    /// <summary>The incident with this id; it must be open or among the last cleared ones.</summary>
+    public Incident GetIncident(int id) => _incidents[id - _incidentBase];
     /// <summary>Ids of incidents that are not cleared yet, oldest first.</summary>
     public IReadOnlyList<int> OpenIncidentIds => _openIncidents;
     public IReadOnlyList<Depot> Depots => _depots;
+
+    /// <summary>The node a depot clicked for at (x, z) would stand on: the nearest with a road within <c>crews.depotSnapRadius</c>, -1 when there is none. (<see cref="AddDepotCommand"/> refuses a node that has a depot.)</summary>
+    public int FindDepotNode(float x, float z) => _net.FindNodeNear(x, z, _crew.DepotSnapRadius, withRoadsOnly: true);
 
     /// <summary>Places a depot at a node. Its crews respond to incidents; closer depots respond faster.</summary>
     public int AddDepot(int node, DepotLevel level)
@@ -108,7 +121,7 @@ public sealed partial class Simulation
             depot.BusyCrews = 0;
             foreach (int k in _openIncidents)
             {
-                var incident = _incidents[k];
+                var incident = GetIncident(k);
                 if (incident.Depot != depot.Id || incident.State != IncidentState.CrewEnRoute) continue;
                 incident.Depot = -1;
                 incident.CrewArrivalTick = Tick + Ticks(_crew.FallbackResponse);
@@ -124,18 +137,22 @@ public sealed partial class Simulation
         MakeWreck(vehicle, incident);
     }
 
+    static ulong MixIncident(ulong h, Incident incident)
+    {
+        h = h * 31 + (ulong)incident.Kind;
+        h = h * 31 + BitConverter.SingleToUInt32Bits(incident.Position);
+        h = h * 31 + (ulong)(incident.Depot + 1);
+        h = h * 31 + (ulong)incident.State;
+        h = h * 31 + (ulong)incident.CrewArrivalTick;
+        h = h * 31 + (ulong)incident.ClearedTick;
+        return h;
+    }
+
     ulong IncidentHash()
     {
-        ulong h = (ulong)_incidents.Count;
-        foreach (var incident in _incidents)
-        {
-            h = h * 31 + (ulong)incident.Kind;
-            h = h * 31 + BitConverter.SingleToUInt32Bits(incident.Position);
-            h = h * 31 + (ulong)(incident.Depot + 1);
-            h = h * 31 + (ulong)incident.State;
-            h = h * 31 + (ulong)incident.CrewArrivalTick;
-            h = h * 31 + (ulong)incident.ClearedTick;
-        }
+        ulong h = (ulong)IncidentCount;
+        if (_incidentBase > 0) h = h * 31 + _droppedHash; // runs that never dropped one keep their hash
+        foreach (var incident in _incidents) h = MixIncident(h, incident);
         foreach (var depot in _depots)
         {
             h = h * 31 + (ulong)depot.BusyCrews;
@@ -146,9 +163,10 @@ public sealed partial class Simulation
 
     int NewIncident(IncidentKind kind, int vehicle)
     {
-        _incidents.Add(new Incident(_incidents.Count, kind, Tick, new LaneId(_lane[vehicle]), _pos[vehicle]));
-        _openIncidents.Add(_incidents.Count - 1);
-        return _incidents.Count - 1;
+        int id = IncidentCount;
+        _incidents.Add(new Incident(id, kind, Tick, new LaneId(_lane[vehicle]), _pos[vehicle]));
+        _openIncidents.Add(id);
+        return id;
     }
 
     void MakeWreck(int vehicle, int incident)
@@ -158,7 +176,7 @@ public sealed partial class Simulation
         _speed[vehicle] = 0f;
         _accel[vehicle] = 0f;
         _incident[vehicle] = incident;
-        _incidents[incident].Vehicles.Add(vehicle);
+        GetIncident(incident).Vehicles.Add(vehicle);
         Block(vehicle);
     }
 
@@ -339,7 +357,7 @@ public sealed partial class Simulation
         int incident = _incident[a] >= 0 ? _incident[a] : _incident[b];
         if (incident < 0) incident = NewIncident(kind, a);
         // A car piling into a wreck the crew is already working on adds to the job.
-        if (_incidents[incident].State == IncidentState.Clearing) _incidents[incident].CrewArrivalTick = Tick;
+        if (GetIncident(incident).State == IncidentState.Clearing) GetIncident(incident).CrewArrivalTick = Tick;
         if (aMoving) MakeWreck(a, incident);
         if (bMoving) MakeWreck(b, incident);
 
@@ -359,7 +377,7 @@ public sealed partial class Simulation
         _kind[id] = VehicleKind.Debris;
         _halted[id] = true;
         _incident[id] = incident;
-        _incidents[incident].Vehicles.Add(id);
+        GetIncident(incident).Vehicles.Add(id);
         Block(id);
     }
 
@@ -369,7 +387,7 @@ public sealed partial class Simulation
     {
         for (int k = 0; k < _openIncidents.Count; k++)
         {
-            var incident = _incidents[_openIncidents[k]];
+            var incident = GetIncident(_openIncidents[k]);
             switch (incident.State)
             {
                 case IncidentState.AwaitingCrew:
@@ -445,6 +463,20 @@ public sealed partial class Simulation
         incident.ClearedTick = Tick;
         if (incident.Depot >= 0 && _depots[incident.Depot].Active) _depots[incident.Depot].BusyCrews--;
         RebuildOrder();
+        DropOldIncidents();
+    }
+
+    /// <summary>Forgets the oldest cleared incidents beyond <c>crews.incidentsKept</c>, folding them into the state hash. Done in batches so the list is not shifted for each one.</summary>
+    void DropOldIncidents()
+    {
+        int keep = _crew.IncidentsKept;
+        if (_incidents.Count <= keep + Math.Max(16, keep / 4)) return;
+        int drop = 0;
+        while (_incidents.Count - drop > keep && _incidents[drop].State == IncidentState.Cleared)
+            _droppedHash = MixIncident(_droppedHash, _incidents[drop++]);
+        if (drop == 0) return;
+        _incidents.RemoveRange(0, drop);
+        _incidentBase += drop;
     }
 
     static long Ticks(float seconds) => (long)MathF.Ceiling(seconds / StepSeconds);

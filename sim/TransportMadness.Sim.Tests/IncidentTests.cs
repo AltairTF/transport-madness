@@ -31,6 +31,57 @@ public class IncidentTests
         for (int i = 0, n = (int)(seconds / Simulation.StepSeconds); i < n; i++) sim.Step();
     }
 
+    /// <summary>A road with <paramref name="count"/> wrecked cars along it, all waiting for the far-away service, and a memory of only <paramref name="kept"/> cleared incidents.</summary>
+    static Simulation ManyIncidents(int count, int kept)
+    {
+        var tuning = Tuning.Load();
+        tuning = tuning with { Crews = tuning.Crews with { IncidentsKept = kept } };
+        var net = new RoadNetwork(null, tuning);
+        int a = net.AddNode(0, 0), b = net.AddNode(RoadLength, 0);
+        var lane = net.GetRoad(net.AddRoad(a, b, RoadType.TwoLane, 14f)).ForwardLanes[0];
+        var sim = new Simulation(net, seed: 1);
+        for (int k = 0; k < count; k++) sim.Crash(sim.SpawnVehicle(lane, 30f + k * 40f, 0f));
+        return sim;
+    }
+
+    [Fact]
+    public void ClearedIncidents_AreForgottenBeyondTheLimit_ButStillCounted_AndOpenOnesNeverDropped()
+    {
+        var sim = ManyIncidents(60, kept: 5);
+        Run(sim, 400f); // the far-away service has been to all of them
+
+        Assert.Equal(60, sim.IncidentCount);
+        Assert.Empty(sim.OpenIncidentIds);
+        Assert.InRange(sim.Incidents.Count, 5, 5 + 16); // dropped in batches, so up to 16 more than the limit are held
+        Assert.Equal(59, sim.Incidents[^1].Id);
+        Assert.Equal(sim.Incidents[^1], sim.GetIncident(59));
+
+        // A new incident is numbered after all of them, and stays until it is cleared.
+        int fresh = sim.SpawnVehicle(new LaneId(0), 3.0f * 1000f - 5f, 0f);
+        sim.Crash(fresh);
+        Assert.Equal(61, sim.IncidentCount);
+        Assert.Contains(60, sim.OpenIncidentIds);
+        Assert.NotEqual(IncidentState.Cleared, sim.GetIncident(60).State);
+    }
+
+    [Fact]
+    public void ForgettingIncidents_KeepsTheRunDeterministic_AndTheMemoryBounded()
+    {
+        ulong Hash(int kept)
+        {
+            var sim = ManyIncidents(60, kept);
+            Run(sim, 400f);
+            return sim.StateHash();
+        }
+
+        Assert.Equal(Hash(5), Hash(5));
+        Assert.NotEqual(Hash(5), Hash(500)); // what was dropped is not the same as what was never made
+        var many = ManyIncidents(200, kept: 20);
+        Run(many, 400f);
+        Assert.InRange(many.Incidents.Count, 20, 20 + 16);
+        Assert.Equal(200, many.IncidentCount);
+    }
+
     [Fact]
     public void CrashedVehicle_BecomesAWreckThatBlocksTheLane_AndFollowersQueueBehindIt()
     {

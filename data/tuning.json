@@ -27,7 +27,8 @@
     "spawnAttemptsPerVehicle": 30,
     "spawnSpeedFactor": 0.5,      // initial speed as a share of the lane's limit
     "driverSpeedFactorMin": 0.65, // personal share of the speed limit is drawn from min .. min + range
-    "driverSpeedFactorRange": 0.35
+    "driverSpeedFactorRange": 0.35,
+    "ambientPerTown": 4           // through-traffic put on a new map per town so the roads between towns are not dead (the streets are driven by trip groups)
   },
 
   "manoeuvres": {
@@ -98,6 +99,8 @@
     "roadDetour": 1.4,              // road distance over straight-line distance
     "fallbackResponse": 300.0,      // no depot can respond sooner: help comes from far away
     "clearDuration": 45.0,
+    "depotSnapRadius": 60.0,        // a depot goes on the node nearest the point clicked within this distance
+    "incidentsKept": 500,           // cleared incidents kept in memory for the record (the oldest are dropped once there are more); open ones are never dropped
     "perDepot": { "simple": 1, "workshop": 1, "complex": 2 }
   },
 

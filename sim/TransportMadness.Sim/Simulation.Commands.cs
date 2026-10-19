@@ -93,7 +93,7 @@ public sealed partial class Simulation
             case DeleteLineCommand c:
                 return DeleteLine(c.Line);
             case BuyVehicleCommand c:
-                return BuyVehicle(c.Depot, c.Model, c.Line);
+                return c.Depot == BuyVehicleCommand.NearestDepot ? BuyVehicleAtNearestDepot(c.Model, c.Line) : BuyVehicle(c.Depot, c.Model, c.Line);
             case SellVehicleCommand c:
                 return SellVehicle(c.Vehicle);
             case TakeLoanCommand c:

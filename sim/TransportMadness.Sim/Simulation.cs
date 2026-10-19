@@ -557,7 +557,7 @@ public sealed partial class Simulation
             if (OnDemolishedLane(i))
             {
                 // The road under it was torn down: the vehicle goes with it, and so does any wreck it was part of.
-                if (_incident[i] >= 0) _incidents[_incident[i]].Vehicles.Remove(i);
+                if (_incident[i] >= 0) GetIncident(_incident[i]).Vehicles.Remove(i);
                 RemoveVehicle(i);
                 continue;
             }
@@ -565,7 +565,7 @@ public sealed partial class Simulation
             if (merged && LandedOnAnother(i))
             {
                 // An avenue narrowed to two lanes: this vehicle had no room in the lane it was moved into.
-                if (_incident[i] >= 0) _incidents[_incident[i]].Vehicles.Remove(i);
+                if (_incident[i] >= 0) GetIncident(_incident[i]).Vehicles.Remove(i);
                 RemoveVehicle(i);
                 continue;
             }

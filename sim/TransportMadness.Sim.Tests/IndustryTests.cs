@@ -157,7 +157,7 @@ public class IndustryTests
 
         int processors = plan.Industries!.Count(i => tuning.Industries.Types[i.Type].Inputs.Count > 0);
         Assert.Equal(processors, plan.Unlinked!.Count);
-        Assert.All(plan.Unlinked, k => Assert.NotEmpty(tuning.Industries.Types[plan.Industries[k].Type].Inputs));
+        Assert.All(plan.Unlinked, k => Assert.NotEmpty(tuning.Industries.Types[plan.Industries![k].Type].Inputs));
     }
 
     // ---- Production ----------------------------------------------------------------------------------------------

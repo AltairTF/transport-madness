@@ -139,6 +139,17 @@ public sealed partial class Simulation
         return 1;
     }
 
+    /// <summary>Buys a vehicle for a line at the nearest depot that is connected to it by road and takes it. Returns the vehicle id, -1 when no depot can or the company cannot pay.</summary>
+    int BuyVehicleAtNearestDepot(string model, int line)
+    {
+        foreach (int depot in DepotsByDistance(line))
+        {
+            int id = BuyVehicle(depot, model, line);
+            if (id >= 0) return id;
+        }
+        return -1;
+    }
+
     /// <summary>Closes a line and sells its vehicles. Returns 1, 0 when there is no such line.</summary>
     int DeleteLine(int line)
     {

@@ -61,7 +61,11 @@ public sealed record AddStationBaysCommand(int Station) : SimCommand;
 public sealed record DeleteLineCommand(int Line) : SimCommand;
 
 /// <summary>Buys a vehicle (by its id in the tuning file, for example "bus") at a depot and puts it on a line. Result: the vehicle id, -1 when refused.</summary>
-public sealed record BuyVehicleCommand(int Depot, string Model, int Line) : SimCommand;
+/// <remarks>With <see cref="NearestDepot"/> for the depot, the nearest depot connected to the line by road that has room is used.</remarks>
+public sealed record BuyVehicleCommand(int Depot, string Model, int Line) : SimCommand
+{
+    public const int NearestDepot = -1;
+}
 
 /// <summary>Sells a company vehicle for part of its price. Result: the vehicle id, -1 when refused.</summary>
 public sealed record SellVehicleCommand(int Vehicle) : SimCommand;

@@ -43,6 +43,34 @@ public sealed partial class Simulation
         return new StationSite(-1, point.Road, point.Along, point.X, point.Y, point.Z);
     }
 
+    /// <summary>What a station would be like at a place: where it stands, what it costs, and how much of the town and industry around it it would cover.</summary>
+    public readonly record struct StationQuote(StationSite Site, long Price, bool Affordable, float Radius, int Buildings, int Industries);
+
+    /// <summary>The quote for a station clicked for at (x, z), null when none can stand there (<see cref="FindStationSite"/>).</summary>
+    public StationQuote? QuoteStation(float x, float z, bool bays)
+    {
+        if (FindStationSite(x, z) is not { } site) return null;
+        long price = _stationTuning.Price + (bays ? _stationTuning.BayPrice : 0);
+        float radius = _stationTuning.CoverageRadius;
+        int buildings = BuildingsNear(site.X, site.Z, radius).Count(id => _buildings[id].State == BuildingState.Active);
+        return new StationQuote(site, price, CanAfford(price), radius, buildings, IndustriesNear(site.X, site.Z, radius).Count);
+    }
+
+    /// <summary>The open station nearest to a point within <paramref name="radius"/>, or -1.</summary>
+    public int NearestStation(float x, float z, float radius)
+    {
+        int best = -1;
+        float bestDistance = radius * radius;
+        foreach (var station in _stations)
+        {
+            if (!station.Active) continue;
+            var (sx, sz) = _net.GetNode(station.Node);
+            float d = (sx - x) * (sx - x) + (sz - z) * (sz - z);
+            if (d <= bestDistance) { best = station.Id; bestDistance = d; }
+        }
+        return best;
+    }
+
     public long StationPrice => _stationTuning.Price;
     public long StationBayPrice => _stationTuning.BayPrice;
 

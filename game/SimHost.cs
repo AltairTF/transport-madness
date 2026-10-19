@@ -168,11 +168,8 @@ public partial class SimHost : Node3D
     /// </summary>
     public int NewTownsWorld(long seed, int towns, int industries)
     {
-        var net = new RoadNetwork(Terrain.Generate((ulong)seed));
-        var plan = IndustryGenerator.Generate(net, (ulong)seed, TownGenerator.Generate(net, (ulong)seed, towns), (IndustryAmount)Math.Clamp(industries, 0, 2));
-        Sim = new Simulation(net, (ulong)seed);
-        Sim.AddTowns(plan);
-        Sim.Execute(new SeedTrafficCommand(TownTrafficPerTown * Math.Max(1, plan.Towns.Count)));
+        var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2));
+        Sim = sim;
         UnlinkedIndustries = plan.Unlinked?.Count ?? 0;
         RebuildRoads();
         _accumulator = 0;
@@ -181,8 +178,6 @@ public partial class SimHost : Node3D
 
     /// <summary>Processors of the last <see cref="NewTownsWorld"/> map that have no producer of an input, or no town, within reach.</summary>
     public int UnlinkedIndustries { get; private set; }
-
-    const int TownTrafficPerTown = 4; // through-traffic put on a new map per town so the roads between towns are not dead; the town streets are driven by trip groups (M3c)
 
     /// <summary>Height of what is seen at a point: the ground, or the water surface over it.</summary>
     public float HeightAt(float x, float z) => Math.Max(_terrain.HeightAt(x, z), _terrain.WaterSurfaceAt(x, z));
@@ -436,10 +431,10 @@ public partial class SimHost : Node3D
         return true;
     }
 
-    /// <summary>Places a depot at the node nearest the point (within 60 m) that has none yet.</summary>
+    /// <summary>Places a depot at the node the simulation picks for the point (see <see cref="Simulation.FindDepotNode"/>). False when there is none or it already has one.</summary>
     public bool BuildDepot(float x, float z, int level)
     {
-        int node = Sim.Network.FindNodeNear(x, z, 60f, withRoadsOnly: true);
+        int node = Sim.FindDepotNode(x, z);
         if (node < 0) return false;
         if (Sim.Execute(new AddDepotCommand(node, (DepotLevel)Math.Clamp(level, 0, 2))) < 0) return false;
         RebuildRoads();
@@ -477,26 +472,17 @@ public partial class SimHost : Node3D
     /// <summary>Where a station clicked at (x, z) would stand: {valid, x, y, z, price, affordable, radius, covered, industries}, the price with bays if asked.</summary>
     public Godot.Collections.Dictionary StationPreview(float x, float z, bool bays)
     {
-        if (Sim.FindStationSite(x, z) is not { } site) return new Godot.Collections.Dictionary { ["valid"] = false };
+        if (Sim.QuoteStation(x, z, bays) is not { } quote) return new Godot.Collections.Dictionary { ["valid"] = false };
         return new Godot.Collections.Dictionary
         {
             ["valid"] = true,
-            ["x"] = site.X, ["y"] = site.Y, ["z"] = site.Z,
-            ["price"] = Sim.StationPrice + (bays ? Sim.StationBayPrice : 0),
-            ["affordable"] = Sim.CanAfford(Sim.StationPrice + (bays ? Sim.StationBayPrice : 0)),
-            ["radius"] = Sim.Network.Tuning.Stations.CoverageRadius,
-            ["covered"] = CoveredCount(site.X, site.Z),
-            ["industries"] = Sim.IndustriesNear(site.X, site.Z, Sim.Network.Tuning.Stations.CoverageRadius).Count,
+            ["x"] = quote.Site.X, ["y"] = quote.Site.Y, ["z"] = quote.Site.Z,
+            ["price"] = quote.Price,
+            ["affordable"] = quote.Affordable,
+            ["radius"] = quote.Radius,
+            ["covered"] = quote.Buildings,
+            ["industries"] = quote.Industries,
         };
-    }
-
-    /// <summary>Buildings a station at a point would serve: those standing with a road, within the coverage radius.</summary>
-    int CoveredCount(float x, float z)
-    {
-        int n = 0;
-        foreach (int id in Sim.BuildingsNear(x, z, Sim.Network.Tuning.Stations.CoverageRadius))
-            if (Sim.Buildings[id].State == BuildingState.Active) n++;
-        return n;
     }
 
     /// <summary>Builds a station at the node or road point near (x, z), with bays for loading vehicles if asked. Returns its id, -1 when refused.</summary>
@@ -508,19 +494,7 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>The open station nearest to a point within <paramref name="radius"/>, or -1.</summary>
-    public int StationNear(float x, float z, float radius)
-    {
-        int best = -1;
-        float bestDistance = radius * radius;
-        foreach (var station in Sim.Stations)
-        {
-            if (!station.Active) continue;
-            var (sx, sz) = Sim.Network.GetNode(station.Node);
-            float d = (sx - x) * (sx - x) + (sz - z) * (sz - z);
-            if (d <= bestDistance) { best = station.Id; bestDistance = d; }
-        }
-        return best;
-    }
+    public int StationNear(float x, float z, float radius) => Sim.NearestStation(x, z, radius);
 
     /// <summary>A station's place on the ground.</summary>
     public Vector3 StationPosition(int station)
@@ -616,15 +590,7 @@ public partial class SimHost : Node3D
     /// Buys a vehicle of a model for a line at the nearest depot that is connected to the line by road and has room for
     /// it. Returns the vehicle id, -1 when no depot can take it or the company cannot pay.
     /// </summary>
-    public int BuyVehicle(string model, int line)
-    {
-        foreach (int depot in Sim.DepotsByDistance(line))
-        {
-            int id = Sim.Execute(new BuyVehicleCommand(depot, model, line));
-            if (id >= 0) return id;
-        }
-        return -1;
-    }
+    public int BuyVehicle(string model, int line) => Sim.Execute(new BuyVehicleCommand(BuyVehicleCommand.NearestDepot, model, line));
 
     /// <summary>The open lines: for each {id, name, color, stations (names), stop_ids, income, upkeep, profit, delivered, vehicles, loading}.</summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetLines()
@@ -841,13 +807,13 @@ public partial class SimHost : Node3D
     public Vector3 FirstOpenIncidentPosition()
     {
         if (Sim.OpenIncidentIds.Count == 0) return Vector3.Zero;
-        var incident = Sim.Incidents[Sim.OpenIncidentIds[0]];
+        var incident = Sim.GetIncident(Sim.OpenIncidentIds[0]);
         int lane = incident.Lane.Value;
         LaneFrame(lane, incident.Position, out float x, out float z, out _, out _);
         return new Vector3(x, _laneY[lane] + _laneGrade[lane] * incident.Position, z);
     }
 
-    public string FirstOpenIncidentState() => Sim.OpenIncidentIds.Count == 0 ? "none" : Sim.Incidents[Sim.OpenIncidentIds[0]].State.ToString();
+    public string FirstOpenIncidentState() => Sim.OpenIncidentIds.Count == 0 ? "none" : Sim.GetIncident(Sim.OpenIncidentIds[0]).State.ToString();
 
     public int DepotCount() => Sim.Depots.Count;
 
@@ -874,16 +840,14 @@ public partial class SimHost : Node3D
             if (v.Kind == VehicleKind.Car) { cars++; speed += v.Speed; if (v.Overtake != OvertakePhase.None) overtaking++; }
             else if (v.Kind != VehicleKind.Removed) wrecks++;
         }
-        int open = 0;
-        foreach (var incident in Sim.Incidents) if (incident.State != IncidentState.Cleared) open++;
         return new Godot.Collections.Dictionary
         {
             ["vehicles"] = cars,
             ["wrecks"] = wrecks,
             ["overtaking"] = overtaking,
             ["mean_speed"] = cars > 0 ? speed / cars : 0.0,
-            ["incidents"] = Sim.Incidents.Count,
-            ["open_incidents"] = open,
+            ["incidents"] = Sim.IncidentCount,
+            ["open_incidents"] = Sim.OpenIncidentIds.Count,
             ["step_ms"] = _stepMsAverage,
             ["effective_speed"] = _effectiveSpeed,
             ["tick"] = Sim.Tick,
@@ -1043,7 +1007,7 @@ public partial class SimHost : Node3D
         foreach (int id in Sim.OpenIncidentIds)
         {
             if (n >= CrewCapacity) break;
-            var incident = Sim.Incidents[id];
+            var incident = Sim.GetIncident(id);
             if (incident.State is not (IncidentState.CrewEnRoute or IncidentState.Clearing)) continue;
 
             int lane = incident.Lane.Value;

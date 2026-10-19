@@ -79,6 +79,7 @@ public sealed record TrafficTuning
     public required float SpawnSpeedFactor { get; init; }
     public required float DriverSpeedFactorMin { get; init; }
     public required float DriverSpeedFactorRange { get; init; }
+    public required int AmbientPerTown { get; init; }
 }
 
 public sealed record ManoeuvreTuning
@@ -150,6 +151,8 @@ public sealed record CrewTuning
     public required float RoadDetour { get; init; }
     public required float FallbackResponse { get; init; }
     public required float ClearDuration { get; init; }
+    public required int IncidentsKept { get; init; }
+    public required float DepotSnapRadius { get; init; }
     public required CrewsPerDepot PerDepot { get; init; }
 }
 
