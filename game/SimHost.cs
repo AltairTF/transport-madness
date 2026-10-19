@@ -39,6 +39,8 @@ public partial class SimHost : Node3D
     MeshInstance3D?[] _terrainChunks = Array.Empty<MeshInstance3D?>();
     int _terrainVersion = -1;
     Terrain _terrain = null!, _terrainSource = null!;
+    MeshInstance3D _water = null!;
+    StandardMaterial3D _waterMaterial = null!, _deckMaterial = null!, _tunnelMaterial = null!, _tunnelHintMaterial = null!;
     StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!;
 
     // Per-lane drawing data: start point, unit direction and sideways offset of the lane centre (to the driver's right).
@@ -56,12 +58,29 @@ public partial class SimHost : Node3D
         _medianMaterial = Flat(new Color(0.35f, 0.5f, 0.3f));
         _depotMaterial = Flat(new Color(0.85f, 0.25f, 0.2f));
         _lineMaterial = Flat(new Color(0.8f, 0.78f, 0.6f));
+        _deckMaterial = Flat(new Color(0.55f, 0.55f, 0.58f));
+        _tunnelMaterial = Flat(new Color(0.32f, 0.3f, 0.3f));
+        _tunnelHintMaterial = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.1f, 0.1f, 0.12f, 0.35f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        };
 
         // Beyond the edge of the terrain the world is just flat grass.
         var ground = new MeshInstance3D { Name = "Ground", Mesh = new PlaneMesh { Size = new Vector2(20000, 20000) } };
         ground.MaterialOverride = Flat(new Color(0.42f, 0.58f, 0.34f));
-        ground.Position = new Vector3(0, -0.5f, 0);
+        ground.Position = new Vector3(0, -8f, 0); // below the deepest lake bed
         AddChild(ground);
+        _waterMaterial = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.16f, 0.4f, 0.62f, 0.72f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            Roughness = 0.15f,
+            Metallic = 0.2f,
+        };
+        _water = new MeshInstance3D { Name = "Water", MaterialOverride = _waterMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        AddChild(_water);
         _terrainMaterial = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 1f };
         _terrainRoot = new Node3D { Name = "Terrain", Position = new Vector3(0, -TerrainSink, 0) };
         AddChild(_terrainRoot);
@@ -122,8 +141,8 @@ public partial class SimHost : Node3D
         _accumulator = 0;
     }
 
-    /// <summary>Terrain height under a point.</summary>
-    public float HeightAt(float x, float z) => _terrain.HeightAt(x, z);
+    /// <summary>Height of what is seen at a point: the ground, or the water surface over it.</summary>
+    public float HeightAt(float x, float z) => Math.Max(_terrain.HeightAt(x, z), Terrain.WaterLevel);
 
     /// <summary>
     /// Where a camera ray first meets the terrain: {hit, x, y, z}. Marches in 4 m steps, then bisects the last step.
@@ -135,14 +154,14 @@ public partial class SimHost : Node3D
         for (float t = 0f; t < maxDistance; t += step)
         {
             var p = origin + direction * t;
-            if (p.Y <= _terrain.HeightAt(p.X, p.Z))
+            if (p.Y <= HeightAt(p.X, p.Z))
             {
                 float lo = previous, hi = t;
                 for (int i = 0; i < 12; i++)
                 {
                     float mid = (lo + hi) * 0.5f;
                     var q = origin + direction * mid;
-                    if (q.Y <= _terrain.HeightAt(q.X, q.Z)) hi = mid; else lo = mid;
+                    if (q.Y <= HeightAt(q.X, q.Z)) hi = mid; else lo = mid;
                 }
                 var hit = origin + direction * hi;
                 return new Godot.Collections.Dictionary { ["hit"] = true, ["x"] = hit.X, ["y"] = hit.Y, ["z"] = hit.Z };
@@ -168,7 +187,7 @@ public partial class SimHost : Node3D
 
         if (net.NearestOnRoad(x, z, RoadSnapRadius, 5f) is { } hit)
             return new Godot.Collections.Dictionary { ["snapped"] = true, ["x"] = hit.X, ["y"] = hit.Y, ["z"] = hit.Z };
-        return new Godot.Collections.Dictionary { ["snapped"] = false, ["x"] = x, ["y"] = _terrain.HeightAt(x, z), ["z"] = z };
+        return new Godot.Collections.Dictionary { ["snapped"] = false, ["x"] = x, ["y"] = HeightAt(x, z), ["z"] = z };
     }
 
     /// <summary>Whether a straight road can be built between the points: long enough, not too steep, not crossing too close to a junction.</summary>
@@ -178,7 +197,7 @@ public partial class SimHost : Node3D
     public float SweepThrough(float x0, float z0, float xm, float zm, float x1, float z1) =>
         RoadGeometry.SweepThrough(x0, z0, xm, zm, x1, z1);
 
-    /// <summary>What a straight road would cost: {valid, length, cut, fill, money}; only {valid} when it cannot be built.</summary>
+    /// <summary>What a straight road would cost: {valid, length, cut, fill, money, bridge, tunnel} (the last two are metres of structure); only {valid} when it cannot be built.</summary>
     public Godot.Collections.Dictionary EstimateRoadCost(float x0, float z0, float x1, float z1, int type) =>
         EstimateCurveCost(x0, z0, x1, z1, type, 0f);
 
@@ -187,7 +206,7 @@ public partial class SimHost : Node3D
     {
         var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep);
         if (cost is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
-        return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money };
+        return new Godot.Collections.Dictionary { ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money, ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength };
     }
 
     /// <summary>Points along a road bending by <paramref name="sweep"/> radians, lying on the ground (for the build preview).</summary>
@@ -199,7 +218,7 @@ public partial class SimHost : Node3D
         for (int i = 0; i <= n; i++)
         {
             var (x, z) = g.PointAt(g.Length * i / n);
-            points[i] = new Vector3(x, _terrain.HeightAt(x, z), z);
+            points[i] = new Vector3(x, HeightAt(x, z), z);
         }
         return points;
     }
@@ -221,12 +240,12 @@ public partial class SimHost : Node3D
         return true;
     }
 
-    /// <summary>The road piece nearest to a point within 14 m: {found, road, type, length}.</summary>
+    /// <summary>The road piece nearest to a point within 14 m: {found, road, type, length, structure} (structure: 0 ground, 1 bridge, 2 tunnel).</summary>
     public Godot.Collections.Dictionary RoadAt(float x, float z)
     {
         if (Sim.Network.RoadAt(x, z, 14f) is not { } id) return new Godot.Collections.Dictionary { ["found"] = false };
         var road = Sim.Network.GetRoad(id);
-        return new Godot.Collections.Dictionary { ["found"] = true, ["road"] = id.Value, ["type"] = road.Type == RoadType.Avenue2x2 ? 1 : 0, ["length"] = road.Length };
+        return new Godot.Collections.Dictionary { ["found"] = true, ["road"] = id.Value, ["type"] = road.Type == RoadType.Avenue2x2 ? 1 : 0, ["length"] = road.Length, ["structure"] = (int)road.Structure };
     }
 
     /// <summary>Points along a road's centre line at road height (for highlighting it).</summary>
@@ -656,6 +675,9 @@ public partial class SimHost : Node3D
             SetLaneTable(net, road.BackwardLanes, y1);
             if (road.Retired) continue;
 
+            if (road.Structure == RoadStructure.Bridge) AddBridge(net, road, y0, y1, width);
+            else if (road.Structure == RoadStructure.Tunnel) AddTunnel(net, road, y0, y1, width);
+
             if (g.IsStraight)
             {
                 var (x0, z0) = net.GetNode(road.From);
@@ -689,6 +711,80 @@ public partial class SimHost : Node3D
             building.Position = new Vector3(x + 26f, _terrain.HeightAt(x + 26f, z + 26f) + 3f, z + 26f);
             _roadRoot.AddChild(building);
         }
+    }
+
+    /// <summary>Piers every 25 m from the deck down to the ground (or the bed of the river), and a slab under the road.</summary>
+    void AddBridge(RoadNetwork net, Road road, float y0, float y1, float width)
+    {
+        var g = road.Geometry;
+        int piers = Math.Max(1, (int)MathF.Floor(g.Length / 25f));
+        for (int k = 0; k <= piers; k++)
+        {
+            float t = k / (float)piers;
+            var (x, z) = g.PointAt(g.Length * t);
+            float deck = y0 + (y1 - y0) * t;
+            float ground = _terrain.HeightAt(x, z);
+            if (deck - ground < 1.5f || k == 0 || k == piers) continue; // the ends rest on the ground
+            float h = deck - ground;
+            var pier = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(2.4f, h, width * 0.45f) }, MaterialOverride = _deckMaterial };
+            float heading = g.HeadingAt(g.Length * t);
+            pier.Transform = new Transform3D(new Basis(Vector3.Up, -heading), new Vector3(x, ground + h * 0.5f - TerrainSink, z));
+            _roadRoot.AddChild(pier);
+        }
+        // The deck: a slab slightly thicker than the road, hanging below the surface.
+        var (sx, sz) = net.GetNode(road.From);
+        var (ex, ez) = net.GetNode(road.To);
+        if (g.IsStraight)
+        {
+            float run = g.Length;
+            float dx = (ex - sx) / run, dz = (ez - sz) / run;
+            AddRoadBox(new Vector3((sx + ex) * 0.5f, (y0 + y1) * 0.5f, (sz + ez) * 0.5f), run, y1 - y0, dx, dz, width + 1.2f, 1.1f, -0.55f, _deckMaterial);
+        }
+        else AddRoadRibbon(g, y0, y1, width + 1.2f, -0.05f, _deckMaterial);
+    }
+
+    /// <summary>A dark frame at each end, and a faint strip over the ground where the road runs underneath.</summary>
+    void AddTunnel(RoadNetwork net, Road road, float y0, float y1, float width)
+    {
+        var g = road.Geometry;
+        foreach (float along in new[] { 0f, g.Length })
+        {
+            var (x, z) = g.PointAt(along);
+            float heading = g.HeadingAt(along);
+            float y = along == 0f ? y0 : y1;
+            var portal = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(2.5f, 6.5f, width + 3f) }, MaterialOverride = _tunnelMaterial };
+            portal.Transform = new Transform3D(new Basis(Vector3.Up, -heading), new Vector3(x, y + 3f, z));
+            _roadRoot.AddChild(portal);
+        }
+        int segments = Math.Max(2, (int)MathF.Ceiling(g.Length / 6f));
+        var vertices = new Vector3[(segments + 1) * 2];
+        var normals = new Vector3[vertices.Length];
+        var indices = new int[segments * 6];
+        for (int i = 0; i <= segments; i++)
+        {
+            float t = i / (float)segments;
+            var (x, z) = g.PointAt(g.Length * t);
+            float h = g.HeadingAt(g.Length * t);
+            float rx = -MathF.Sin(h) * width * 0.5f, rz = MathF.Cos(h) * width * 0.5f;
+            float top = Math.Max(_terrain.HeightAt(x, z), y0 + (y1 - y0) * t) + 0.35f;
+            vertices[i * 2] = new Vector3(x - rx, top, z - rz);
+            vertices[i * 2 + 1] = new Vector3(x + rx, top, z + rz);
+            normals[i * 2] = normals[i * 2 + 1] = Vector3.Up;
+        }
+        for (int i = 0; i < segments; i++)
+        {
+            int l = i * 2, r = l + 1, nl = l + 2, nr = l + 3, o = i * 6;
+            indices[o] = l; indices[o + 1] = nl; indices[o + 2] = r;
+            indices[o + 3] = nl; indices[o + 4] = nr; indices[o + 5] = r;
+        }
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = normals;
+        arrays[(int)Mesh.ArrayType.Index] = indices;
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        _roadRoot.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = _tunnelHintMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
 
     void SetLaneTable(RoadNetwork net, LaneId[] lanes, float startY)
@@ -771,6 +867,8 @@ public partial class SimHost : Node3D
         if (_terrainSource != _terrain || _terrainChunks.Length != side * side)
         {
             _terrainSource = _terrain;
+            _water.Mesh = new PlaneMesh { Size = new Vector2(_terrain.HalfSize * 2f, _terrain.HalfSize * 2f) };
+            _water.Position = new Vector3(0f, Terrain.WaterLevel - TerrainSink * 0.5f, 0f);
             foreach (var child in _terrainRoot.GetChildren()) child.QueueFree();
             _terrainChunks = new MeshInstance3D?[side * side];
             _terrain.TakeChangedChunks(); // everything is built below
@@ -836,6 +934,10 @@ public partial class SimHost : Node3D
         var upland = new Color(0.5f, 0.55f, 0.32f);
         var rock = new Color(0.52f, 0.48f, 0.43f);
         var snow = new Color(0.9f, 0.92f, 0.95f);
+        var bed = new Color(0.45f, 0.42f, 0.32f);
+        var shore = new Color(0.74f, 0.69f, 0.5f);
+        if (height < Terrain.WaterLevel) return bed.Lerp(shore, Mathf.Clamp(1f + height / 3f, 0f, 1f)); // sand at the edge, mud in the deep
+        if (height < Terrain.WaterLevel + 1.2f) return shore.Lerp(grass, (height - Terrain.WaterLevel) / 1.2f);
         Color c = height < 40f ? grass.Lerp(upland, height / 40f) : upland.Lerp(rock, Mathf.Clamp((height - 40f) / 40f, 0f, 1f));
         if (height > 85f) c = c.Lerp(snow, Mathf.Clamp((height - 85f) / 25f, 0f, 1f));
         return c.Lerp(rock, Mathf.Clamp((0.9f - normalY) * 4f, 0f, 0.8f)); // steep ground shows rock

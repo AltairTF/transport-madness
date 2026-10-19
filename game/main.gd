@@ -170,11 +170,39 @@ func _selftest_hills() -> void:
 			continue
 		var built: bool = host.BuildRoad(a[0], a[1], a[2], a[3], 0)
 		print("HILLS %s built=%s length=%.0f cut=%.0f fill=%.0f cost=%.0f" % [a, built, cost["length"], cost["cut"], cost["fill"], cost["money"]])
+	await _selftest_structures()
 	host.SpawnTraffic(0)
 	await get_tree().create_timer(1.0).timeout
 	if _args.has("--shot"):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
 	get_tree().quit()
+
+
+## Looks over the generated map for the 300 m road that needs the longest bridge and the one that needs the longest
+## tunnel, builds them, and points the camera at the bridge.
+func _selftest_structures() -> void:
+	var best := {"bridge": [-1.0, 0, 0, {}], "tunnel": [-1.0, 0, 0, {}]}
+	for z in range(-1900, 1700, 100):
+		for x in range(-1900, 1500, 100):
+			var cost: Dictionary = host.EstimateRoadCost(x, z, x + 300, z, 0)
+			if not cost["valid"]:
+				continue
+			for kind in ["bridge", "tunnel"]:
+				if cost[kind] > best[kind][0]:
+					best[kind] = [cost[kind], x, z, cost]
+	for kind in ["bridge", "tunnel"]:
+		var f: Array = best[kind]
+		if f[0] <= 0.0:
+			print("HILLS no %s found" % kind)
+			continue
+		var built: bool = host.BuildRoad(f[1], f[2], f[1] + 300, f[2], 0)
+		print("HILLS %s road at (%d, %d): built=%s bridge=%.0f m tunnel=%.0f m cost=%.0f" % [kind, f[1], f[2], built, f[3]["bridge"], f[3]["tunnel"], f[3]["money"]])
+	if best["bridge"][0] > 0.0 and not _args.has("--focus"):
+		rig.focus_on(best["bridge"][1] + 150.0, best["bridge"][2])
+		rig.distance = 220.0
+		rig.pitch = -40.0
+		rig._apply()
+	await get_tree().process_frame
 
 
 ## Crashes a car in the demo world and follows the incident from wreck to cleared road at 8x.

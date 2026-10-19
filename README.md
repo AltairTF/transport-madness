@@ -18,7 +18,7 @@ cd sim && dotnet test                                   # the whole simulation t
 godot --path .                                          # play: build roads, +100 cars, Crash!
 godot --path . -- --bench                               # frame rate with 1000 vehicles at 1x and 8x
 godot --path . -- --selftest-build --shot=build.png     # builds roads with synthetic mouse clicks
-godot --path . -- --hills                              # empty generated-hills map: roads show grade and cut/fill cost
+godot --path . -- --hills                              # empty generated-hills map with lakes and rivers: roads show grade, cut/fill cost, bridges and tunnels
 godot --path . -- --selftest-crash                      # crashes a car and follows the rescue crew
 ```
 

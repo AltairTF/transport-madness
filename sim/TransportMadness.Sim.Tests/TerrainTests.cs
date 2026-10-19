@@ -12,22 +12,43 @@ public class TerrainTests
     }
 
     [Fact]
-    public void GeneratedMap_HasBothPlainsAndHills()
+    public void GeneratedMap_HasPlainsHillsAndWater()
     {
         var terrain = Terrain.Generate(42);
         float min = float.MaxValue, max = float.MinValue;
-        int flat = 0, total = 0;
+        int flat = 0, wet = 0, total = 0;
         for (int j = 0; j < terrain.Cells; j++)
             for (int i = 0; i < terrain.Cells; i++)
             {
                 float h = terrain.GetSample(i, j);
                 min = Math.Min(min, h); max = Math.Max(max, h);
                 total++;
-                if (h < 1f) flat++;
+                if (h < Terrain.WaterLevel) wet++;
+                else if (h < 4f) flat++;
             }
         Assert.True(max > 30f, $"highest point {max}");
-        Assert.True(min >= 0f);
+        Assert.True(min < Terrain.WaterLevel - 2f, $"lowest point {min}");
         Assert.InRange(flat / (float)total, 0.1f, 0.8f);
+        Assert.InRange(wet / (float)total, 0.02f, 0.45f);
+    }
+
+    [Fact]
+    public void WithoutWater_NothingLiesBelowTheSurface()
+    {
+        var terrain = Terrain.Generate(42, water: false);
+        for (int j = 0; j < terrain.Cells; j++)
+            for (int i = 0; i < terrain.Cells; i++)
+                Assert.True(terrain.GetSample(i, j) >= Terrain.WaterLevel);
+    }
+
+    [Fact]
+    public void IsWater_FollowsTheGround_AndCreateShapesAMap()
+    {
+        var terrain = Terrain.Create(64, 10f, (x, z) => MathF.Abs(x) < 50f ? -3f : 5f); // a 100 m wide river along z
+
+        Assert.True(terrain.IsWater(0f, 100f));
+        Assert.False(terrain.IsWater(200f, 100f));
+        Assert.Equal(5f, terrain.HeightAt(200f, 0f), 3);
     }
 
     [Fact]

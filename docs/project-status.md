@@ -1,13 +1,13 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: M0 closed out (flat per-lane lookups, local lane-change reordering) and the M1 cleanup done (downgrade, speed-limit change, move node, flat junction conflict tables, vehicles drawn along junction paths, camera that follows the ground, chunked terrain mesh); player actions are now commands in a replayable log, and tuning and prices live in `data/tuning.json`. Polish items listed in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: water, bridges and tunnels added; M0 closed out (flat per-lane lookups, local lane-change reordering) and the M1 cleanup done (downgrade, speed-limit change, move node, flat junction conflict tables, vehicles drawn along junction paths, camera that follows the ground, chunked terrain mesh); player actions are now commands in a replayable log, and tuning and prices live in `data/tuning.json`. Polish items listed in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
 | Milestone | State |
 |---|---|
 | M0 Dynamic traffic prototype | All five exit criteria met (see section 2); cleanup items closed (section 11) |
-| M1 Procedural terrain, road building with cut and fill | Done: terrain, elevation, grades, cut and fill cost and carving, arcs, path-based junction conflicts, road removal, upgrade, downgrade, speed limits and moving a node (sections 5.1, 5.6, 5.7); what is left (bridges, water, vehicles driving the junction path) is in section 11 |
+| M1 Procedural terrain, road building with cut and fill | Done: terrain with water, elevation, grades, cut and fill cost and carving, bridges and tunnels, arcs, path-based junction conflicts, road removal, upgrade, downgrade, speed limits and moving a node (sections 5.1, 5.6, 5.7, 5.8); what is left (vehicles driving the junction path) is in section 11 |
 | M2 Stations, lines, player vehicles, basic economy | Not started |
 | M3 Towns, industries, cargo chains, trip flows | Not started |
 | M4 Full rail | Not started |
@@ -91,6 +91,13 @@ One seeded RNG (`SimRandom`, xoshiro256** seeded through SplitMix64, own impleme
 
 Player actions are commands (`SimCommand`: `BuildRoadCommand`, `RemoveRoadCommand`, `UpgradeRoadCommand`, `DowngradeRoadCommand`, `SetSpeedLimitCommand`, `MoveNodeCommand`, `AddDepotCommand`, `SeedTrafficCommand`, `CrashSomeoneCommand`). `Simulation.Execute` applies one between steps and appends it to `CommandLog` with the tick it ran at (refused commands too: they change nothing and are refused again on replay). `Simulation.Replay(log, untilTick)` runs a fresh simulation (same seed, same initial network) to a tick, executing the log at the recorded ticks. `DeterminismTests` builds its whole world through commands, so the log plus the seed alone reproduces the run. Anything that changes the network or the simulation without going through `Execute` is not replayable; the game's `DemoWorld` grid is the one such initial world (the demo's depots and traffic are commands).
 
+### 5.8 Water, bridges and tunnels (M1)
+- **Water.** `Terrain.WaterLevel` is 0: ground below it is under water (`Terrain.IsWater`). `Generate(seed, water: true)` keeps the plains 2.5 m above the water and cuts lakes (a noise high) and rivers (a thin band around the middle of another noise field) into the lowlands only, up to 4 m deep, so water never carves through hills; roughly 6 to 27 percent of a map is water depending on the seed. There is one water level for the whole map, so rivers do not run downhill. `Terrain.Create(cells, cellSize, shape)` builds a hand-shaped map for tests.
+- **Rules.** A road must start and end on dry land (`Plan` refuses an end in water); nodes made by hand with `AddNode` are not checked.
+- **Structures.** `Plan` walks every stretch between two meetings every 4 m and marks it `Bridge` where the ground is under water or the road would sit more than `maxFillDepth` (6 m) above it, and `Tunnel` where the road would be more than `maxCutDepth` (8 m) below it. Each run is widened by `structureMargin` (8 m) each way (a bridge wins over a tunnel where they meet), and any run shorter than `MinRoadLength` is absorbed by its neighbour. A new meeting (a plain node) is added wherever the kind changes, with the height of the straight profile at that point, so a long road over one gorge is ground, bridge, ground. Each piece is a `Road` with `Road.Structure`; the lanes are ordinary lanes.
+- **Cost.** A structure costs `bridgeCostPerMetre` or `tunnelCostPerMetre` (times `avenueStructureFactor` for an avenue) instead of the road price and earthworks, and does not carve the ground. `RoadCost` carries `BridgeLength` and `TunnelLength`; the tool shows them.
+- **Limits.** No junction can be built on a bridge or in a tunnel, and a road cannot cross one (it would need a grade separation, not built); a junction can use the node at the end of one. A node with a bridge or tunnel cannot be moved. Upgrade, downgrade and re-signing keep the structure; upgrading a structure has no earthworks. Existing roads are never turned into structures.
+
 ### 5.7 Arcs, removal and upgrade (M1)
 - `RoadGeometry` is a straight line or a circular arc: start point, start heading, signed sweep (total turn, positive is an increasing heading) and arc length. `PointAt(s)` and `HeadingAt(s)` take distances along the centre line; `Slice` and `Reversed` give the parts and the other direction. Positions of vehicles on every lane of a road are distances along the road's centre line, so parallel lanes share a length; the lane's sideways offset is only used for drawing, junction paths and incident points.
 - `AddRoad(..., sweep)`; `BuildRoad(..., sweep)`. Limits: radius at least 25 m (`MinRadius`), total sweep at most 2.8 rad. Curve speed limit is `sqrt(3 * radius)` (about 8.7 m/s at 25 m, 17 m/s at 100 m), combined with the grade factor. Splitting an arc splits its sweep in proportion.
@@ -106,34 +113,35 @@ Player actions are commands (`SimCommand`: `BuildRoadCommand`, `RemoveRoadComman
 - `RoadNetwork.Version` increases on every change; the simulation re-syncs when it differs, so a change that adds no lanes (removal) is noticed too.
 
 ### 5.6 Terrain and elevation (M1)
-- `Terrain` is a heightmap centred on the origin: 512 x 512 cells of 8 m (4 km square), divided into 16 x 16 chunks of 32 cells. Carving a road records which chunks it touched (`TakeChangedChunks`) so a renderer rebuilds only those. `Terrain.Generate(seed)` sums five octaves of integer-hashed value noise and shapes it so there are plains between hills (up to about 110 m); `Terrain.Flat()` is level. Same seed, same map (`Hash()` in tests). `HeightAt` is bilinear.
+- `Terrain` is a heightmap centred on the origin (water: see 5.8): 512 x 512 cells of 8 m (4 km square), divided into 16 x 16 chunks of 32 cells. Carving a road records which chunks it touched (`TakeChangedChunks`) so a renderer rebuilds only those. `Terrain.Generate(seed)` sums five octaves of integer-hashed value noise and shapes it so there are plains between hills (up to about 110 m); `Terrain.Flat()` is level. Same seed, same map (`Hash()` in tests). `HeightAt` is bilinear.
 - `RoadNetwork(Terrain?)`: nodes have a height (terrain height when created on the ground, interpolated along the road when a junction splits it). A road's profile is the straight line between its node heights. `Lane.Grade` is rise over run in the direction of travel; the lane's `SpeedLimit` falls linearly from the posted value at 4 percent to half of it at 12 percent. Lane length is still the horizontal distance.
-- `Plan` refuses a piece steeper than `MaxGrade` (12 percent), so `CanBuildRoad` and `BuildRoad` check it.
+- `Plan` refuses a piece steeper than `MaxGrade` (12 percent), so `CanBuildRoad` and `BuildRoad` check it. A deep fill or cut does not refuse the road: it becomes a bridge or tunnel (5.8).
 - `EstimateCost` returns length, cut and fill volumes and money: the volume between ground and road surface sampled every 4 m, cross section `h * width + 1.5 * h^2`, plus a price per metre by road type. Prices are placeholders until the economy exists (M2).
 - `BuildRoad` then carves the terrain (`Terrain.CarveRoad`): the carriageway becomes level with the road, blending back to the old ground over a 6 m shoulder; the flat zone is never narrower than 1.42 cells so every sample read under the road is level. This bumps `Terrain.Version`.
 
 ## 6. Game layer (`game/`)
 
-- `SimHost.cs`: world creation (`NewDemoWorld`, `NewEmptyWorld`, `NewHillsWorld`), player actions as commands (`BuildCurve`, `RemoveRoad`, `UpgradeRoad`, `BuildDepot`, `SpawnTraffic`, `CrashSomeone` all go through `Sim.Execute`), `RayToGround` (picking against the terrain), `HeightAt`, `EstimateRoadCost`, terrain mesh (one `MeshInstance3D` per chunk; a new terrain builds all 256, a carved road rebuilds only the chunks it touched), roads and vehicles that follow elevation and grade, speed, stats, build commands (`BuildRoad`, `CanBuildRoad`, `SnapToNode`, `BuildDepot`), `SpawnTraffic`, `CrashSomeone` (picks a moving car deterministically from the tick), drawing.
+- `SimHost.cs`: world creation (`NewDemoWorld`, `NewEmptyWorld`, `NewHillsWorld`), player actions as commands (`BuildCurve`, `RemoveRoad`, `UpgradeRoad`, `BuildDepot`, `SpawnTraffic`, `CrashSomeone` all go through `Sim.Execute`), `RayToGround` (picking against the terrain), `HeightAt`, `EstimateRoadCost`, a translucent water plane at the water level, bridges (a deck slab and a pier every 25 m where the ground is low enough) and tunnels (a dark frame at each end and a faint strip over the ground; the road and its traffic are underground and not drawn through the hill), `HeightAt` returns the water surface over water so picking and the camera work on lakes, terrain mesh (one `MeshInstance3D` per chunk; a new terrain builds all 256, a carved road rebuilds only the chunks it touched), roads and vehicles that follow elevation and grade, speed, stats, build commands (`BuildRoad`, `CanBuildRoad`, `SnapToNode`, `BuildDepot`), `SpawnTraffic`, `CrashSomeone` (picks a moving car deterministically from the tick), drawing.
 - `build_tool.gd`: mouse to build commands. Road tools (upgrade, downgrade, remove, faster, slower) act on the road piece under the mouse and show their cost on hover; Move picks a junction with one click and drops it with the next, previewing the rebuilt roads and the price. Building and picking: picking on the terrain. While previewing it shows length, grade, cut, fill and cost. Snaps to nodes within 20 m, else to a road's centre line within 12 m (a junction forms there), else to 15 degree steps and 5 m lengths; green or red preview; roads chain from the last end point; Esc stops.
 - `hud.gd`: speed buttons (pause, 1x to 8x), tool buttons, action buttons, statistics.
 - `camera_rig.gd`: free orbit camera; the focus eases to the terrain height under it (`terrain_host`), so panning over hills keeps the view level with the ground.
 - `main.gd`: environment, wiring, and the command-line harness.
 
-Command line (after `--`): `--hills`, `--selftest-hills`, `--bench`, `--selftest-build`, `--selftest-crash`, `--shot=<file>`, `--shot-after=<s>`, `--distance`, `--pitch`, `--focus=<x>,<z>`.
+Command line (after `--`): `--hills`, `--selftest-hills` (also finds and builds the longest bridge and tunnel it can and aims the camera at the bridge), `--bench`, `--selftest-build`, `--selftest-crash`, `--shot=<file>`, `--shot-after=<s>`, `--distance`, `--pitch`, `--focus=<x>,<z>`.
 
 Demo world: 10 x 10 grid, 250 m spacing, an avenue on every third row, 4 simple depots, 1000 cars.
 
 ## 7. Tests
 
-135 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
+151 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
 
 | File | Covers |
 |---|---|
 | `RoadNetworkTests`, `BuildRoadTests`, `GrowingNetworkTests` | Lane graph, junction connections, conflict test, building, splitting, growing while running |
 | `SimulationTests`, `LaneChangeTests`, `OvertakingTests`, `JunctionTests` | Following, junction crossing, lane changes, overtaking and aborting, driver traits, zipper yielding |
 | `CurveTests` (`RoadGeometryTests`, `CurvedRoadTests`, `JunctionPathTests`, `CurvedTrafficTests`), `EditRoadTests` | Arc geometry, curve limits, junctions on arcs, path-based conflicts, traffic on a ring of arcs, removal, upgrade, picking |
-| `TerrainTests`, `TerrainRoadTests` | Seeded generation, interpolation, carving, grade, grade speed limit, grade refusal, cut and fill cost |
+| `TerrainTests`, `TerrainRoadTests` | Seeded generation, water, interpolation, carving, grade, grade speed limit, grade refusal, cut and fill cost |
+| `StructureTests` | Bridge over a gorge and a river, tunnel through a hill, both together, a narrow ditch, pricing, avenues, no junction on a structure, upgrade of a bridge, node moves, traffic across, replay, a generated map with water |
 | `IncidentTests` | Wrecks, blocking, crews, response time, busy crews, head-on, avoiding blocked roads |
 | `TrafficTests`, `ScenarioTests` | Seeded determinism, sanity bounds, step-time budget, no lock-up on a dense map, long runs with overtaking, accidents and clearing |
 | `DeterminismTests` | Ten-minute scenario built entirely by commands (build, upgrade, remove, depots, traffic, crashes, crews, overtaking): two runs agree, replaying the command log reproduces the run, a pinned golden hash; a second pinned hash for an avenue scenario that exercises lane changes |
@@ -145,7 +153,7 @@ The suite is the main safeguard for tuning: the traffic model is sensitive (a sm
 
 ## 8. Tuning values
 
-`data/tuning.json` is the only place the behaviour numbers and prices live. It is embedded in the simulation assembly (so the sim stays free of file paths and Godot) and read by `Tuning.Load()` into typed records; the network owns the `Tuning` (`RoadNetwork(terrain, tuning)`, default is the shipped file) and the simulation reads it from there. Every key is required and unknown keys are rejected, so a typo fails at load. Sections: `driving` (IDM, braking, junction yielding), `traffic` (spawning and driver speed spread), `manoeuvres` (decision interval, lateral rate, stall), `laneChange`, `overtake` (every threshold and driver-trait formula), `crews` (timings, crews per depot level), `roads` (speed limit and price per type, earthworks, demolition, upgrade refund, downgrade and re-signing prices). A change to a number is a behaviour change: the golden hash in `DeterminismTests` will move and the traffic tests must still pass (see section 7).
+`data/tuning.json` is the only place the behaviour numbers and prices live. It is embedded in the simulation assembly (so the sim stays free of file paths and Godot) and read by `Tuning.Load()` into typed records; the network owns the `Tuning` (`RoadNetwork(terrain, tuning)`, default is the shipped file) and the simulation reads it from there. Every key is required and unknown keys are rejected, so a typo fails at load. Sections: `driving` (IDM, braking, junction yielding), `traffic` (spawning and driver speed spread), `manoeuvres` (decision interval, lateral rate, stall), `laneChange`, `overtake` (every threshold and driver-trait formula), `crews` (timings, crews per depot level), `roads` (speed limit and price per type, earthworks, demolition, upgrade refund, downgrade and re-signing prices, bridge and tunnel thresholds and prices). A change to a number is a behaviour change: the golden hash in `DeterminismTests` will move and the traffic tests must still pass (see section 7).
 
 Still in code, on purpose: step 0.05 s (ADR 0003); vehicle 4.5 x 1.9 m and lane width 3.5 m (vehicle sizes move to the vehicle roster at M2); the lateral thresholds `HomeLaneLat` 0.5 and `OncomingSightLat` 0.3 (they define when a vehicle counts as being in the other lane); road geometry rules in `RoadNetwork` (minimum length, maximum grade, minimum radius, maximum sweep, curve comfort). Vehicle roster, eras and economy data come later as their own files.
 
@@ -189,12 +197,12 @@ Also done: every per-lane lookup the hot loops use (length, limit, end node, roa
 Open: none.
 
 **M1: terrain and road building with cut and fill**
-Done: seeded heightmap, lane elevation and grade with speed limits, cut and fill cost and terrain carving, build tool shows the cost, picking and drawing on terrain.
+Done (water, bridges and tunnels: 5.8): seeded heightmap, lane elevation and grade with speed limits, cut and fill cost and terrain carving, build tool shows the cost, picking and drawing on terrain.
 Also done: circular arcs with curve speed limits, junction conflicts from real path geometry, road removal and upgrade.
 Cleanup done: downgrade, speed-limit change and moving a node (commands, costs, tests, tools `Downgrade`, `Faster`, `Slower`, `Move`); a depot closes when its node loses every road; `MovesConflict` flattened into per-node tables; vehicles are drawn along the junction path; camera focus follows the ground; terrain drawn in chunks.
 Open:
-- Bridges and tunnels do not exist: a road crossing a valley is a long fill.
-- Rivers and water (needed before towns in M3).
+- Grade-separated crossings: a road cannot cross a bridge or tunnel, or join it in the middle.
+- One water level for the whole map (no rivers that run downhill, no sea with tides); bridges do not check boats because there are none.
 - Vehicles still cross the node in one step; following the junction path in the simulation (a position inside the junction) would let `MovesConflict` use real closing speeds.
 - Moving a node keeps no curves and loses the vehicles on its roads; a node cannot be dragged across another road.
 

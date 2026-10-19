@@ -8,6 +8,17 @@ public enum RoadType
     Avenue2x2,
 }
 
+/// <summary>How a road piece is carried over or through the ground.</summary>
+public enum RoadStructure
+{
+    /// <summary>On the ground, which is cut or filled to the road's level.</summary>
+    None,
+    /// <summary>Raised on a deck over a valley or water; the ground is left alone.</summary>
+    Bridge,
+    /// <summary>Through a hill; the ground is left alone.</summary>
+    Tunnel,
+}
+
 public readonly record struct LaneId(int Value)
 {
     public static readonly LaneId None = new(-1);
@@ -70,8 +81,10 @@ public sealed class Lane
 
 public sealed class Road
 {
-    internal Road(RoadId id, int from, int to, RoadType type, float speedLimit, RoadGeometry geometry, LaneId[] forward, LaneId[] backward)
+    internal Road(RoadId id, int from, int to, RoadType type, float speedLimit, RoadGeometry geometry, LaneId[] forward, LaneId[] backward,
+        RoadStructure structure = RoadStructure.None)
     {
+        Structure = structure;
         SpeedLimit = speedLimit;
         Id = id;
         From = from;
@@ -86,6 +99,7 @@ public sealed class Road
     public int From { get; }
     public int To { get; }
     public RoadType Type { get; }
+    public RoadStructure Structure { get; }
     public float SpeedLimit { get; }
     /// <summary>The centre line from <see cref="From"/> to <see cref="To"/>.</summary>
     public RoadGeometry Geometry { get; }
@@ -99,7 +113,7 @@ public sealed class Road
 }
 
 /// <summary>What building a road would take: its length and how much earth it moves.</summary>
-public readonly record struct RoadCost(float Length, float CutVolume, float FillVolume, float Money);
+public readonly record struct RoadCost(float Length, float CutVolume, float FillVolume, float Money, float BridgeLength = 0f, float TunnelLength = 0f);
 
 /// <summary>A point on a road's centre line.</summary>
 public readonly record struct RoadPoint(RoadId Road, float Along, float X, float Y, float Z);
@@ -374,13 +388,15 @@ public sealed class RoadNetwork
     // ---- Planning and building ------------------------------------------------------------------------------
 
     /// <summary>One place along a planned road where it meets the network: an existing node, or a point inside a road to split.</summary>
-    readonly record struct Meeting(float Along, int Node, RoadId Road, float RoadDistance, float X, float Z, float Y);
+    /// <param name="After">What the planned road is from here to the next meeting.</param>
+    readonly record struct Meeting(float Along, int Node, RoadId Road, float RoadDistance, float X, float Z, float Y, RoadStructure After = RoadStructure.None);
 
     /// <summary>
     /// Builds a road, straight or bending by <paramref name="sweep"/> radians, joining the network wherever it touches
     /// it: at existing nodes, and by splitting any road it ends on or crosses so that a junction forms there. Returns
     /// the new road pieces, or none if it cannot be built (too short, too steep, too tight a curve, a duplicate, or
-    /// crossing within <see cref="MinRoadLength"/> of another junction).
+    /// crossing within <see cref="MinRoadLength"/> of another junction, an end in water, or crossing an existing bridge or tunnel).
+    /// Stretches that would need a deep fill or cut, or that cross water, are built as bridges or tunnels (see <see cref="RoadStructure"/>).
     /// </summary>
     public IReadOnlyList<RoadId> BuildRoad(float x0, float z0, float x1, float z1, RoadType type, float speedLimit, float sweep = 0f)
     {
@@ -399,8 +415,8 @@ public sealed class RoadNetwork
         for (int i = 0; i + 1 < nodes.Count; i++)
         {
             float pieceSweep = sweep * (plan[i + 1].Along - plan[i].Along) / geometry.Length;
-            built.Add(AddRoad(nodes[i], nodes[i + 1], type, speedLimit, pieceSweep));
-            Terrain?.CarvePath(Profile(geometry, plan[i], plan[i + 1]), HalfWidth(type), Shoulder);
+            built.Add(AddRoad(nodes[i], nodes[i + 1], type, speedLimit, pieceSweep, plan[i].After));
+            if (plan[i].After == RoadStructure.None) Terrain?.CarvePath(Profile(geometry, plan[i], plan[i + 1]), HalfWidth(type), Shoulder);
         }
         return built;
     }
@@ -442,35 +458,156 @@ public sealed class RoadNetwork
     RoadCost Price(List<Meeting> plan, RoadGeometry geometry, RoadType type)
     {
         float width = HalfWidth(type) * 2f;
-        float cut = 0f, fill = 0f, length = 0f;
+        float cut = 0f, fill = 0f, length = 0f, bridge = 0f, tunnel = 0f, money = 0f;
+        var prices = Tuning.Roads;
         for (int i = 0; i + 1 < plan.Count; i++)
         {
             var a = plan[i];
             var b = plan[i + 1];
             float run = b.Along - a.Along;
             length += run;
+            if (a.After != RoadStructure.None)
+            {
+                // A structure replaces the road and its earthworks with one price.
+                if (a.After == RoadStructure.Bridge) bridge += run; else tunnel += run;
+                money += run * prices.StructureCostPerMetre(a.After, type);
+                continue;
+            }
+            money += run * prices.Of(type).CostPerMetre;
             if (Terrain == null) continue;
             int steps = Math.Max(1, (int)MathF.Ceiling(run / 4f));
             float ds = run / steps;
+            float cutHere = 0f, fillHere = 0f;
             for (int k = 0; k < steps; k++)
             {
                 float t = (k + 0.5f) / steps;
                 var (x, z) = geometry.PointAt(a.Along + run * t);
                 float height = Terrain.HeightAt(x, z) - (a.Y + (b.Y - a.Y) * t);
                 float h = MathF.Abs(height);
-                float section = h * width + Tuning.Roads.EarthworkSlope * h * h;
-                if (height > 0f) cut += section * ds; else fill += section * ds;
+                float section = h * width + prices.EarthworkSlope * h * h;
+                if (height > 0f) cutHere += section * ds; else fillHere += section * ds;
             }
+            cut += cutHere; fill += fillHere;
+            money += cutHere * prices.CutCostPerCubicMetre + fillHere * prices.FillCostPerCubicMetre;
         }
-        var prices = Tuning.Roads;
-        float perMetre = prices.Of(type).CostPerMetre;
-        return new RoadCost(length, cut, fill, length * perMetre + cut * prices.CutCostPerCubicMetre + fill * prices.FillCostPerCubicMetre);
+        return new RoadCost(length, cut, fill, money, bridge, tunnel);
     }
 
     public bool CanBuildRoad(float x0, float z0, float x1, float z1, float sweep = 0f) => Plan(x0, z0, x1, z1, sweep) != null;
 
-    /// <summary>The meetings along the planned road, start to end, or null when it cannot be built.</summary>
+    /// <summary>
+    /// The meetings along the planned road, start to end, or null when it cannot be built. Besides the places where it
+    /// meets the network there is one wherever it changes between ground, bridge and tunnel.
+    /// </summary>
     List<Meeting>? Plan(float x0, float z0, float x1, float z1, float sweep)
+    {
+        var meetings = PlanJunctions(x0, z0, x1, z1, sweep);
+        if (meetings == null || Terrain == null) return meetings;
+        // Both ends stand on dry land.
+        if (meetings[0].Node < 0 && meetings[0].Road.Value < 0 && Terrain.IsWater(meetings[0].X, meetings[0].Z)) return null;
+        var last = meetings[^1];
+        if (last.Node < 0 && last.Road.Value < 0 && Terrain.IsWater(last.X, last.Z)) return null;
+        return InsertStructures(meetings, RoadGeometry.FromChord(x0, z0, x1, z1, sweep));
+    }
+
+    const float StructureSampleSpacing = 4f;
+
+    /// <summary>
+    /// Walks each stretch between two meetings and marks where the road would need a bridge (over water, or a fill deeper
+    /// than <c>MaxFillDepth</c>) or a tunnel (a cut deeper than <c>MaxCutDepth</c>), widened by the margin and cleaned up so
+    /// that no piece is shorter than <see cref="MinRoadLength"/>. New meetings are added where the kind of road changes.
+    /// </summary>
+    List<Meeting> InsertStructures(List<Meeting> meetings, RoadGeometry geometry)
+    {
+        var result = new List<Meeting>();
+        for (int s = 0; s + 1 < meetings.Count; s++)
+        {
+            var a = meetings[s];
+            var b = meetings[s + 1];
+            float run = b.Along - a.Along;
+            int steps = Math.Max(1, (int)MathF.Ceiling(run / StructureSampleSpacing));
+            var kind = new RoadStructure[steps];
+            bool any = false;
+            for (int k = 0; k < steps; k++)
+            {
+                float t = (k + 0.5f) / steps;
+                var (x, z) = geometry.PointAt(a.Along + run * t);
+                kind[k] = StructureNeeded(x, z, a.Y + (b.Y - a.Y) * t);
+                any |= kind[k] != RoadStructure.None;
+            }
+            if (!any) { result.Add(a); continue; }
+
+            float cell = run / steps;
+            kind = Widen(kind, (int)MathF.Ceiling(Tuning.Roads.StructureMargin / cell));
+            kind = Cleanup(kind, cell);
+            // One meeting at the start of every run of the same kind; the first run starts at the existing meeting.
+            for (int k = 0; k < steps; k++)
+            {
+                if (k > 0 && kind[k] == kind[k - 1]) continue;
+                if (k == 0) { result.Add(a with { After = kind[0] }); continue; }
+                float along = a.Along + cell * k;
+                var (x, z) = geometry.PointAt(along);
+                result.Add(new Meeting(along, -1, new RoadId(-1), 0f, x, z, a.Y + (b.Y - a.Y) * (k / (float)steps), kind[k]));
+            }
+        }
+        result.Add(meetings[^1]);
+        return result;
+    }
+
+    RoadStructure StructureNeeded(float x, float z, float roadHeight)
+    {
+        if (Terrain!.IsWater(x, z)) return RoadStructure.Bridge;
+        float ground = Terrain.HeightAt(x, z);
+        if (roadHeight - ground > Tuning.Roads.MaxFillDepth) return RoadStructure.Bridge;
+        if (ground - roadHeight > Tuning.Roads.MaxCutDepth) return RoadStructure.Tunnel;
+        return RoadStructure.None;
+    }
+
+    /// <summary>Extends every structure by <paramref name="margin"/> samples each way; a bridge wins over a tunnel where they meet.</summary>
+    static RoadStructure[] Widen(RoadStructure[] kind, int margin)
+    {
+        var widened = (RoadStructure[])kind.Clone();
+        for (int k = 0; k < kind.Length; k++)
+        {
+            if (kind[k] == RoadStructure.None) continue;
+            for (int d = -margin; d <= margin; d++)
+            {
+                int q = k + d;
+                if (q < 0 || q >= kind.Length) continue;
+                if (widened[q] == RoadStructure.None || (kind[k] == RoadStructure.Bridge && widened[q] == RoadStructure.Tunnel)) widened[q] = kind[k];
+            }
+        }
+        return widened;
+    }
+
+    /// <summary>Absorbs runs shorter than a road piece can be into the run before them (or after, at the start).</summary>
+    static RoadStructure[] Cleanup(RoadStructure[] kind, float cell)
+    {
+        int minSamples = (int)MathF.Ceiling(MinRoadLength / cell);
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            for (int start = 0; start < kind.Length;)
+            {
+                int end = start;
+                while (end + 1 < kind.Length && kind[end + 1] == kind[start]) end++;
+                bool whole = start == 0 && end == kind.Length - 1;
+                if (!whole && end - start + 1 < minSamples)
+                {
+                    var into = start > 0 ? kind[start - 1] : kind[end + 1];
+                    for (int q = start; q <= end; q++) kind[q] = into;
+                    changed = true;
+                    break;
+                }
+                start = end + 1;
+            }
+        }
+        return kind;
+    }
+
+    /// <summary>The meetings with the network along the planned road, start to end, or null when it cannot be built.</summary>
+    List<Meeting>? PlanJunctions(float x0, float z0, float x1, float z1, float sweep)
     {
         const float onNode = 0.5f;
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
@@ -554,6 +691,7 @@ public sealed class RoadNetwork
             return true;
         }
         if (roadAlong < MinRoadLength || roadAlong > roadLength - MinRoadLength) return false;
+        if (road.Structure != RoadStructure.None) return false; // no junction on a bridge or in a tunnel, and no crossing under or over one
         meetings.Add(new Meeting(along, -1, road.Id, roadAlong, x, z, RoadHeightAt(road.Id, roadAlong)));
         return true;
     }
@@ -639,6 +777,14 @@ public sealed class RoadNetwork
         if (!CanUpgrade(id)) return null;
         var road = _roads[id.Value];
         float width = HalfWidth(RoadType.Avenue2x2) * 2f;
+        var prices = Tuning.Roads;
+        if (road.Structure != RoadStructure.None)
+        {
+            // On a bridge or in a tunnel there are no earthworks: the deck or bore is simply wider.
+            float structurePerMetre = prices.StructureCostPerMetre(road.Structure, RoadType.Avenue2x2) - prices.UpgradeRefundShare * prices.StructureCostPerMetre(road.Structure, RoadType.TwoLane);
+            return new RoadCost(road.Length, 0f, 0f, road.Length * structurePerMetre,
+                road.Structure == RoadStructure.Bridge ? road.Length : 0f, road.Structure == RoadStructure.Tunnel ? road.Length : 0f);
+        }
         float cut = 0f, fill = 0f;
         if (Terrain != null)
         {
@@ -658,7 +804,6 @@ public sealed class RoadNetwork
                 if (height > 0f) cut += section * ds; else fill += section * ds;
             }
         }
-        var prices = Tuning.Roads;
         float perMetre = prices.Avenue.CostPerMetre - prices.UpgradeRefundShare * prices.TwoLane.CostPerMetre;
         return new RoadCost(road.Length, cut, fill, road.Length * perMetre + cut * prices.CutCostPerCubicMetre + fill * prices.FillCostPerCubicMetre);
     }
@@ -673,7 +818,7 @@ public sealed class RoadNetwork
         var old = _roads[id.Value];
         var upgraded = Reshape(old, RoadType.Avenue2x2, speedLimit);
 
-        if (Terrain != null)
+        if (Terrain != null && old.Structure == RoadStructure.None)
         {
             var path = new List<(float, float, float)>();
             int steps = Math.Max(1, (int)MathF.Ceiling(old.Length / 4f));
@@ -747,7 +892,7 @@ public sealed class RoadNetwork
     List<MovedRoad>? PlanMove(int node, float x, float z)
     {
         var roads = _nodeRoads[node].Select(id => _roads[id.Value]).ToList();
-        if (roads.Count == 0) return null;
+        if (roads.Count == 0 || roads.Exists(r => r.Structure != RoadStructure.None)) return null; // a bridge or tunnel stays where it is
         var (nx, nz) = _nodes[node];
         if ((nx - x) * (nx - x) + (nz - z) * (nz - z) < 1f) return null;
         int near = FindNodeNear(x, z, 0.5f);
@@ -763,7 +908,7 @@ public sealed class RoadNetwork
                 var (fx, fz) = _nodes[startsHere ? road.To : road.From];
                 var (x0, z0, x1, z1) = startsHere ? (x, z, fx, fz) : (fx, fz, x, z);
                 var plan = Plan(x0, z0, x1, z1, 0f);
-                if (plan == null || plan.Count != 2) return null; // refused, or it would cross another road
+                if (plan == null || plan.Count != 2 || plan[0].After != RoadStructure.None) return null; // refused, would cross another road, or would need a bridge or tunnel
                 moved.Add(new MovedRoad(road, road.From, road.To, x0, z0, x1, z1, RoadGeometry.FromChord(x0, z0, x1, z1, 0f), plan));
             }
         }
@@ -816,7 +961,7 @@ public sealed class RoadNetwork
     Road Reshape(Road old, RoadType type, float speedLimit)
     {
         Retire(old);
-        var replacement = _roads[AddRoad(old.From, old.To, type, speedLimit, old.Geometry.Sweep).Value];
+        var replacement = _roads[AddRoad(old.From, old.To, type, speedLimit, old.Geometry.Sweep, old.Structure).Value];
         HandOver(old.ForwardLanes, replacement.ForwardLanes);
         HandOver(old.BackwardLanes, replacement.BackwardLanes);
         return replacement;
@@ -839,6 +984,7 @@ public sealed class RoadNetwork
     {
         var road = _roads[id.Value];
         if (road.Retired) throw new InvalidOperationException("Road is already replaced.");
+        if (road.Structure != RoadStructure.None) throw new InvalidOperationException("A bridge or tunnel cannot take a junction.");
         float length = road.Length;
         if (distance < MinRoadLength || distance > length - MinRoadLength) throw new ArgumentOutOfRangeException(nameof(distance));
 
@@ -873,7 +1019,7 @@ public sealed class RoadNetwork
         lane.SplitDistance = firstLength;
     }
 
-    public RoadId AddRoad(int from, int to, RoadType type, float speedLimit, float sweep = 0f)
+    public RoadId AddRoad(int from, int to, RoadType type, float speedLimit, float sweep = 0f, RoadStructure structure = RoadStructure.None)
     {
         if (from == to) throw new ArgumentException("A road needs two distinct nodes.");
         var (x0, z0) = _nodes[from];
@@ -895,7 +1041,7 @@ public sealed class RoadNetwork
             _lanes[backward[0].Value].Oncoming = forward[0];
         }
 
-        _roads.Add(new Road(id, from, to, type, speedLimit, geometry, forward, backward));
+        _roads.Add(new Road(id, from, to, type, speedLimit, geometry, forward, backward, structure));
         _nodeRoads[from].Add(id);
         _nodeRoads[to].Add(id);
         RebuildJunction(from);

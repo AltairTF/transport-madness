@@ -17,6 +17,9 @@ public sealed class Terrain
     /// <summary>Changes whenever any height changes.</summary>
     public int Version { get; private set; }
 
+    /// <summary>Height of the water surface: ground below it is under water (lakes, rivers, sea).</summary>
+    public const float WaterLevel = 0f;
+
     /// <summary>Side of a chunk, in cells: a renderer can rebuild the meshes of just the chunks that changed.</summary>
     public const int ChunkCells = 32;
     /// <summary>Chunks per side of the map.</summary>
@@ -37,8 +40,25 @@ public sealed class Terrain
     /// <summary>A level map at height zero.</summary>
     public static Terrain Flat(int cells = 512, float cellSize = 8f) => new(cells, cellSize);
 
-    /// <summary>Rolling hills with flat plains between them, up to about <paramref name="amplitude"/> metres high.</summary>
-    public static Terrain Generate(ulong seed, int cells = 512, float cellSize = 8f, float amplitude = 70f)
+    /// <summary>A map whose height at each sample is <paramref name="shape"/>(x, z), for scenarios and tests.</summary>
+    public static Terrain Create(int cells, float cellSize, Func<float, float, float> shape)
+    {
+        var terrain = new Terrain(cells, cellSize);
+        for (int j = 0; j <= cells; j++)
+            for (int i = 0; i <= cells; i++)
+                terrain._heights[j * terrain.Samples + i] = shape((i - cells * 0.5f) * cellSize, (j - cells * 0.5f) * cellSize);
+        return terrain;
+    }
+
+    /// <summary>Whether the ground at a point lies under water.</summary>
+    public bool IsWater(float x, float z) => HeightAt(x, z) < WaterLevel;
+
+    /// <summary>
+    /// Rolling hills with flat plains between them, up to about <paramref name="amplitude"/> metres high. With
+    /// <paramref name="water"/>, lakes and rivers are cut into the lowlands: ground there dips below
+    /// <see cref="WaterLevel"/>; the plains themselves sit a little above it.
+    /// </summary>
+    public static Terrain Generate(ulong seed, int cells = 512, float cellSize = 8f, float amplitude = 70f, bool water = true)
     {
         var terrain = new Terrain(cells, cellSize);
         const float baseWavelength = 1400f;
@@ -57,9 +77,32 @@ public sealed class Terrain
                 n /= total; // 0..1, centred near 0.5
                 // Push the middle band down to plains and keep the tops hilly.
                 float shaped = MathF.Max(0f, n - 0.38f) / 0.62f;
-                terrain._heights[j * terrain.Samples + i] = amplitude * shaped * shaped * 1.6f;
+                float land = amplitude * shaped * shaped * 1.6f;
+                if (water)
+                {
+                    land += PlainsHeight;
+                    // Rivers follow the middle of a noise band, lakes sit in its highs; neither cuts through hills.
+                    float river = MathF.Abs(ValueNoise(seed, 8, x / RiverWavelength, z / RiverWavelength) - 0.5f) * 2f;
+                    float riverMask = 1f - Smooth(0.02f, 0.06f, river);
+                    float lakeMask = Smooth(0.74f, 0.84f, ValueNoise(seed, 9, x / LakeWavelength, z / LakeWavelength));
+                    float lowland = 1f - Smooth(PlainsHeight + 2f, PlainsHeight + 10f, land);
+                    float mask = MathF.Max(riverMask, lakeMask) * lowland;
+                    land += (WaterLevel - WaterDepth - land) * mask;
+                }
+                terrain._heights[j * terrain.Samples + i] = land;
             }
         return terrain;
+    }
+
+    const float PlainsHeight = 2.5f;   // land starts this far above the water
+    const float WaterDepth = 4f;       // how far the middle of a lake or river lies below the surface
+    const float RiverWavelength = 1100f;
+    const float LakeWavelength = 1700f;
+
+    static float Smooth(float edge0, float edge1, float x)
+    {
+        float t = Math.Clamp((x - edge0) / (edge1 - edge0), 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 
     public float GetSample(int i, int j) => _heights[Clamp(j) * Samples + Clamp(i)];

@@ -276,10 +276,15 @@ func _update_preview(screen: Vector2) -> void:
 		_preview.transform = Transform3D(Basis(along, across.cross(along), across), (_start + target) * 0.5 + Vector3(0, 0.3, 0))
 
 	if valid:
-		message.emit("%d m   grade %.1f%%   cut %d m3   fill %d m3   cost %s" % [
-			cost["length"], 100.0 * offset.y / maxf(cost["length"], 0.1), cost["cut"], cost["fill"], _money(cost["money"])])
+		var text := "%d m   grade %.1f%%   cut %d m3   fill %d m3   cost %s" % [
+			cost["length"], 100.0 * offset.y / maxf(cost["length"], 0.1), cost["cut"], cost["fill"], _money(cost["money"])]
+		if cost["bridge"] > 0.0:
+			text += "   bridge %d m" % cost["bridge"]
+		if cost["tunnel"] > 0.0:
+			text += "   tunnel %d m" % cost["tunnel"]
+		message.emit(text)
 	else:
-		message.emit("Can't build there: too short, too steep (max 12%), curve too tight or too close to a junction")
+		message.emit("Can't build there: too short, too steep (max 12%), curve too tight, in water, or too close to a junction or a bridge")
 
 
 ## Move tool: the first click picks up the junction under the mouse, the second drops it.

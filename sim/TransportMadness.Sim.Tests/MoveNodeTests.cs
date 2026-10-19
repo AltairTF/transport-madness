@@ -134,7 +134,7 @@ public class MoveNodeTests
         int accepted = 0;
         for (float z = -300f; z <= 300f; z += 50f)
         {
-            var terrain = Terrain.Generate(5);
+            var terrain = Terrain.Generate(5, water: false);
             var net = new RoadNetwork(terrain);
             int a = net.AddNode(-400, 0), b = net.AddNode(0, 0), c = net.AddNode(400, 0);
             net.AddRoad(a, b, RoadType.TwoLane, 14f);
@@ -235,7 +235,7 @@ public class TerrainChunkTests
     [Fact]
     public void CarvingARoad_MarksOnlyTheChunksNearIt_AndTakingThemClearsTheList()
     {
-        var terrain = Terrain.Generate(3);
+        var terrain = Terrain.Generate(3, water: false);
         var net = new RoadNetwork(terrain);
         Assert.Empty(terrain.TakeChangedChunks());
 

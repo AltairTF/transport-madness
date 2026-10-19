@@ -85,3 +85,6 @@ A Player action applied to the simulation between steps (build, remove, upgrade,
 - A **Town** needs **Cargo** deliveries to grow, and its **Passengers** need to reach work and leisure.
 - A **Contract** names an **Industry** or **Town** as source and destination.
 - An **Era** gates which vehicles and road types the **Company** may buy.
+
+**Bridge / Tunnel**:
+A stretch of road carried over water or a deep valley (Bridge), or through a hill (Tunnel), instead of being cut or filled into the ground. Chosen automatically when a road is planned, priced per metre, and leaves the ground as it was.

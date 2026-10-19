@@ -104,6 +104,14 @@
     "demolitionCostPerMetre": 10.0,
     "upgradeRefundShare": 0.5,      // of the two-lane price, for the part reused when widening to an avenue
     "downgradeCostPerMetre": 15.0,  // narrowing an avenue to a two-lane road
-    "speedLimitChangeCostPerMetre": 1.0 // re-signing a road
+    "speedLimitChangeCostPerMetre": 1.0, // re-signing a road
+    // Bridges and tunnels: a road that would need a fill deeper than maxFillDepth, a cut deeper than maxCutDepth, or
+    // that crosses water, is built as a structure instead (no earthworks).
+    "maxFillDepth": 6.0,            // metres of embankment before a bridge takes over
+    "maxCutDepth": 8.0,             // metres of cutting before a tunnel takes over
+    "structureMargin": 8.0,         // a structure starts this far before the ground that calls for it, and ends this far after
+    "bridgeCostPerMetre": 320.0,    // two-lane; replaces the road and earthwork price
+    "tunnelCostPerMetre": 520.0,
+    "avenueStructureFactor": 1.6    // an avenue on a bridge or in a tunnel costs this much more
   }
 }

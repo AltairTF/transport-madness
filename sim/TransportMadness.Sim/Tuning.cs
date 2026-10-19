@@ -166,6 +166,16 @@ public sealed record RoadTuning
     public required float UpgradeRefundShare { get; init; }
     public required float DowngradeCostPerMetre { get; init; }
     public required float SpeedLimitChangeCostPerMetre { get; init; }
+    public required float MaxFillDepth { get; init; }
+    public required float MaxCutDepth { get; init; }
+    public required float StructureMargin { get; init; }
+    public required float BridgeCostPerMetre { get; init; }
+    public required float TunnelCostPerMetre { get; init; }
+    public required float AvenueStructureFactor { get; init; }
+
+    /// <summary>Price per metre of a bridge or tunnel of the given road type.</summary>
+    public float StructureCostPerMetre(RoadStructure structure, RoadType type) =>
+        (structure == RoadStructure.Tunnel ? TunnelCostPerMetre : BridgeCostPerMetre) * (type == RoadType.Avenue2x2 ? AvenueStructureFactor : 1f);
 
     public RoadTypeTuning Of(RoadType type) => type == RoadType.Avenue2x2 ? Avenue : TwoLane;
 }
