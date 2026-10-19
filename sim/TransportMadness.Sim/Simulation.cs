@@ -61,6 +61,7 @@ public sealed partial class Simulation
     float[] _attention = new float[64];
     int[] _cooldown = new int[64]; // ticks before the next lane change or overtake
     float[] _stuck = new float[64]; // seconds held up by a slower leader
+    float[] _stall = new float[64]; // seconds an overtaker has stood still out in the oncoming lane
     float[] _lat = new float[64]; // 0 in own lane .. 1 fully in the oncoming lane
     byte[] _phase = new byte[64];
     int[] _target = new int[64]; // vehicle being overtaken, or -1
@@ -149,6 +150,8 @@ public sealed partial class Simulation
             MixF(_aggression[i]);
             MixF(_attention[i]);
             MixF(_stuck[i]);
+            MixF(_stall[i]);
+            MixF(_accel[i]);
             MixF(_lat[i]);
             Mix((ulong)_cooldown[i]);
             Mix((ulong)_phase[i]);
@@ -184,6 +187,7 @@ public sealed partial class Simulation
         _accel[id] = 0f;
         _cooldown[id] = 0;
         _stuck[id] = 0f;
+        _stall[id] = 0f;
         _lat[id] = 0f;
         _phase[id] = 0;
         _target[id] = -1;
@@ -447,6 +451,7 @@ public sealed partial class Simulation
         Array.Resize(ref _attention, n);
         Array.Resize(ref _cooldown, n);
         Array.Resize(ref _stuck, n);
+        Array.Resize(ref _stall, n);
         Array.Resize(ref _lat, n);
         Array.Resize(ref _phase, n);
         Array.Resize(ref _target, n);

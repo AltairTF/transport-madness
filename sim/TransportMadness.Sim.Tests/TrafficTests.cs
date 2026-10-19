@@ -107,4 +107,25 @@ public class TrafficTests
         Assert.True(total / sim.VehicleCount > 3f, $"mean speed {total / sim.VehicleCount:F2} m/s");
         Assert.True(crawling < sim.VehicleCount / 4, $"{crawling} of {sim.VehicleCount} stopped");
     }
+
+    [Fact]
+    public void DenseWorldWithAvenues_KeepsFlowingForTenMinutes_WithoutJunctionPileUps()
+    {
+        // 1000 cars on a 10x10 grid with avenues, the size the game starts with. A lane change right after a junction
+        // used to cut in front of traffic still arriving from the feeding lanes and the wrecks jammed the whole map.
+        var sim = new Simulation(Grid(10, 250f), seed: 1);
+        sim.SeedTraffic(1000);
+        for (int i = 0; i < 20 * 60 * 10; i++) sim.Step();
+
+        int stopped = 0, cars = 0;
+        for (int i = 0; i < sim.VehicleCount; i++)
+        {
+            var v = sim.GetVehicle(i);
+            if (v.Kind != VehicleKind.Car) continue;
+            cars++;
+            if (v.Speed < 0.2f) stopped++;
+        }
+        Assert.True(stopped < cars / 10, $"{stopped} of {cars} stopped");
+        Assert.True(sim.Incidents.Count <= 3, $"{sim.Incidents.Count} incidents");
+    }
 }

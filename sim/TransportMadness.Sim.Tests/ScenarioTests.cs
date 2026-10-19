@@ -26,11 +26,12 @@ public class ScenarioTests
     {
         var net = TwoLaneGrid();
         var sim = new Simulation(net, seed: 3);
-        sim.AddDepot(net.NodeCount / 2, DepotLevel.Workshop);
-        sim.SeedTraffic(300);
+        sim.AddDepot(net.NodeCount / 4, DepotLevel.Workshop);
+        sim.AddDepot(net.NodeCount * 3 / 4, DepotLevel.Simple);
+        sim.SeedTraffic(600);
 
         int overtakes = 0;
-        var wasOut = new bool[1024];
+        var wasOut = new bool[4096];
         for (int step = 0; step < 20 * 60 * 25; step++)
         {
             sim.Step();
@@ -42,7 +43,7 @@ public class ScenarioTests
             }
         }
 
-        Assert.True(overtakes >= 20, $"{overtakes} overtakes");
+        Assert.True(overtakes >= 30, $"{overtakes} overtakes");
         Assert.NotEmpty(sim.Incidents);
         Assert.Contains(sim.Incidents, i => i.Kind is IncidentKind.HeadOn or IncidentKind.Sideswipe);
         Assert.Contains(sim.Incidents, i => i.State == IncidentState.Cleared);

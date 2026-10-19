@@ -10,6 +10,8 @@ public sealed partial class Simulation
     const float OncomingSightLat = 0.3f; // from here on a vehicle is a hazard for oncoming traffic
     const float LateralRate = 0.8f; // lateral fraction per second: a lane change takes 1.25 s
     const float MinEndMargin = 30f;
+    const float StallLimit = 4f; // seconds standing still beside the target before giving up and cutting back in
+    const float MinOvertakeStart = 15f; // pulling out needs the vehicle itself clear of the junction it just left
     const float EndAbortMargin = 30f; // an overtaker this close to a junction gives up
     const float StandingObstacle = 15f; // oncoming vehicle this close: no room to carry on whatever its speed
 
@@ -30,7 +32,8 @@ public sealed partial class Simulation
         int lane = _lane[i];
         var info = _net.GetLane(new LaneId(lane));
         if (info.Left.IsNone && info.Right.IsNone) return false;
-        if (_cooldown[i] > 0 || _laneLength[lane] - _pos[i] < MinEndMargin) return false;
+        // Not near a junction: traffic still arriving from the feeding lanes would not be seen from here.
+        if (_cooldown[i] > 0 || _pos[i] < MinEndMargin || _laneLength[lane] - _pos[i] < MinEndMargin) return false;
 
         float v = _speed[i];
         float v0 = FreeSpeed(i);
@@ -96,7 +99,7 @@ public sealed partial class Simulation
     {
         int lane = _lane[i];
         var oncoming = _net.GetLane(new LaneId(lane)).Oncoming;
-        if (oncoming.IsNone || _cooldown[i] > 0) return;
+        if (oncoming.IsNone || _cooldown[i] > 0 || _pos[i] < MinOvertakeStart) return;
 
         float v0 = FreeSpeed(i);
         if (!FindLeader(i, out int lead, out float gap, out float leadSpeed) || _lane[lead] != lane
@@ -111,7 +114,7 @@ public sealed partial class Simulation
             return;
         }
         _stuck[i] += DecisionInterval * StepSeconds;
-        if (_stuck[i] < 2f + 8f * _patience[i]) return;
+        if (_stuck[i] < 1.5f + 6f * _patience[i]) return;
 
         // Pessimistic timing: the pass starts from the current speed and accelerates, so use the mean speed.
         float passSpeed = v0 * OvertakeBoost(i);
@@ -209,7 +212,14 @@ public sealed partial class Simulation
 
     void AdvanceOvertake(int o)
     {
-        switch ((OvertakePhase)_phase[o])
+        var phase = (OvertakePhase)_phase[o];
+        if (phase is OvertakePhase.MovingOut or OvertakePhase.Passing && TrackStall(o))
+        {
+            // Nose to nose with oncoming traffic and nobody can back up: cut back in, even beside the target.
+            _phase[o] = (byte)OvertakePhase.Returning;
+            return;
+        }
+        switch (phase)
         {
             case OvertakePhase.MovingOut:
                 _lat[o] = MathF.Min(1f, _lat[o] + LateralRate * StepSeconds);
@@ -223,6 +233,13 @@ public sealed partial class Simulation
                 if (_lat[o] <= 0f) FinishOvertake(o);
                 break;
         }
+    }
+
+    /// <summary>Counts how long an overtaker has been standing still; true once it has been stuck too long.</summary>
+    bool TrackStall(int o)
+    {
+        _stall[o] = _speed[o] < 0.3f ? _stall[o] + StepSeconds : 0f;
+        return _stall[o] > StallLimit;
     }
 
     /// <summary>
@@ -290,6 +307,7 @@ public sealed partial class Simulation
         _target[o] = -1;
         _aborting[o] = false;
         _stuck[o] = 0f;
+        _stall[o] = 0f;
         _cooldown[o] = OvertakeCooldown;
     }
 }
