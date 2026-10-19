@@ -1,13 +1,13 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: M0 core complete. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: M1 feature-complete in the greybox (terrain, arcs, real junction paths, removal, upgrade); polish items listed in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
 | Milestone | State |
 |---|---|
 | M0 Dynamic traffic prototype | All five exit criteria met (see section 2) |
-| M1 Procedural terrain, road building with cut and fill | Not started |
+| M1 Procedural terrain, road building with cut and fill | Core done: terrain, elevation, grades, cut and fill cost and carving, arcs, path-based junction conflicts, road removal and upgrade (sections 5.1, 5.6, 5.7); polish items open |
 | M2 Stations, lines, player vehicles, basic economy | Not started |
 | M3 Towns, industries, cargo chains, trip flows | Not started |
 | M4 Full rail | Not started |
@@ -55,10 +55,10 @@ Rendering: roads are boxes with a centre line (avenues get a median); every vehi
 ## 5. Simulation model
 
 ### 5.1 Road network (`RoadNetwork`)
-- Straight segments only, flat terrain. Nodes have x/z; a `Road` joins two nodes and owns `ForwardLanes` and `BackwardLanes` (lane 0 is right-most).
+- Roads are straight or circular arcs (`RoadGeometry`, section 5.7). Nodes have x/z and a height; a `Road` joins two nodes and owns `ForwardLanes` and `BackwardLanes` (lane 0 is right-most).
 - `TwoLane`: one lane per direction, opposing lanes linked as `Oncoming` (overtaking allowed). `Avenue2x2`: two lanes per direction, linked `Left`/`Right`, no `Oncoming`.
 - Junction connections are rebuilt whenever a road is added: each incoming lane connects to the lane of every other road at the node, same lane index where possible; a dead end turns traffic around onto the opposite lane.
-- `MovesConflict(inA, outA, inB, outB)`: two moves conflict if they enter the same lane (merge) or their paths cross. Paths are approximated as chords between the arms they use; interleaving chords cross.
+- `MovesConflict(inA, outA, inB, outB)`: two moves conflict if they enter the same lane (merge) or their paths cross. Each move has a path: a cubic curve from where the incoming lane enters the junction area (8 m before the node, at the lane's own offset) to where the outgoing lane leaves it, keeping each lane's heading. Two moves conflict when their paths cross (segment intersection on 12-point polylines), so lane offsets, junction width and arcs count, and the left turn against oncoming straight traffic is a conflict. Results are cached per move pair (lane geometry never changes).
 - `BuildRoad` plans first (null means "cannot build"): snaps to nodes within 0.5 m at its ends, finds every road it ends on or crosses, splits those roads, then adds the pieces. Refused when shorter than `MinRoadLength` (10 m), when a piece duplicates an existing road, or when it would cross within 10 m of another junction.
 - `SplitRoad` retires the old road and lanes and records for each old lane its two replacements and the split distance. Vehicles migrate in `Simulation.SyncNetwork`.
 
@@ -85,26 +85,44 @@ Junctions are uncontrolled and zipper-style: within 40 m of a junction a vehicle
 ### 5.5 Determinism (ADR 0003)
 One seeded RNG (`SimRandom`, xoshiro256** seeded through SplitMix64, own implementation so it never depends on the runtime), vehicles processed in id order, no wall-clock or Godot values inside a step. `StateHash()` is FNV-1a over all vehicle state, incident and depot state and the RNG state. Roads built while running are picked up at the next step or spawn.
 
+### 5.7 Arcs, removal and upgrade (M1)
+- `RoadGeometry` is a straight line or a circular arc: start point, start heading, signed sweep (total turn, positive is an increasing heading) and arc length. `PointAt(s)` and `HeadingAt(s)` take distances along the centre line; `Slice` and `Reversed` give the parts and the other direction. Positions of vehicles on every lane of a road are distances along the road's centre line, so parallel lanes share a length; the lane's sideways offset is only used for drawing, junction paths and incident points.
+- `AddRoad(..., sweep)`; `BuildRoad(..., sweep)`. Limits: radius at least 25 m (`MinRadius`), total sweep at most 2.8 rad. Curve speed limit is `sqrt(3 * radius)` (about 8.7 m/s at 25 m, 17 m/s at 100 m), combined with the grade factor. Splitting an arc splits its sweep in proportion.
+- `Plan` intersects straight against straight analytically as before; any arc involved uses 3 m polylines with a bounding box test, then the same rules (ends within 0.5 m snap to nodes, no junction within 10 m of an end).
+- The tool draws a curve from three clicks: start, a point on it, end (`RoadGeometry.SweepThrough`). Terrain carving follows the polyline of the arc (`Terrain.CarvePath`).
+- `RemoveRoad(id)` retires the road's lanes with no replacement; the simulation removes vehicles on them (wrecks included, taking them out of their incident) and rebuilds the junctions at both ends, so a node left with one road becomes a dead end. Cost is `10 per metre` demolition; the terrain keeps its cut and fill.
+- `UpgradeRoad(id, speed)` turns a two-lane road into an avenue on the same centre line; vehicles move to the matching new lane. Cost is the avenue price minus half the two-lane price, plus earthworks for the extra width. Only two-lane roads can be upgraded.
+- `RoadNetwork.Version` increases on every change; the simulation re-syncs when it differs, so a change that adds no lanes (removal) is noticed too.
+
+### 5.6 Terrain and elevation (M1)
+- `Terrain` is a heightmap centred on the origin: 512 x 512 cells of 8 m (4 km square). `Terrain.Generate(seed)` sums five octaves of integer-hashed value noise and shapes it so there are plains between hills (up to about 110 m); `Terrain.Flat()` is level. Same seed, same map (`Hash()` in tests). `HeightAt` is bilinear.
+- `RoadNetwork(Terrain?)`: nodes have a height (terrain height when created on the ground, interpolated along the road when a junction splits it). A road's profile is the straight line between its node heights. `Lane.Grade` is rise over run in the direction of travel; the lane's `SpeedLimit` falls linearly from the posted value at 4 percent to half of it at 12 percent. Lane length is still the horizontal distance.
+- `Plan` refuses a piece steeper than `MaxGrade` (12 percent), so `CanBuildRoad` and `BuildRoad` check it.
+- `EstimateCost` returns length, cut and fill volumes and money: the volume between ground and road surface sampled every 4 m, cross section `h * width + 1.5 * h^2`, plus a price per metre by road type. Prices are placeholders until the economy exists (M2).
+- `BuildRoad` then carves the terrain (`Terrain.CarveRoad`): the carriageway becomes level with the road, blending back to the old ground over a 6 m shoulder; the flat zone is never narrower than 1.42 cells so every sample read under the road is level. This bumps `Terrain.Version`.
+
 ## 6. Game layer (`game/`)
 
-- `SimHost.cs`: world creation (`NewDemoWorld`, `NewEmptyWorld`), speed, stats, build commands (`BuildRoad`, `CanBuildRoad`, `SnapToNode`, `BuildDepot`), `SpawnTraffic`, `CrashSomeone` (picks a moving car deterministically from the tick), drawing.
-- `build_tool.gd`: mouse to build commands. Snaps to nodes within 20 m, else to a road's centre line within 12 m (a junction forms there), else to 15 degree steps and 5 m lengths; green or red preview; roads chain from the last end point; Esc stops.
+- `SimHost.cs`: world creation (`NewDemoWorld`, `NewEmptyWorld`, `NewHillsWorld`), `RayToGround` (picking against the terrain), `HeightAt`, `EstimateRoadCost`, terrain mesh (one `ArrayMesh`, rebuilt in about 50 ms whenever `Terrain.Version` changes), roads and vehicles that follow elevation and grade, speed, stats, build commands (`BuildRoad`, `CanBuildRoad`, `SnapToNode`, `BuildDepot`), `SpawnTraffic`, `CrashSomeone` (picks a moving car deterministically from the tick), drawing.
+- `build_tool.gd`: mouse to build commands, picking on the terrain. While previewing it shows length, grade, cut, fill and cost. Snaps to nodes within 20 m, else to a road's centre line within 12 m (a junction forms there), else to 15 degree steps and 5 m lengths; green or red preview; roads chain from the last end point; Esc stops.
 - `hud.gd`: speed buttons (pause, 1x to 8x), tool buttons, action buttons, statistics.
 - `camera_rig.gd`: free orbit camera.
 - `main.gd`: environment, wiring, and the command-line harness.
 
-Command line (after `--`): `--bench`, `--selftest-build`, `--selftest-crash`, `--shot=<file>`, `--shot-after=<s>`, `--distance`, `--pitch`, `--focus=<x>,<z>`.
+Command line (after `--`): `--hills`, `--selftest-hills`, `--bench`, `--selftest-build`, `--selftest-crash`, `--shot=<file>`, `--shot-after=<s>`, `--distance`, `--pitch`, `--focus=<x>,<z>`.
 
 Demo world: 10 x 10 grid, 250 m spacing, an avenue on every third row, 4 simple depots, 1000 cars.
 
 ## 7. Tests
 
-59 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
+96 xUnit tests, run with `cd sim && dotnet test` (about 2 s). By seam:
 
 | File | Covers |
 |---|---|
 | `RoadNetworkTests`, `BuildRoadTests`, `GrowingNetworkTests` | Lane graph, junction connections, conflict test, building, splitting, growing while running |
 | `SimulationTests`, `LaneChangeTests`, `OvertakingTests`, `JunctionTests` | Following, junction crossing, lane changes, overtaking and aborting, driver traits, zipper yielding |
+| `CurveTests` (`RoadGeometryTests`, `CurvedRoadTests`, `JunctionPathTests`, `CurvedTrafficTests`), `EditRoadTests` | Arc geometry, curve limits, junctions on arcs, path-based conflicts, traffic on a ring of arcs, removal, upgrade, picking |
+| `TerrainTests`, `TerrainRoadTests` | Seeded generation, interpolation, carving, grade, grade speed limit, grade refusal, cut and fill cost |
 | `IncidentTests` | Wrecks, blocking, crews, response time, busy crews, head-on, avoiding blocked roads |
 | `TrafficTests`, `ScenarioTests` | Determinism, sanity bounds, step-time budget, no lock-up on a dense map, long runs with overtaking, accidents and clearing |
 
@@ -119,7 +137,8 @@ Defined in `Simulation*.cs`: step 0.05 s; vehicle 4.5 x 1.9 m; lane width 3.5 m;
 - Anything that lets a vehicle appear in front of traffic that cannot see it (lane change right after a junction) produces rear-end pile-ups; the fix is margins, not braking.
 - A head-on standoff between an overtaker and stopped oncoming traffic is a permanent deadlock unless something forces a resolution; queues then spread across the grid.
 - Strong braking hides failures: with instant full braking almost no overtake ended in a crash. Reaction delay (jerk limit) and attention are what make rare failures happen.
-- A chord approximation of junction paths is enough to keep crossing traffic apart but ignores closing speed.
+- The old chord approximation of junction paths ignored every pair of moves that shared an arm, including a left turn against the oncoming straight traffic. Real paths found those conflicts; the extra waiting built long crawling queues at junctions, and overtakers then tried to pass them and sideswiped oncoming cars. Fix: no overtake starts with a queue (vehicles under 2 m/s) within 100 m ahead of the target.
+- A junction path needs a length: lanes meet at the node point, so paths start and end 8 m from it.
 - `unproject_position` returns viewport coordinates and synthetic input events need window coordinates; with a stretch mode the two differ, so the self-tests convert through `get_final_transform()`.
 
 ## 10. Known limitations and technical debt
@@ -129,7 +148,8 @@ Behaviour:
 - Only tier 0 fidelity exists (ADR 0002 tiers 1 and 2 are not built); 1000 vehicles are all fully simulated.
 - Accident causes are limited to overtaking, rear-ending and junction merges; no curves, weather, signals, level crossings or condition.
 - Crews are abstract (a straight line from the depot, no road travel, no return trip); depot level only sets crews (Complex has 2).
-- Roads are straight, flat; no way to remove or upgrade a road; a depot sits on a node; no cost for anything.
+- No downgrade (avenue to two-lane); removal leaves terrain scars; a depot sits on a node and stays if its roads are torn down; no money exists yet, costs are only numbers.
+- Junction paths are used only to decide conflicts; vehicles still jump across the node, and the lane length is the centre-line length for every lane of a curve.
 - An overtaker alongside its target at a lane end can reappear overlapping it.
 - Tiny dense networks (a few roads, dozens of cars) still produce occasional pile-ups at junctions.
 
@@ -153,10 +173,15 @@ Engineering:
 4. Update `CONTEXT.md` with Wreck, Debris and the depot level names; reconcile "complete Depot" with `Complex`.
 
 **M1: terrain and road building with cut and fill**
-- Heightmap terrain from a seed; lane geometry gains elevation and grade (speed limits on grades).
-- Roads as straight segments and circular arcs with angle and node snapping; the junction chord test then needs real path geometry.
-- Cost model for cut and fill; the build tool shows the cost; road removal and upgrade.
-- Camera and picking against terrain instead of the flat plane.
+Done: seeded heightmap, lane elevation and grade with speed limits, cut and fill cost and terrain carving, build tool shows the cost, picking and drawing on terrain.
+Also done: circular arcs with curve speed limits, junction conflicts from real path geometry, road removal and upgrade.
+Open:
+- Downgrade, and a road editor that moves a node or changes a road's speed limit.
+- Camera focus should follow the terrain height; terrain mesh is one piece (split into chunks when the map grows or rebuild time matters).
+- Bridges and tunnels do not exist: a road crossing a valley is a long fill.
+- Rivers and water (needed before towns in M3).
+- Junction cost: `MovesConflict` is now a cached dictionary lookup in a hot loop; step time went from about 0.6 to about 0.9 ms with 1000 vehicles. Flatten per node if it matters.
+- Cars drive through junctions as a jump; vehicles following the junction path would make turns look right and let `MovesConflict` use real closing speeds.
 
 **M2: stations, lines, player vehicles, basic economy**
 - Company, money, loan; stations with coverage radius; lines; bus and truck owned by the company (these are the tier 0 vehicles of ADR 0002).

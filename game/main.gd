@@ -3,6 +3,8 @@ extends Node3D
 ##   --bench                      measure frame rate with 1000 vehicles at 1x and 8x, then quit
 ##   --shot=<file> [--shot-after=<seconds>]   save a screenshot and quit
 ##   --selftest-build             build roads with simulated mouse clicks, run, print stats, quit
+##   --hills                      start on an empty generated-hills map instead of the demo grid
+##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
@@ -37,7 +39,10 @@ func _ready() -> void:
 		var focus: PackedStringArray = _args["--focus"].split(",")
 		rig.position = Vector3(float(focus[0]), 0.0, float(focus[1]))
 	rig._apply()
-	host.NewDemoWorld(SEED, VEHICLES)
+	if _args.has("--hills") or _args.has("--selftest-hills"):
+		host.NewHillsWorld(SEED)
+	else:
+		host.NewDemoWorld(SEED, VEHICLES)
 
 	hud = load("res://game/hud.gd").new()
 	add_child(hud)
@@ -57,6 +62,8 @@ func _ready() -> void:
 		_selftest_build()
 	if _args.has("--selftest-crash"):
 		_selftest_crash()
+	if _args.has("--selftest-hills"):
+		_selftest_hills()
 
 	if _args.has("--bench"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -88,6 +95,8 @@ func _on_action(action: String) -> void:
 			hud.show_message("Vehicle %d crashed" % victim if victim >= 0 else "No moving car to crash")
 		"empty":
 			host.NewEmptyWorld(SEED)
+		"hills":
+			host.NewHillsWorld(SEED)
 		"demo":
 			host.NewDemoWorld(SEED, VEHICLES)
 
@@ -95,7 +104,7 @@ func _on_action(action: String) -> void:
 ## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.
 func _selftest_build() -> void:
 	host.NewEmptyWorld(SEED)
-	rig.distance = 400.0
+	rig.distance = float(_args.get("--distance", 400.0))
 	rig.pitch = -89.0
 	rig.position = Vector3.ZERO
 	rig._apply()
@@ -110,6 +119,11 @@ func _selftest_build() -> void:
 		["road2", [Vector3(0, 0, 0), Vector3(-5, 0, -110)]],
 		["road2", [Vector3(-80, 0, 60), Vector3(-80, 0, -60)]], # crosses the first road: a junction forms
 		["road2", [Vector3(75, 0, 0), Vector3(75, 0, 90)]],     # starts on the middle of the avenue: a T junction
+		["curve2", [Vector3(150, 0, 0), Vector3(195, 0, 45), Vector3(150, 0, 110)]],       # a bend off the avenue's end
+		["curve4", [Vector3(-150, 0, 0), Vector3(-195, 0, 45), Vector3(-150, 0, 110)]],  # an avenue bend off the west road
+		["curve2", [Vector3(180, 0, 100), Vector3(60, 0, 60), Vector3(0, 0, 100)]],        # arc that meets the first bend and ends on the south road
+		["upgrade", [Vector3(-115, 0, 0)]],                                                 # widen the west road to an avenue
+		["remove", [Vector3(75, 0, 45)]],                                                   # tear down the T road off the avenue
 		["depot", [Vector3(0, 0, 0)]],
 	]
 	for step in clicks:
@@ -120,11 +134,37 @@ func _selftest_build() -> void:
 		build_tool.set_tool("pointer")
 	var stats: Dictionary = host.GetStats()
 	print("SELFTEST roads=%d depots=%d" % [host.RoadCount(), host.DepotCount()])
+	print("SELFTEST hud sweep check %.3f" % host.SweepThrough(150, 0, 195, 45, 150, 110))
 	host.SpawnTraffic(60)
 	host.SetSpeed(8.0)
 	await get_tree().create_timer(10.0).timeout
 	stats = host.GetStats()
 	print("SELFTEST vehicles=%d mean_speed=%.1f tick=%d incidents=%d" % [stats["vehicles"], stats["mean_speed"], stats["tick"], stats["incidents"]])
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	get_tree().quit()
+
+
+## Builds a few roads over generated hills through the host API and reports what they cost.
+func _selftest_hills() -> void:
+	await get_tree().process_frame
+	var attempts := [[-400, -300, 0, -300], [0, -300, 300, 0], [-400, 200, 100, 200], [-400, -300, -400, 200]]
+	var curves := [[-300, -100, 0, -100, 0.9], [-300, 100, -100, 250, -0.7]]
+	for c in curves:
+		var cost: Dictionary = host.EstimateCurveCost(c[0], c[1], c[2], c[3], 0, c[4])
+		if not cost["valid"]:
+			print("HILLS curve %s refused" % [c])
+			continue
+		print("HILLS curve %s built=%s length=%.0f cut=%.0f fill=%.0f cost=%.0f" % [c, host.BuildCurve(c[0], c[1], c[2], c[3], 0, c[4]), cost["length"], cost["cut"], cost["fill"], cost["money"]])
+	for a in attempts:
+		var cost: Dictionary = host.EstimateRoadCost(a[0], a[1], a[2], a[3], 0)
+		if not cost["valid"]:
+			print("HILLS %s refused" % [a])
+			continue
+		var built: bool = host.BuildRoad(a[0], a[1], a[2], a[3], 0)
+		print("HILLS %s built=%s length=%.0f cut=%.0f fill=%.0f cost=%.0f" % [a, built, cost["length"], cost["cut"], cost["fill"], cost["money"]])
+	host.SpawnTraffic(0)
+	await get_tree().create_timer(1.0).timeout
 	if _args.has("--shot"):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
 	get_tree().quit()

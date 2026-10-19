@@ -17,10 +17,11 @@ cd sim && dotnet test                                   # the whole simulation t
 godot --path .                                          # play: build roads, +100 cars, Crash!
 godot --path . -- --bench                               # frame rate with 1000 vehicles at 1x and 8x
 godot --path . -- --selftest-build --shot=build.png     # builds roads with synthetic mouse clicks
+godot --path . -- --hills                              # empty generated-hills map: roads show grade and cut/fill cost
 godot --path . -- --selftest-crash                      # crashes a car and follows the rescue crew
 ```
 
-Controls: right mouse orbits, middle mouse or WASD pans, wheel zooms. Pick a road tool in the toolbar, click to start and click again to build; ending on or crossing another road makes a junction. Esc stops.
+Controls: right mouse orbits, middle mouse or WASD pans, wheel zooms. Pick a road tool in the toolbar, click to start and click again to build; ending on or crossing another road makes a junction. **Curve** and **Curved avenue** take three clicks: start, a point on the curve, end. **Upgrade** widens a two-lane road to an avenue, **Remove** tears a road piece down (junction to junction); both show the cost when you hover. Esc stops.
 
 ## M0 status
 

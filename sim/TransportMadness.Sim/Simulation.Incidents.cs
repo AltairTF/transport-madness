@@ -350,11 +350,8 @@ public sealed partial class Simulation
 
     (float X, float Z) IncidentPoint(Incident incident)
     {
-        var lane = _net.GetLane(incident.Lane);
-        var (x0, z0) = _net.GetNode(lane.StartNode);
-        var (x1, z1) = _net.GetNode(lane.EndNode);
-        float t = Math.Clamp(incident.Position / lane.Length, 0f, 1f);
-        return (x0 + (x1 - x0) * t, z0 + (z1 - z0) * t);
+        var (x, z, _) = _net.LanePoint(incident.Lane, incident.Position);
+        return (x, z);
     }
 
     void Clear(Incident incident)

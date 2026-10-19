@@ -97,6 +97,8 @@ public sealed partial class Simulation
 
     // ---- Overtaking via the oncoming lane ------------------------------------------------------------------------
 
+    const float QueueSpeed = 2f, QueueLookahead = 100f;
+
     void TryStartOvertake(int i)
     {
         int lane = _lane[i];
@@ -110,9 +112,9 @@ public sealed partial class Simulation
             _stuck[i] = MathF.Max(0f, _stuck[i] - DecisionInterval * StepSeconds);
             return;
         }
-        if (HaltedAhead(lead, 80f))
+        if (HaltedAhead(lead, 80f) || QueueAhead(lead, QueueLookahead))
         {
-            _stuck[i] = 0f; // the slow leader is only slow because the road is blocked; passing it gains nothing
+            _stuck[i] = 0f; // the slow leader is only slow because the road is blocked or queued; passing it gains nothing
             return;
         }
         _stuck[i] += DecisionInterval * StepSeconds;
@@ -141,6 +143,22 @@ public sealed partial class Simulation
         _phase[i] = (byte)OvertakePhase.MovingOut;
         _target[i] = lead;
         _aborting[i] = false;
+    }
+
+    /// <summary>
+    /// Whether a vehicle crawling below <see cref="QueueSpeed"/> is within <paramref name="range"/> metres ahead of
+    /// <paramref name="vehicle"/>: the slow leader is the tail of a queue, and there is nowhere to pull back in.
+    /// </summary>
+    bool QueueAhead(int vehicle, float range)
+    {
+        int lane = _lane[vehicle];
+        for (int r = _rankInOrder[vehicle]; r < _laneStart[lane + 1]; r++)
+        {
+            int j = _order[r];
+            if (_pos[j] - _pos[vehicle] > range) return false;
+            if (_speed[j] < QueueSpeed) return true;
+        }
+        return false;
     }
 
     /// <summary>A halted vehicle (wreck, breakdown) within <paramref name="range"/> metres ahead of <paramref name="vehicle"/> in its lane.</summary>

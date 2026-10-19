@@ -27,7 +27,7 @@ public sealed partial class Simulation
     public const float StepSeconds = 0.05f;
     public const float VehicleLength = 4.5f;
     public const float VehicleWidth = 1.9f;
-    public const float LaneWidth = 3.5f;
+    public const float LaneWidth = RoadNetwork.LaneWidth;
 
     // Intelligent Driver Model parameters (shared; driver traits only change when to overtake).
     const float MaxAccel = 1.5f;
@@ -39,6 +39,7 @@ public sealed partial class Simulation
     static readonly float TwoSqrtAB = 2f * MathF.Sqrt(MaxAccel * ComfortDecel);
 
     readonly RoadNetwork _net;
+    int _syncedNetworkVersion = -1;
     readonly SimRandom _rng;
 
     // Per-lane constants copied out of the network so the hot loop stays on flat arrays.
@@ -112,7 +113,7 @@ public sealed partial class Simulation
         for (int attempt = 0; placed < count && attempt < count * 30; attempt++)
         {
             var lane = _net.GetLane(new LaneId(_rng.NextInt(_net.LaneCount)));
-            if (lane.Length < 2 * clearance) continue;
+            if (lane.Retired || lane.Length < 2 * clearance) continue;
             float pos = clearance + _rng.NextFloat() * (lane.Length - 2 * clearance);
             if (!IsClear(lane.Id, pos, clearance)) continue;
             int id = SpawnVehicle(lane.Id, pos, lane.SpeedLimit * 0.5f);
@@ -363,9 +364,10 @@ public sealed partial class Simulation
     /// </summary>
     void SyncNetwork()
     {
-        int lanes = _net.LaneCount;
-        if (lanes == _laneLength.Length) return;
+        if (_net.Version == _syncedNetworkVersion) return;
+        _syncedNetworkVersion = _net.Version;
 
+        int lanes = _net.LaneCount;
         int old = _laneLength.Length;
         Array.Resize(ref _laneLength, lanes);
         Array.Resize(ref _laneLimit, lanes);
@@ -384,11 +386,31 @@ public sealed partial class Simulation
         for (int i = 0; i < _count; i++)
         {
             if (_lane[i] < 0) continue;
+            if (OnDemolishedLane(i))
+            {
+                // The road under it was torn down: the vehicle goes with it, and so does any wreck it was part of.
+                if (_incident[i] >= 0) _incidents[_incident[i]].Vehicles.Remove(i);
+                RemoveVehicle(i);
+                continue;
+            }
             MoveOffRetiredLane(i);
             var next = _net.GetLane(new LaneId(_lane[i])).Next;
             if (Array.IndexOf(next, new LaneId(_nextLane[i])) < 0) _nextLane[i] = ChooseNextLane(new LaneId(_lane[i])).Value;
         }
         RebuildOrder();
+    }
+
+    /// <summary>Whether the lane has been retired without anything to take its vehicles.</summary>
+    bool OnDemolishedLane(int i)
+    {
+        var lane = _net.GetLane(new LaneId(_lane[i]));
+        while (lane.Retired)
+        {
+            var next = _pos[i] < lane.SplitDistance ? lane.SplitFirst : lane.SplitSecond;
+            if (next.IsNone) return true;
+            lane = _net.GetLane(next);
+        }
+        return false;
     }
 
     /// <summary>A junction was built in the middle of the road this vehicle is on: carry on from the same spot on the new piece.</summary>
