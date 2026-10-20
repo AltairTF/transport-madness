@@ -40,13 +40,51 @@ Once a month a Town whose Satisfaction and Connectivity are high enough lets eac
 A person moving between a home and a place of work or leisure, here one who has chosen the company's Lines. Waits at a Station in a queue for a destination Station; a bus takes only those whose destination is on its Line and they leave it there.
 
 **Station**:
-A place on the road network where vehicles load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. On a map with towns, Passengers queue at it for the Station they are going to and Cargo comes from the Industries it covers; on a map without, it produces them at a fixed rate.
+A place on the road network (a road Station) or the rail network (a rail Station) where vehicles or trains load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. On a map with towns, Passengers queue at it for the Station they are going to and Cargo comes from the Industries it covers; on a map without, it produces them at a fixed rate.
 
 **Bay**:
 A place beside the right-most lane of a Station with bays where a loading vehicle waits out of the lane, so the traffic behind it drives on. A Station with bays has room for a few vehicles at once (the next one loads in the lane as at any Station); a vehicle pulls back into the lane when there is a gap. Costs more to build and to keep.
 
 **Line**:
-A recurring route that a group of vehicles runs between stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own. Has a name the Player can change, and its stations can be added, dropped and reordered while its vehicles run.
+A recurring route that a group of vehicles (a rail Line: trains) runs between stations, all of them road Stations or all rail Stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own. Has a name the Player can change, and its stations can be added, dropped and reordered while its vehicles run.
+
+**Track**:
+One piece of single railway between two nodes, straight or an arc, used by trains in both directions. Several meet at a node (a rail junction) and a train may pass from one to another there when the turn is gentle enough, slowing for it. Built with cut and fill, Bridges and Tunnels like a road, but steeper than 4 % or tighter than 90 m radius is refused.
+_Avoid_: Rail (the network), Line (that is a route)
+
+**Train**:
+A locomotive and its wagons (a consist) running a rail Line. Has a real length, a mass that includes its load, traction that falls with speed and brakes that need a kilometre at speed; is held to the speed limit of every track and bend any part of it is on. Has a cab at each end, so it turns round in a Station without a loop. Cannot hit another train: it moves only on track it holds.
+_Avoid_: Vehicle, in the sense of a Company vehicle (those are buses and trucks)
+
+**Locomotive / Wagon**:
+The two parts of a Train in the tuning roster: the locomotive has the power, a wagon (coach for people, freight wagon for cargo) has the capacity. A train has one locomotive and one to eight wagons of one kind.
+
+**Rail depot**:
+Where trains are bought and appear, at a rail node. Not a Depot (that sends Rescue crews).
+
+**Signal**:
+A post at a rail node facing the trains that arrive along one Track. A **block signal** makes a train wait unless every track beyond it, up to the next Boundary, is free; a **path signal** only the tracks the train will take. Where there is none, a train asks as for a block.
+
+**Boundary**:
+A rail node with a Signal, a Station or a Rail depot. Splits the network into the stretches (blocks) that trains hold one at a time. A train holds a stretch from when it passes the boundary where it starts until its rear passes each piece.
+
+**Hold / reservation**:
+The track and nodes a Train has been given and no other train may use. Released behind the rear. A train asks for the next stretch before it needs it, and waits at the boundary when it cannot have it.
+
+**Deadlock**:
+Trains that wait for each other for good: each has held a stretch the next one needs. Found when they have waited a long time, reported once, and marked on the trains. Sold, or relieved by a passing loop with path signals.
+
+**Level crossing**:
+A place where a Track and a road meet at the same height. Closes (barriers down, lights flashing) when a train that will cross is about to arrive; road vehicles stop at a line before it and do not enter when the road beyond is full; a train that finds a vehicle in it hits it (a Wreck that blocks the crossing too) and a train stops short of a wreck or a standing vehicle it can see. Not made where one passes over the other on a Bridge or in a Tunnel.
+
+**Traffic light**:
+Signals at a road junction of three or more roads: the approaches fall in two groups by the street they come along, and the groups take turns at green with a short red for both between. A vehicle that can still stop stops at the edge of the junction on red.
+
+**Ghost**:
+A Company vehicle leaving a Depot whose doorway is busy: it waits inside until there is room, drives out without cars braking for it (never into another vehicle), and becomes an ordinary vehicle once its whole length is out and the lane has room. A train bought while the depot is in use waits inside instead.
+
+**Garage**:
+The Company vehicles and trains standing in a Depot on no Line: bought without one, or sent back from a Line. They pay a tenth of their upkeep while they wait; each can be put on a Line of its kind, or sold.
 
 **Contract**:
 A time-limited request for specific cargo or passengers, with a reward.

@@ -12,6 +12,8 @@ public enum IncidentKind
     Sideswipe,
     /// <summary>Two vehicles on crossing or merging paths met inside a junction.</summary>
     Junction,
+    /// <summary>A train ran into a vehicle on a level crossing.</summary>
+    LevelCrossing,
 }
 
 public enum IncidentState
@@ -206,6 +208,9 @@ public sealed partial class Simulation
         _load[vehicle] = 0;
         _lane[vehicle] = -1;
         _halted[vehicle] = true;
+        _ghost[vehicle] = false;
+        _ghostOut[vehicle] = false;
+        _returnDepot[vehicle] = -1;
         _speed[vehicle] = 0f;
         _phase[vehicle] = 0;
         _lat[vehicle] = 0f;
@@ -303,7 +308,7 @@ public sealed partial class Simulation
         for (int i = 0; i < _count; i++)
         {
             int lane = _lane[i];
-            if (lane < 0 || _lat[i] >= HomeLaneLat) continue;
+            if (lane < 0 || _ghost[i] || _lat[i] >= HomeLaneLat) continue;
             float centre = _pos[i] - _length[i] * 0.5f;
             bool inTail = centre > _laneZoneStart[lane];
             if (!inTail && !(centre < _laneReach[lane] && _prevLane[i] >= 0)) continue;

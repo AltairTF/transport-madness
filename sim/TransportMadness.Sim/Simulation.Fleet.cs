@@ -23,6 +23,11 @@ public sealed partial class Simulation
     long[] _upkeepPaid = new long[64];
     bool[] _bay = new bool[64];     // standing in a station's bay: out of the lane, so out of its ordering
     int[] _bayStation = FilledWith(64, -1);
+    bool[] _ghost = new bool[64];   // just out of the depot and not yet in the traffic: nothing blocks it and it blocks nothing (see StepGhosts)
+    float[] _ghostFrom = new float[64]; // where on its lane it came out
+    bool[] _ghostOut = new bool[64];    // false while it waits inside the depot for room to come out
+    int[] _ghostNode = new int[64];     // the depot's node
+    int[] _returnDepot = FilledWith(64, -1); // the depot it is driving back to, to be parked there, -1 when it is on its line
 
     public IReadOnlyList<Line> Lines => _lines;
     public IReadOnlyList<VehicleModelTuning> VehicleModels => _models;
@@ -57,6 +62,13 @@ public sealed partial class Simulation
         int oldBay = _bayStation.Length;
         Array.Resize(ref _bayStation, n);
         for (int k = oldBay; k < n; k++) _bayStation[k] = -1;
+        Array.Resize(ref _ghost, n);
+        Array.Resize(ref _ghostFrom, n);
+        Array.Resize(ref _ghostOut, n);
+        Array.Resize(ref _ghostNode, n);
+        int oldReturn = _returnDepot.Length;
+        Array.Resize(ref _returnDepot, n);
+        for (int k = oldReturn; k < n; k++) _returnDepot[k] = -1;
         GrowTripArrays(n);
         GrowTransitArrays(n);
     }
@@ -84,6 +96,7 @@ public sealed partial class Simulation
             int s = stations[k];
             if (s < 0 || s >= _stations.Count || !_stations[s].Active) return false;
             if (s == stations[(k + 1) % stations.Length]) return false;
+            if (_stations[s].Mode != _stations[stations[0]].Mode) return false; // a line is all road or all rail
         }
         return true;
     }
@@ -92,7 +105,7 @@ public sealed partial class Simulation
     int CreateLine(int[] stations)
     {
         if (!ValidStops(stations)) return -1;
-        _lines.Add(new Line(_lines.Count, (int[])stations.Clone()));
+        _lines.Add(new Line(_lines.Count, (int[])stations.Clone(), _stations[stations[0]].Mode));
         _transitVersion++;
         return _lines.Count - 1;
     }
@@ -106,12 +119,14 @@ public sealed partial class Simulation
     {
         if (line < 0 || line >= _lines.Count || !_lines[line].Active || !ValidStops(stations)) return 0;
         var current = _lines[line];
+        if (_stations[stations[0]].Mode != current.Mode) return 0;
         var before = current.Stops;
         current.Stops = (int[])stations.Clone();
         _transitVersion++;
+        if (current.Mode == StationMode.Rail) EditTrainsOfLine(line, before, stations);
         for (int i = 0; i < _count; i++)
         {
-            if (_line[i] != line || _kind[i] != VehicleKind.Car) continue;
+            if (_line[i] != line || _kind[i] != VehicleKind.Car || _returnDepot[i] >= 0) continue;
             int heading = before[_stopIndex[i]];
             int at = Array.IndexOf(stations, heading);
             _stopIndex[i] = at >= 0 ? at : Math.Min(_stopIndex[i], stations.Length - 1);
@@ -157,50 +172,147 @@ public sealed partial class Simulation
         _lines[line].Active = false;
         _transitVersion++;
         for (int i = 0; i < _count; i++)
-            if (_line[i] == line && _kind[i] == VehicleKind.Car) SellVehicle(i);
+            if (_line[i] == line && _kind[i] == VehicleKind.Car && _returnDepot[i] < 0) SellVehicle(i);
+        foreach (var train in _trains)
+            if (train.Active && train.Line == line && train.ReturnDepot < 0) SellTrain(train.Id);
         return 1;
     }
 
     /// <summary>
-    /// Buys a vehicle of a model at a depot and sets it on a line. It appears on a road leaving the depot's node, on the
-    /// lane that is the quicker way to the line's first station. Returns the vehicle id, -1 when refused: no such depot
-    /// (or it is closed), model or line, not enough money, or no room on the road at the depot.
+    /// Buys a vehicle of a model at a depot and sets it on a line. It comes out of the depot onto a road leaving the depot's node, on the
+    /// lane that is the quicker way to the line's first station; when other vehicles are in the way it comes out as a ghost (see
+    /// <see cref="StepGhosts"/>) instead of waiting. Returns the vehicle id, -1 when refused: no such depot (or it is closed), model or
+    /// line, not enough money, or no road from the depot to the line's first station.
     /// </summary>
     int BuyVehicle(int depot, string modelId, int line)
     {
         SyncNetwork();
         int model = ModelIndex(modelId);
         if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active) return -1;
-        if (line < 0 || line >= _lines.Count || !_lines[line].Active) return -1;
-        var spec = _models[model];
-        if (!CanAfford(spec.Price) || TrafficNear(_depots[depot].Node)) return -1;
+        if (!CanAfford(_models[model].Price)) return -1;
+        int id = PlaceAtDepot(depot, model, line);
+        if (id >= 0) TrySpend(_models[model].Price, LedgerEntry.Vehicles);
+        return id;
+    }
 
+    /// <summary>
+    /// Puts a vehicle out of a depot on a line, the money already settled. A ghost when the road at the depot is busy. Returns the vehicle
+    /// id, -1 when the line is not an open road line or there is no road from the depot to its first station.
+    /// </summary>
+    int PlaceAtDepot(int depot, int model, int line)
+    {
+        if (line < 0 || line >= _lines.Count || !_lines[line].Active || _lines[line].Mode != StationMode.Road) return -1;
+        var spec = _models[model];
         var first = _stations[_lines[line].Stops[0]];
         var field = first.Active ? FieldTo(first) : null;
-        int bestLane = -1;
-        float bestCost = float.PositiveInfinity;
-        foreach (var roadId in _net.RoadsAt(_depots[depot].Node))
-        {
-            var road = _net.GetRoad(roadId);
-            int lane = (road.From == _depots[depot].Node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
-            float position = _laneReach[lane] + spec.Length + SpawnGap;
-            if (position > _laneLength[lane] || !IsClearFor(new LaneId(lane), position, spec.Length, _traffic.SpawnClearance)) continue;
-            float cost = field?[lane] ?? 0f;
-            if (float.IsPositiveInfinity(cost)) continue; // no way from here to the line's first station
-            if (bestLane < 0 || cost < bestCost) { bestLane = lane; bestCost = cost; }
-        }
-        if (bestLane < 0) return -1;
+        int lane = ChooseExitLane(_depots[depot].Node, spec.Length, field, out bool clear);
+        if (lane < 0) return -1;
 
-        TrySpend(spec.Price, LedgerEntry.Vehicles);
-        int id = SpawnVehicle(new LaneId(bestLane), _laneReach[bestLane] + spec.Length + SpawnGap, 0f);
+        float position = _laneReach[lane] + spec.Length + SpawnGap;
+        int id = SpawnVehicle(new LaneId(lane), position, 0f);
         _line[id] = line;
         _model[id] = model;
         _stopIndex[id] = 0;
         _desired[id] = spec.MaxSpeed;
         _length[id] = spec.Length;
-        _nextLane[id] = RouteNextLane(id, bestLane);
+        _nextLane[id] = RouteNextLane(id, lane);
+        if (!clear)
+        {
+            _ghost[id] = true;
+            _ghostOut[id] = false; // waits inside the depot until there is room to come out
+            _ghostFrom[id] = position;
+            _ghostNode[id] = _depots[depot].Node;
+            RebuildOrder();
+        }
         _transitVersion++;
         return id;
+    }
+
+    /// <summary>
+    /// The lane leaving a node a new vehicle of this length comes out on: the quickest way along <paramref name="field"/> (any when null),
+    /// preferring a lane with room for it when nothing is about to arrive at the node. -1 when no road leaving the node leads where the field does.
+    /// </summary>
+    int ChooseExitLane(int node, float length, float[]? field, out bool clear)
+    {
+        clear = false;
+        int bestLane = -1;
+        float bestCost = float.PositiveInfinity;
+        bool arriving = TrafficNear(node);
+        foreach (var roadId in _net.RoadsAt(node))
+        {
+            var road = _net.GetRoad(roadId);
+            int lane = (road.From == node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+            float position = _laneReach[lane] + length + SpawnGap;
+            if (position > _laneLength[lane]) continue;
+            float cost = field?[lane] ?? 0f;
+            if (float.IsPositiveInfinity(cost)) continue; // no way from here to where it is going
+            bool free = !arriving && IsClearFor(new LaneId(lane), position, length, _traffic.SpawnClearance);
+            if (bestLane < 0 || (free && !clear) || (free == clear && cost < bestCost)) { bestLane = lane; bestCost = cost; clear = free; }
+        }
+        return bestLane;
+    }
+
+    /// <summary>Whether a vehicle has just come out of a depot and is not yet part of the traffic (or is still inside, waiting for room to come out).</summary>
+    public bool IsGhost(int vehicle) => vehicle >= 0 && vehicle < _count && _ghost[vehicle];
+
+    /// <summary>Whether a vehicle is still inside its depot, waiting for room to come out: not on the road yet, so not drawn.</summary>
+    public bool IsInDepot(int vehicle) => vehicle >= 0 && vehicle < _count && _ghost[vehicle] && !_ghostOut[vehicle];
+
+    const float GhostSpeed = 6f;   // metres per second a vehicle comes out of a depot at
+    const float GhostAccel = 2.5f;
+
+    /// <summary>
+    /// Moves the vehicles that have just come out of a depot. Nothing waits for a ghost on the road, but it never goes where another vehicle is:
+    /// it stays inside the depot until the doorway has room (nobody within <see cref="TrafficTuning.SpawnClearance"/>, nothing about to arrive at the
+    /// node, no ghost ahead of it in the queue), drives out at up to <see cref="GhostSpeed"/>, stops short of a vehicle ahead, and becomes an ordinary
+    /// vehicle once its whole length is out and the lane has room. It stops short of the junction if there never is.
+    /// </summary>
+    void StepGhosts()
+    {
+        bool any = false;
+        for (int i = 0; i < _count && !any; i++) any = _ghost[i];
+        if (!any) return;
+        for (int i = 0; i < _count; i++)
+        {
+            if (!_ghost[i] || _lane[i] < 0) continue;
+            int lane = _lane[i];
+            if (!_ghostOut[i])
+            {
+                // Inside the depot: comes out when the doorway is free, in the order of purchase.
+                bool queued = false;
+                for (int j = 0; j < _count && !queued; j++)
+                {
+                    if (j == i || !_ghost[j] || _lane[j] != lane) continue;
+                    queued = _ghostOut[j] ? _pos[j] - _length[j] < _ghostFrom[i] + SpawnGap : j < i;
+                }
+                if (queued || TrafficNear(_ghostNode[i]) || !IsClearFor(new LaneId(lane), _ghostFrom[i], _length[i], _traffic.SpawnClearance)) continue;
+                _ghostOut[i] = true;
+            }
+
+            // Out on the lane: a ghost ahead in the doorway, or a vehicle ahead, holds it back.
+            float room = float.PositiveInfinity;
+            for (int j = 0; j < _count; j++)
+            {
+                if (j == i || _lane[j] != lane || _kind[j] == VehicleKind.Removed) continue;
+                if (_ghost[j] && !_ghostOut[j]) continue;
+                bool ahead = _pos[j] > _pos[i] || (_pos[j] == _pos[i] && j < i);
+                if (ahead) room = MathF.Min(room, _pos[j] - _length[j] - SpawnGap - _pos[i]);
+            }
+            if (room <= 0f) { _speed[i] = 0f; continue; }
+            _speed[i] = MathF.Min(MathF.Min(GhostSpeed, _desired[i]), _speed[i] + GhostAccel * StepSeconds);
+            _pos[i] += MathF.Min(_speed[i] * StepSeconds, room);
+            if (_speed[i] * StepSeconds > room) _speed[i] = 0f;
+            float limit = MathF.Max(_laneZoneStart[lane], _ghostFrom[i]);
+            if (_pos[i] > limit) { _pos[i] = limit; _speed[i] = 0f; }
+            float needed = MathF.Min(_length[i] + SpawnGap, limit - _ghostFrom[i]); // how far it has to go: all the way out, or as far as the lane lets it
+            if (_pos[i] - _ghostFrom[i] >= needed - 1e-4f && IsClearFor(new LaneId(lane), _pos[i], _length[i], _traffic.SpawnClearance))
+            {
+                _ghost[i] = false;
+                _ghostOut[i] = false;
+                _accel[i] = 0f;
+                RebuildOrder();
+            }
+        }
     }
 
     /// <summary>
@@ -211,7 +323,7 @@ public sealed partial class Simulation
     {
         SyncNetwork();
         var result = new List<(float Cost, int Depot)>();
-        if (line < 0 || line >= _lines.Count || !_lines[line].Active) return Array.Empty<int>();
+        if (line < 0 || line >= _lines.Count || !_lines[line].Active || _lines[line].Mode != StationMode.Road) return Array.Empty<int>();
         var first = _stations[_lines[line].Stops[0]];
         if (!first.Active) return Array.Empty<int>();
         var field = FieldTo(first);
@@ -290,6 +402,9 @@ public sealed partial class Simulation
         _upkeepPaid[id] = 0;
         _bay[id] = false;
         _bayStation[id] = -1;
+        _ghost[id] = false;
+        _ghostOut[id] = false;
+        _returnDepot[id] = -1;
         _length[id] = VehicleLength;
         ResetTripSlot(id);
         _riders[id] = null;
@@ -300,7 +415,19 @@ public sealed partial class Simulation
     {
         for (int i = 0; i < _count; i++)
         {
-            if (_line[i] < 0 || _kind[i] != VehicleKind.Car) continue;
+            if (_line[i] < 0 || _kind[i] != VehicleKind.Car || _ghost[i]) continue;
+            if (_returnDepot[i] >= 0)
+            {
+                if (_bay[i])
+                {
+                    if (!BayExitClear(i)) continue; // waits in the bay for a gap in the traffic
+                    LeaveBay(i);
+                    RebuildOrder();
+                }
+                _halted[i] = false;
+                if (ReachedDepot(i)) ParkAtDepot(i);
+                continue;
+            }
             if (_dwell[i] > 0)
             {
                 if (--_dwell[i] == 0)
@@ -327,7 +454,7 @@ public sealed partial class Simulation
     float StopInteraction(int i, float v)
     {
         var station = TargetStation(i);
-        if (station == null) return 0f;
+        if (station == null || _returnDepot[i] >= 0) return 0f;
         int lane = _lane[i];
         if (!IsStopLane(lane, station) || _pos[i] >= _laneZoneStart[lane]) return 0f;
         return Interaction(v, StopPosition(lane) - _pos[i], 0f);
@@ -403,11 +530,12 @@ public sealed partial class Simulation
     /// The cargo an empty vehicle takes on at a station: what its model carries, or for a freight model whichever freight
     /// cargo has the most waiting; only cargo that the next stop on the line accepts. -1 when there is none.
     /// </summary>
-    int CargoToLoad(int i, Station station)
+    int CargoToLoad(int i, Station station) => CargoToLoadFor(_modelCargo[_model[i]], _lines[_line[i]], _stopIndex[i], station);
+
+    /// <summary>The cargo an empty vehicle (or train) takes on at a station when it carries <paramref name="fixedCargo"/> (or any freight), bound for the next stop of the line.</summary>
+    int CargoToLoadFor(int fixedCargo, Line line, int stopIndex, Station station)
     {
-        int fixedCargo = _modelCargo[_model[i]];
-        var line = _lines[_line[i]];
-        var next = _stations[line.Stops[(_stopIndex[i] + 1) % line.Stops.Count]];
+        var next = _stations[line.Stops[(stopIndex + 1) % line.Stops.Count]];
         int best = -1;
         float bestWaiting = 1f; // at least one whole unit
         for (int c = 0; c < _cargo.Count; c++)
@@ -443,9 +571,15 @@ public sealed partial class Simulation
     /// </summary>
     void Pay(int vehicle, int cargo, int units, Station from, Station to, long since)
     {
+        _income[vehicle] += PayFor(_lines[_line[vehicle]], cargo, units, from, to, since);
+    }
+
+    /// <summary>Pays the company for units delivered on a line (by a vehicle or a train) and returns the amount.</summary>
+    long PayFor(Line line, int cargo, int units, Station from, Station to, long since)
+    {
         var type = _cargo[cargo];
-        var (x0, z0) = _net.GetNode(from.Node);
-        var (x1, z1) = _net.GetNode(to.Node);
+        var (x0, z0) = PointOf(from);
+        var (x1, z1) = PointOf(to);
         float km = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)) / 1000f;
         float seconds = (Tick - since) * StepSeconds;
         float share = seconds <= type.FreeSeconds ? 1f
@@ -454,10 +588,9 @@ public sealed partial class Simulation
         long pay = (long)MathF.Round(units * km * type.PayPerUnitKm * share);
 
         Earn(pay, LedgerEntry.Income);
-        var line = _lines[_line[vehicle]];
         line.Income += pay;
         line.Delivered += units;
-        _income[vehicle] += pay;
+        return pay;
     }
 
     /// <summary>Loading is done: head for the next open station on the line.</summary>
@@ -507,9 +640,12 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)line.Upkeep;
             h = h * 31 + (ulong)line.Delivered;
         }
+        if (_garage.Count > 0) h = h * 31 + GarageHash();
         for (int i = 0; i < _count; i++)
         {
             if (_line[i] < 0) continue;
+            if (_ghost[i]) h = h * 31 + 13UL;
+            if (_returnDepot[i] >= 0) h = h * 31 + (ulong)(_returnDepot[i] + 17);
             h = h * 31 + (ulong)i;
             h = h * 31 + (ulong)_line[i];
             h = h * 31 + (ulong)_model[i];

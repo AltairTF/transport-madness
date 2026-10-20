@@ -621,6 +621,20 @@ public sealed class RoadNetwork
     public bool CanBuildRoad(float x0, float z0, float x1, float z1, float sweep = 0f) => Plan(x0, z0, x1, z1, sweep) != null;
 
     /// <summary>
+    /// Where a planned road would meet the network, as distances along it with the map position and road height: its two ends, every
+    /// junction, and each change between ground, bridge and tunnel. Null when it cannot be built. Used to check, before building, what
+    /// else (a level crossing, say) the road would run into.
+    /// </summary>
+    internal IReadOnlyList<(float Along, float X, float Z, float Y, bool Junction)>? PlannedPoints(float x0, float z0, float x1, float z1, float sweep = 0f)
+    {
+        var plan = Plan(x0, z0, x1, z1, sweep);
+        if (plan == null) return null;
+        var list = new List<(float, float, float, float, bool)>(plan.Count);
+        foreach (var m in plan) list.Add((m.Along, m.X, m.Z, m.Y, m.Node >= 0 || m.Road.Value >= 0));
+        return list;
+    }
+
+    /// <summary>
     /// The meetings along the planned road, start to end, or null when it cannot be built. Besides the places where it
     /// meets the network there is one wherever it changes between ground, bridge and tunnel.
     /// </summary>

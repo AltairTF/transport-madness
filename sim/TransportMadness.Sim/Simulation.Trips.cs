@@ -332,7 +332,7 @@ public sealed partial class Simulation
     void GiveUp(TripGroup g, int people, int station)
     {
         if (IsOutbound(g.NextLeg)) { Drop(g, people); return; }
-        var (x, z) = _net.GetNode(_stations[station].Node);
+        var (x, z) = PointOf(_stations[station]);
         var home = _buildings[g.Destination];
         float d = MathF.Sqrt((home.X - x) * (home.X - x) + (home.Z - z) * (home.Z - z));
         Schedule(Tick + WalkTicks(d), new TripEvent(TripEventKind.Arrive, g.Id, people, -1, -1));

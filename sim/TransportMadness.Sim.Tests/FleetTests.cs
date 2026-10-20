@@ -157,10 +157,11 @@ public class FleetTests
         var (sim, depot, a, b) = StraightLine();
         int busLine = sim.Execute(new CreateLineCommand(new[] { a, b }));
         int truckLine = sim.Execute(new CreateLineCommand(new[] { b, a }));
-        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", busLine)) >= 0);
-        Assert.Equal(-1, sim.Execute(new BuyVehicleCommand(depot, "truck", truckLine))); // the bus still stands in the way
-        Run(sim, 0.25);
-        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "truck", truckLine)) >= 0);
+        int bus = sim.Execute(new BuyVehicleCommand(depot, "bus", busLine));
+        int truck = sim.Execute(new BuyVehicleCommand(depot, "truck", truckLine));
+        Assert.True(bus >= 0 && truck >= 0);
+        Assert.False(sim.IsGhost(bus));
+        Assert.True(sim.IsGhost(truck)); // the bus still stands in the doorway: the truck comes out behind it as a ghost, not refused
 
         Run(sim, 40);
 

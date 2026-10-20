@@ -138,7 +138,8 @@ public sealed partial class Simulation
 
     /// <summary>The lane to take after <paramref name="lane"/>: routed for a company vehicle or a trip car, random for other ambient traffic.</summary>
     int NextLaneFor(int vehicle, int lane) =>
-        _line[vehicle] >= 0 ? RouteNextLane(vehicle, lane)
+        _returnDepot[vehicle] >= 0 ? RouteTripLane(vehicle, lane)
+        : _line[vehicle] >= 0 ? RouteNextLane(vehicle, lane)
         : _tripDest[vehicle] >= 0 ? RouteTripLane(vehicle, lane)
         : ChooseNextLane(lane);
 }

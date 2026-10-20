@@ -122,7 +122,9 @@
     "crossingClearance": 5.5,       // a road passes over or under another (no junction) when their surfaces are this far apart, with a bridge above or a tunnel below
     "bridgeCostPerMetre": 320.0,    // two-lane; replaces the road and earthwork price
     "tunnelCostPerMetre": 520.0,
-    "avenueStructureFactor": 1.6    // an avenue on a bridge or in a tunnel costs this much more
+    "avenueStructureFactor": 1.6,   // an avenue on a bridge or in a tunnel costs this much more
+    // Traffic lights (M4): the approaches of a junction fall in two groups by the direction they come from; the groups take turns.
+    "trafficLight": { "price": 12000, "upkeepPerDay": 120.0, "greenSeconds": 18.0, "clearSeconds": 4.0 }
   },
 
   // The company's money. One day is dayLength seconds of simulated time: upkeep and interest are charged daily. A day is long
@@ -137,6 +139,7 @@
     "debtLimit": 100000,            // net worth (money minus loan) below minus this counts as insolvent
     "bankruptcyDays": 73,           // consecutive insolvent days before the company goes bankrupt (the game goes on in sandbox)
     "sellRefundShare": 0.6,         // of the price, paid when a vehicle is sold
+    "parkedUpkeepShare": 0.1,       // of its daily upkeep, paid by a vehicle or train waiting in a depot on no line
     "depotPrice": { "simple": 15000, "workshop": 40000, "complex": 90000 }
   },
 
@@ -153,6 +156,73 @@
     "bayUpkeepPerDay": 100.0,       // extra upkeep of the bays
     "bayCapacity": 2,               // vehicles that can load in the bays of a station at once; the next one stops in the lane as at a station without bays
     "bayExitGap": 30.0              // a vehicle leaves its bay only when no vehicle is within this distance behind it (and none overlaps it)
+  },
+
+  // Rail (M4). Trains are on a network of their own (tracks join road nodes only at level crossings). Tracks are single and run both
+  // ways; signals and stations mark where the next stretch has to be asked for. All lengths in metres, speeds in m/s, masses in kilograms.
+  "rail": {
+    "trackCostPerMetre": 160.0,
+    "cutCostPerCubicMetre": 8.0,
+    "fillCostPerCubicMetre": 12.0,
+    "earthworkSlope": 1.5,
+    "demolitionCostPerMetre": 20.0,
+    "bridgeCostPerMetre": 780.0,
+    "tunnelCostPerMetre": 1250.0,
+    "maxGrade": 0.04,               // steepest track that can be built
+    "freeGrade": 0.012,             // up to this grade the speed limit is unaffected; at maxGrade it is halved
+    "minRadius": 90.0,              // tightest curve
+    "maxSweep": 2.8,
+    "minTrackLength": 20.0,
+    "speedLimit": 36.0,             // posted speed of every track (about 130 km/h)
+    "curveLateralAcceleration": 0.9,
+    "halfWidth": 3.0,               // cleared and graded this far each side of the centre line
+    "shoulder": 5.0,
+    "maxFillDepth": 5.0,
+    "maxCutDepth": 6.0,
+    "structureMargin": 12.0,
+    "maxTurnAngle": 0.9,            // the sharpest change of direction a train can make at a junction (radians); anything sharper is no connection
+    "turnoutSpeed": 14.0,           // through a junction that bends the way, at most this ...
+    "minTurnoutSpeed": 6.0,         // ... down to this at the sharpest turn
+    "signalPrice": 1500,
+    "pathSignalPrice": 2500,
+    "stationPrice": 30000,
+    "stationUpkeepPerDay": 250.0,
+    "depotPrice": 45000,
+    "snapRadius": 14.0,             // a click this close to a rail node or a track's centre line picks it
+    "stationAlongStep": 5.0,
+    "movement": {
+      "serviceBrake": 0.6,
+      "emergencyBrake": 1.2,
+      "brakePlanShare": 0.8,        // the speed profile toward a stop uses this share of the service brake
+      "controlGain": 1.2,
+      "stopMargin": 1.0,            // a train stops this far short of a red signal or a closed end of reservation
+      "reserveLookahead": 30.0,     // a train asks for the track beyond a signal this far before it (plus its braking distance)
+      "rollingResistance": 0.0025,
+      "airResistance": 6.0,
+      "gravity": 9.81,
+      "blockedSeconds": 90.0,
+      "horizon": 1800.0,
+      "depotSpawnClearance": 2.0
+    },
+    "crossings": {
+      "bandHalfWidth": 3.5,
+      "warnSeconds": 16.0,
+      "lowerSeconds": 4.0,
+      "clearSeconds": 3.0,
+      "minFromNode": 24.0,
+      "minAngle": 0.35,
+      "roadStopMargin": 2.5,
+      "collisionHalt": 40.0,
+      "price": 6000,
+      "clearance": 4.0
+    },
+    "locomotives": [
+      { "id": "diesel", "name": "Diesel locomotive", "length": 18.0, "mass": 90000.0, "power": 1600000.0, "tractiveEffort": 220000.0, "maxSpeed": 36.0, "maxWagons": 8, "price": 140000, "upkeepPerDay": 1000.0 }
+    ],
+    "wagons": [
+      { "id": "coach", "name": "Passenger coach", "cargo": "passengers", "capacity": 48, "length": 20.0, "mass": 26000.0, "unitMass": 80.0, "price": 36000, "upkeepPerDay": 200.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.15 },
+      { "id": "freight", "name": "Freight wagon", "cargo": "freight", "capacity": 40, "length": 16.0, "mass": 20000.0, "unitMass": 600.0, "price": 30000, "upkeepPerDay": 150.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.2 }
+    ]
   },
 
   // Pay is quantity times distance (straight line between the stations) times the rate, reduced when the trip took long.

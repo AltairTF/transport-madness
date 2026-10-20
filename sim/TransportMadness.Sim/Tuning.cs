@@ -31,6 +31,7 @@ public sealed record Tuning
     public required TownsTuning Towns { get; init; }
     public required IndustriesTuning Industries { get; init; }
     public required TripsTuning Trips { get; init; }
+    public required RailTuning Rail { get; init; }
     public required IReadOnlyList<CargoTuning> Cargo { get; init; }
     public required IReadOnlyList<VehicleModelTuning> Vehicles { get; init; }
 
@@ -195,12 +196,24 @@ public sealed record RoadTuning
     public required float BridgeCostPerMetre { get; init; }
     public required float TunnelCostPerMetre { get; init; }
     public required float AvenueStructureFactor { get; init; }
+    public required TrafficLightTuning TrafficLight { get; init; }
 
     /// <summary>Price per metre of a bridge or tunnel of the given road type.</summary>
     public float StructureCostPerMetre(RoadStructure structure, RoadType type) =>
         (structure == RoadStructure.Tunnel ? TunnelCostPerMetre : BridgeCostPerMetre) * (type == RoadType.Avenue2x2 ? AvenueStructureFactor : 1f);
 
     public RoadTypeTuning Of(RoadType type) => type == RoadType.Avenue2x2 ? Avenue : TwoLane;
+}
+
+/// <summary>Traffic lights at road junctions: two groups of approaches take turns.</summary>
+public sealed record TrafficLightTuning
+{
+    public required long Price { get; init; }
+    public required float UpkeepPerDay { get; init; }
+    /// <summary>Seconds one group of approaches has green.</summary>
+    public required float GreenSeconds { get; init; }
+    /// <summary>Seconds with red for everybody between the two greens.</summary>
+    public required float ClearSeconds { get; init; }
 }
 
 public sealed record EconomyTuning
@@ -214,6 +227,7 @@ public sealed record EconomyTuning
     public required long DebtLimit { get; init; }
     public required int BankruptcyDays { get; init; }
     public required float SellRefundShare { get; init; }
+    public required float ParkedUpkeepShare { get; init; }
     public required DepotPrices DepotPrice { get; init; }
 }
 

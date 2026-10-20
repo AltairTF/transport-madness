@@ -13,7 +13,26 @@ public sealed class Station
         Waiting = new float[cargoTypes];
     }
 
+    /// <summary>A station on the rail network, standing at a rail node.</summary>
+    internal Station(int id, int railNode, int cargoTypes, float x, float z)
+    {
+        Id = id;
+        Node = -1;
+        Mode = StationMode.Rail;
+        RailNode = railNode;
+        X = x;
+        Z = z;
+        Waiting = new float[cargoTypes];
+    }
+
     public int Id { get; }
+    /// <summary>Whether road vehicles or trains stop here.</summary>
+    public StationMode Mode { get; } = StationMode.Road;
+    /// <summary>The rail node a rail station stands at, -1 for a road station.</summary>
+    public int RailNode { get; internal set; } = -1;
+    /// <summary>Where a rail station stands on the map (a road station's place is that of its node).</summary>
+    public float X { get; internal set; }
+    public float Z { get; internal set; }
     /// <summary>The name the player gave it, null while it has none (the game then names it for its town). Not part of the state hash.</summary>
     public string? Name { get; internal set; }
     /// <summary>The node it stands at; follows the node when that is moved.</summary>
@@ -44,17 +63,23 @@ public sealed class Station
 /// <summary>How many people boarded, got off and gave up at a station in a day.</summary>
 public readonly record struct PeopleCounts(int Boarded, int Alighted, int GaveUp);
 
+/// <summary>Which network a station or a line is on.</summary>
+public enum StationMode : byte { Road, Rail }
+
 /// <summary>A recurring route: the company's vehicles on it visit the stations in order, and start over after the last.</summary>
 public sealed class Line
 {
-    internal Line(int id, int[] stops)
+    internal Line(int id, int[] stops, StationMode mode = StationMode.Road)
     {
         Id = id;
         Stops = stops;
+        Mode = mode;
         Name = $"Line {id + 1}";
     }
 
     public int Id { get; }
+    /// <summary>Buses and trucks run road lines, trains rail lines; all its stations are of the same mode.</summary>
+    public StationMode Mode { get; }
     /// <summary>Chosen by the player; not part of the state hash.</summary>
     public string Name { get; internal set; }
     /// <summary>The colour the player chose (0xRRGGBB), -1 while it has none (the game then picks one from its number). Not part of the state hash.</summary>

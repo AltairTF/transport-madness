@@ -76,5 +76,61 @@ public sealed record TakeLoanCommand(long Amount) : SimCommand;
 /// <summary>Pays back part of the loan. Result: 1, 0 when refused (more than is owed or than the company has).</summary>
 public sealed record RepayLoanCommand(long Amount) : SimCommand;
 
+/// <summary>Puts traffic lights at a road junction (a node with at least three roads). Result: 1, 0 when refused (not a junction, one there already, or no money).</summary>
+public sealed record BuildTrafficLightCommand(int Node) : SimCommand;
+
+/// <summary>Takes the traffic lights down. Result: 1, 0 when there are none.</summary>
+public sealed record RemoveTrafficLightCommand(int Node) : SimCommand;
+
+/// <summary>Builds a track (straight, or bending by <paramref name="Sweep"/> radians) on the rail network, joining it where it meets other tracks. Result: number of pieces built, 0 when refused.</summary>
+public sealed record BuildTrackCommand(float X0, float Z0, float X1, float Z1, float Sweep = 0f) : SimCommand;
+
+/// <summary>Tears a piece of track down; its signals go with it. Trains on it are lost. Result: 1, 0 when refused.</summary>
+public sealed record RemoveTrackCommand(int Track) : SimCommand;
+
+/// <summary>Puts a signal at the rail node near (X, Z), or on the track there (split to make a node). On a node it faces the track nearest the click; on open track it faces trains going from the track's start toward its end when <paramref name="Forward"/>, else the other way. Result: the signal id, -1 when refused.</summary>
+public sealed record BuildSignalCommand(float X, float Z, SignalKind Kind, bool Forward = true) : SimCommand;
+
+/// <summary>Takes a signal down. Result: 1, 0 when refused.</summary>
+public sealed record RemoveSignalCommand(int Signal) : SimCommand;
+
+/// <summary>Builds a rail station at the rail node near (X, Z), or on the track there. Result: the station id, -1 when refused.</summary>
+public sealed record BuildRailStationCommand(float X, float Z) : SimCommand;
+
+/// <summary>Places a rail depot at the rail node near (X, Z). Result: the depot id, -1 when refused.</summary>
+public sealed record AddRailDepotCommand(float X, float Z) : SimCommand;
+
+/// <summary>Buys a train (a locomotive and <paramref name="Wagons"/> wagons, by their ids in the tuning file) at a rail depot for a rail line. Result: the train id, -1 when refused.</summary>
+/// <remarks>With <see cref="NearestDepot"/> for the depot, the rail depot with the quickest way to the line's first station that can take the train is used.</remarks>
+public sealed record BuyTrainCommand(int Depot, string Locomotive, string Wagon, int Wagons, int Line) : SimCommand
+{
+    public const int NearestDepot = -1;
+}
+
+/// <summary>Sells a train for part of its price. Result: the train id, -1 when refused.</summary>
+public sealed record SellTrainCommand(int Train) : SimCommand;
+
+/// <summary>Buys a road vehicle (by its id in the tuning file) into a road depot's garage, on no line. Result: the garage id, -1 when refused (no such depot or model, or not enough money).</summary>
+/// <remarks>With <see cref="AnyDepot"/> for the depot, the first open road depot is used.</remarks>
+public sealed record BuyParkedVehicleCommand(int Depot, string Model) : SimCommand
+{
+    public const int AnyDepot = -1;
+}
+
+/// <summary>Buys a train (a locomotive and <paramref name="Wagons"/> wagons) into a rail depot's garage, on no line. Result: the garage id, -1 when refused. <see cref="BuyParkedVehicleCommand.AnyDepot"/> takes the first open rail depot.</summary>
+public sealed record BuyParkedTrainCommand(int Depot, string Locomotive, string Wagon, int Wagons) : SimCommand;
+
+/// <summary>Puts a parked vehicle or train on a line; it comes out of its depot. Result: the vehicle id (the train id for a train), -1 when refused.</summary>
+public sealed record AssignParkedCommand(int Parked, int Line) : SimCommand;
+
+/// <summary>Sells a parked vehicle or train for part of its price. Result: its garage id, -1 when refused.</summary>
+public sealed record SellParkedCommand(int Parked) : SimCommand;
+
+/// <summary>Takes a road vehicle off its line and sends it to the nearest depot to wait there. Result: 1, 0 when refused.</summary>
+public sealed record ParkVehicleCommand(int Vehicle) : SimCommand;
+
+/// <summary>Takes a train off its line and sends it to the nearest rail depot to wait there. Result: 1, 0 when refused.</summary>
+public sealed record ParkTrainCommand(int Train) : SimCommand;
+
 /// <summary>A command and the tick it was applied at, i.e. the number of steps that had run before it.</summary>
 public readonly record struct LoggedCommand(long Tick, SimCommand Command);

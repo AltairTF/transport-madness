@@ -252,7 +252,9 @@ public sealed partial class Simulation
         return true;
     }
 
-    /// <summary>Whether a strip of ground (in a town's own axes) is dry, on the map and clear of buildings and industries.</summary>
+    const float RailClearance = 14f; // new streets keep this far from a track
+
+    /// <summary>Whether a strip of ground (in a town's own axes) is dry, on the map and clear of buildings, industries and railway.</summary>
     bool StripIsFree(Town town, float u0, float u1, float v0, float v1)
     {
         var g = _townTuning.Generation;
@@ -266,6 +268,7 @@ public sealed partial class Simulation
                     if (terrain.HeightAt(x, z) - terrain.WaterSurfaceAt(x, z) < g.WaterMargin) return false;
                 }
                 if (BuildingsNear(x, z, StripClearance).Count > 0) return false;
+                if (_rail.TrackCount > 0 && _rail.TrackAt(x, z, RailClearance) != null) return false; // a town does not grow over a railway
                 foreach (var industry in _industries)
                 {
                     float reach = _industryTuning.Types[industry.Type].Size + SampleSpacing;

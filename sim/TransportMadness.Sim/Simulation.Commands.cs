@@ -24,13 +24,17 @@ public sealed partial class Simulation
             {
                 var cost = _net.EstimateCost(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.Sweep);
                 if (cost == null) return 0;
-                var inTheWay = BuildingsInTheWay(new[] { (RoadGeometry.FromChord(c.X0, c.Z0, c.X1, c.Z1, c.Sweep), c.Type) });
-                if (!CanAfford(cost.Value.Money + DemolitionOf(inTheWay).Price)) return 0;
+                var geometry = RoadGeometry.FromChord(c.X0, c.Z0, c.X1, c.Z1, c.Sweep);
+                var inTheWay = BuildingsInTheWay(new[] { (geometry, c.Type) });
+                int crossings = 0;
+                if (RailInUse && (_net.PlannedPoints(c.X0, c.Z0, c.X1, c.Z1, c.Sweep) is not { } plan || !RoadCrossingsAllowed(geometry, plan, out crossings))) return 0;
+                if (!CanAfford(cost.Value.Money + DemolitionOf(inTheWay).Price + crossings * _railTuning.Crossings.Price)) return 0;
                 int built = _net.BuildRoad(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.SpeedLimit, c.Sweep).Count;
                 if (built > 0)
                 {
                     Charge(Price(cost.Value.Money), LedgerEntry.Construction);
                     DemolishForRoad(inTheWay);
+                    if (RailInUse) AddCrossingsFound();
                 }
                 return built;
             }
@@ -57,6 +61,7 @@ public sealed partial class Simulation
                 if (c.Node < 0 || c.Node >= _net.NodeCount) return 0;
                 if (_net.EstimateMoveNode(c.Node, c.X, c.Z) is not { } cost) return 0;
                 var inTheWay = _net.PlannedMoveRoads(c.Node, c.X, c.Z) is { } rebuilt ? BuildingsInTheWay(rebuilt) : new List<int>();
+                if (RailInUse && _net.PlannedMoveRoads(c.Node, c.X, c.Z) is { } moved2 && MovedRoadsMeetTracks(moved2)) return 0;
                 if (!CanAfford(cost.Money + DemolitionOf(inTheWay).Price)) return 0;
                 if (!_net.MoveNode(c.Node, c.X, c.Z, out int moved)) return 0;
                 Charge(Price(cost.Money), LedgerEntry.Construction);
@@ -100,6 +105,38 @@ public sealed partial class Simulation
                 return TakeLoan(c.Amount);
             case RepayLoanCommand c:
                 return RepayLoan(c.Amount);
+            case BuildTrafficLightCommand c:
+                return BuildTrafficLight(c.Node);
+            case RemoveTrafficLightCommand c:
+                return RemoveTrafficLight(c.Node);
+            case BuildTrackCommand c:
+                return BuildTrack(c);
+            case RemoveTrackCommand c:
+                return RemoveTrack(c.Track);
+            case BuildSignalCommand c:
+                return BuildSignal(c);
+            case RemoveSignalCommand c:
+                return RemoveSignal(c.Signal);
+            case BuildRailStationCommand c:
+                return BuildRailStation(c);
+            case AddRailDepotCommand c:
+                return BuildRailDepot(c);
+            case BuyTrainCommand c:
+                return BuyTrain(c);
+            case SellTrainCommand c:
+                return SellTrain(c.Train);
+            case BuyParkedVehicleCommand c:
+                return BuyParkedVehicle(c.Depot, c.Model);
+            case BuyParkedTrainCommand c:
+                return BuyParkedTrain(c.Depot, c.Locomotive, c.Wagon, c.Wagons);
+            case AssignParkedCommand c:
+                return AssignParked(c.Parked, c.Line);
+            case SellParkedCommand c:
+                return SellParked(c.Parked);
+            case ParkVehicleCommand c:
+                return ParkVehicle(c.Vehicle);
+            case ParkTrainCommand c:
+                return ParkTrain(c.Train);
             case SeedTrafficCommand c:
                 return SeedTraffic(c.Count);
             case CrashSomeoneCommand:
@@ -126,7 +163,7 @@ public sealed partial class Simulation
         for (int k = 0; k < n; k++)
         {
             int i = (int)((Tick + k) % n);
-            if (_kind[i] == VehicleKind.Car && _speed[i] > CrashSpeedThreshold)
+            if (_kind[i] == VehicleKind.Car && !_ghost[i] && _speed[i] > CrashSpeedThreshold)
             {
                 Crash(i);
                 return i;

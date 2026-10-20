@@ -318,7 +318,7 @@ public sealed partial class Simulation
             _stationIndustries[s] = Array.Empty<int>();
             var station = _stations[s];
             if (!station.Active) continue;
-            var (x, z) = _net.GetNode(station.Node);
+            var (x, z) = PointOf(station);
 
             var buildings = new List<int>();
             foreach (int id in BuildingsNear(x, z, radius))
@@ -351,7 +351,7 @@ public sealed partial class Simulation
     /// <summary>The buildings an active station covers (active ones only), in id order.</summary>
     public List<int> CoveredBy(Station station)
     {
-        var (x, z) = _net.GetNode(station.Node);
+        var (x, z) = PointOf(station);
         return BuildingsNear(x, z, _stationTuning.CoverageRadius).Where(id => _buildings[id].State == BuildingState.Active).ToList();
     }
 

@@ -58,6 +58,7 @@ func _ready() -> void:
 	add_child(hud)
 	hud.speed_selected.connect(func(speed: float) -> void: host.SetSpeed(speed))
 	hud.set_models(host.GetVehicleModels())
+	hud.set_train_options(host.GetTrainOptions())
 	hud.set_cargo_names(host.GetCargoNames())
 	hud.line_action.connect(_on_line_action)
 	hud.line_edit.connect(_on_line_edit)
@@ -65,6 +66,9 @@ func _ready() -> void:
 	hud.line_color.connect(func(line: int, color: Color) -> void: host.SetLineColor(line, color))
 	hud.station_action.connect(_on_station_action)
 	hud.vehicle_action.connect(_on_vehicle_action)
+	hud.garage_buy.connect(_on_garage_buy)
+	hud.garage_assign.connect(_on_garage_assign)
+	hud.garage_sell.connect(func(parked: int) -> void: hud.show_message("Sold" if host.SellParked(parked) else "That can't be sold now"))
 	hud.town_focus.connect(rig.focus_on)
 	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
 	if _world_note != "":
@@ -113,6 +117,9 @@ func _process(delta: float) -> void:
 		hud.show_industries(host.GetIndustries())
 		hud.show_stations(host.GetStations())
 		hud.show_vehicles(host.GetVehicles())
+		hud.show_garage(host.GetDepots(), host.GetParked(), host.GetLines())
+		for warning in host.TakeRailWarnings():
+			hud.show_message(warning)
 
 	if _args.has("--shot") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
@@ -175,8 +182,11 @@ func _on_action(action: String) -> void:
 func _on_line_action(kind: String, line: int, model: String) -> void:
 	match kind:
 		"buy":
-			var id: int = host.BuyVehicle(model, line)
-			hud.show_message("Bought a %s for line %d" % [model, line + 1] if id >= 0 else "Can't buy that: not enough money, no depot connected by road to the line's first station, or its junction is busy (try again)")
+			var why: String = host.BuyForLine(false, model, line)
+			hud.show_message("Bought a %s for line %d" % [model, line + 1] if why == "" else "Can't buy that: " + why)
+		"buy_train":
+			var train_why: String = host.BuyForLine(true, model, line)
+			hud.show_message("Bought a train for line %d" % (line + 1) if train_why == "" else "Can't buy that: " + train_why)
 		"delete":
 			hud.show_message("Line deleted, its vehicles sold" if host.DeleteLine(line) else "No such line")
 
@@ -206,10 +216,28 @@ func _on_station_action(kind: String, station: int, text: String) -> void:
 			hud.show_message("Bays built" if host.AddStationBays(station) else "Can't build bays: not enough money, or the station has them already")
 
 
-## Sells a vehicle: the button of the Vehicles window.
+## A button of a vehicle row in the Vehicles window: sell it, or send it to a depot.
 func _on_vehicle_action(kind: String, vehicle: int) -> void:
-	if kind == "sell":
-		hud.show_message("Vehicle sold" if host.SellVehicle(vehicle) else "That vehicle can't be sold now")
+	match kind:
+		"sell":
+			# Trains share the window with road vehicles under negative ids.
+			var sold: bool = host.SellTrain(-1 - vehicle) if vehicle < 0 else host.SellVehicle(vehicle)
+			hud.show_message("Sold" if sold else "That can't be sold now")
+		"depot":
+			var why: String = host.SendToDepot(vehicle)
+			hud.show_message("On its way to a depot" if why == "" else "Can't send it to a depot: " + why)
+
+
+## A vehicle bought for a depot's garage, from the Vehicles window.
+func _on_garage_buy(rail: bool, depot: int, option: String) -> void:
+	var id: int = host.BuyParked(rail, depot, option)
+	hud.show_message("Bought, waiting in the depot: put it on a line when you are ready" if id >= 0 else "Can't buy that: not enough money")
+
+
+## A parked vehicle put on a line, from the Vehicles window.
+func _on_garage_assign(parked: int, line: int) -> void:
+	var why: String = host.AssignParked(parked, line)
+	hud.show_message("Out of the depot and on line %d" % (line + 1) if why == "" else "Can't put it on that line: " + why)
 
 
 ## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.

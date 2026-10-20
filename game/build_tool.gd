@@ -20,7 +20,11 @@ signal tool_changed(tool_name: String)
 
 var host: Node3D
 var camera: Camera3D
-var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, downgrade, faster, slower, move, remove, depot, station, line
+var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, downgrade, faster, slower, move, remove, depot, station, line, and the rail tools
+const LIGHT_TOOLS := ["light", "light_remove"]
+const RAIL_TOOLS := ["track", "track_curve", "track_remove", "signal_block", "signal_path", "signal_remove", "rail_station", "rail_depot"]
+const RAIL_WIDTH := 4.2
+var _signal_forward := true ## signals face trains going from a track's start toward its end; R turns them round
 
 var _start: Variant = null # Vector3 or null
 var _mid: Variant = null   # Vector3 or null, curves only
@@ -67,11 +71,25 @@ func set_tool(tool_name: String) -> void:
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
 		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
 		"line": message.emit("New line: click the stations in order, Enter finishes the line, Esc cancels")
+		"light": message.emit("Traffic light: click a junction of three roads or more; the streets that cross take turns at green")
+		"light_remove": message.emit("Remove light: click a junction with traffic lights")
+		"track": message.emit("Track: click to start, click again to build (Esc stops). Tracks join where they meet; a road it crosses gets a level crossing")
+		"track_curve": message.emit("Curved track: click the start, a point on the curve, then the end (Esc stops)")
+		"track_remove": message.emit("Remove track: click a piece of track (node to node); a train on it is lost")
+		"signal_block": message.emit("Block signal: click a track (R turns the signal round). A train waits unless the whole block beyond is free")
+		"signal_path": message.emit("Path signal: click a track (R turns the signal round). A train waits unless its path up to the next signal is free; use them at passing loops")
+		"signal_remove": message.emit("Remove signal: click a signal")
+		"rail_station": message.emit("Rail station: click a track to build one there; trains stop with their front at the node")
+		"rail_depot": message.emit("Rail depot: click a track junction or end; trains are bought there for a line")
 		_: message.emit("")
 
 
+func _is_rail_tool() -> bool:
+	return tool in RAIL_TOOLS
+
+
 func _is_curve() -> bool:
-	return tool == "curve2" or tool == "curve4"
+	return tool == "curve2" or tool == "curve4" or tool == "track_curve"
 
 
 func _road_type() -> int:
@@ -98,6 +116,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
 		if tool == "line":
 			_finish_line()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and tool.begins_with("signal_"):
+		_signal_forward = not _signal_forward
+		_update_preview(get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		get_viewport().set_input_as_handled()
 		if _start == null and _line_stations.is_empty():
@@ -122,7 +143,7 @@ func _target_point(screen: Vector2) -> Variant:
 	var p: Variant = ground_point(screen)
 	if p == null:
 		return null
-	var snap: Dictionary = host.SnapToNode(p.x, p.z, NODE_SNAP_RADIUS)
+	var snap: Dictionary = host.SnapToRailNode(p.x, p.z, NODE_SNAP_RADIUS) if _is_rail_tool() else host.SnapToNode(p.x, p.z, NODE_SNAP_RADIUS)
 	if snap["snapped"]:
 		return Vector3(snap["x"], snap["y"], snap["z"])
 	if _start != null and not _is_curve():
@@ -147,6 +168,12 @@ func _click(screen: Vector2) -> void:
 		return
 	if _is_road_tool():
 		_click_road(screen)
+		return
+	if tool in LIGHT_TOOLS:
+		_click_light(screen)
+		return
+	if tool in ["track_remove", "signal_block", "signal_path", "signal_remove", "rail_station", "rail_depot"]:
+		_click_rail(screen, target)
 		return
 	if tool == "move":
 		_click_move(screen)
@@ -173,8 +200,9 @@ func _click(screen: Vector2) -> void:
 	var sweep := 0.0
 	if _is_curve():
 		sweep = host.SweepThrough(_start.x, _start.z, _mid.x, _mid.z, target.x, target.z)
-	if host.BuildCurve(_start.x, _start.z, target.x, target.z, _road_type(), sweep):
-		message.emit("Road built")
+	var built: bool = host.BuildTrack(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.BuildCurve(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
+	if built:
+		message.emit("Track laid" if _is_rail_tool() else "Road built")
 		_start = target # keep drawing from the new end
 		_mid = null
 		_arc_preview.visible = false
@@ -255,6 +283,12 @@ func _hover(screen: Vector2) -> void:
 
 
 func _update_preview(screen: Vector2) -> void:
+	if tool in LIGHT_TOOLS:
+		_hover_light(screen)
+		return
+	if tool in ["track_remove", "signal_block", "signal_path", "signal_remove", "rail_station", "rail_depot"]:
+		_hover_rail(screen)
+		return
 	if _is_road_tool():
 		_hover(screen)
 		return
@@ -288,9 +322,9 @@ func _update_preview(screen: Vector2) -> void:
 	var offset: Vector3 = target - _start
 	if _is_curve() and _mid != null:
 		sweep = host.SweepThrough(_start.x, _start.z, _mid.x, _mid.z, target.x, target.z)
-	var cost: Dictionary = host.EstimateCurveCost(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
+	var cost: Dictionary = host.EstimateTrackCost(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.EstimateCurveCost(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	var valid: bool = cost["valid"]
-	var width := 16.0 if _road_type() == 1 else 7.0
+	var width := RAIL_WIDTH if _is_rail_tool() else (16.0 if _road_type() == 1 else 7.0)
 	_material.albedo_color = ROAD_COLORS["valid"] if valid and cost["affordable"] else ROAD_COLORS["invalid"]
 
 	if absf(sweep) > 0.0001:
@@ -312,8 +346,15 @@ func _update_preview(screen: Vector2) -> void:
 			text += "   bridge %d m" % cost["bridge"]
 		if cost["tunnel"] > 0.0:
 			text += "   tunnel %d m" % cost["tunnel"]
+		if _is_rail_tool() and cost["crossings"] > 0:
+			text += "   %d level %s" % [cost["crossings"], "crossing" if cost["crossings"] == 1 else "crossings"]
 		text += _demolition_text(cost)
 		message.emit(text)
+	elif _is_rail_tool():
+		var reason: String = cost.get("reason", "")
+		if reason == "":
+			reason = "too short, too steep (max 4%), curve too tight (radius 90 m), in water, too close to another junction, or it would cross a road too near its end or at too sharp an angle"
+		message.emit("Can't lay track there: " + reason)
 	else:
 		message.emit("Can't build there: too short, too steep (max 12%), curve too tight, in water, or too close to a junction")
 
@@ -497,3 +538,126 @@ func _money(amount: float) -> String:
 			out += ","
 		out += digits[i]
 	return out
+
+
+## Rail tools that act on one place: a marker where the signal, station or depot would stand, or the track to tear down.
+func _hover_rail(screen: Vector2) -> void:
+	_preview.visible = false
+	_arc_preview.visible = false
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	match tool:
+		"track_remove":
+			var hit: Dictionary = host.TrackAt(p.x, p.z)
+			if not hit["found"]:
+				message.emit("No track there")
+				return
+			_material.albedo_color = ROAD_COLORS["valid"]
+			_draw_arc(host.TrackPoints(hit["track"]), RAIL_WIDTH + 2.0)
+			message.emit("Remove %d m of track: demolition %s" % [hit["length"], _money(hit["demolition"])])
+		"signal_block", "signal_path":
+			var site: Dictionary = host.SignalPreview(p.x, p.z, 1 if tool == "signal_path" else 0, _signal_forward)
+			if not site["valid"]:
+				message.emit("Click a track to put a signal there (R turns it round)")
+				return
+			_preview.visible = true
+			_preview.mesh.size = Vector3(1.0, 5.0, 1.0)
+			_preview.transform = Transform3D(Basis(Vector3.UP, -site["heading"]), Vector3(site["x"], site["y"] + 2.5, site["z"]))
+			_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
+			message.emit("%s signal: cost %s   faces trains going the way the marker points (R turns it round)" % ["Path" if tool == "signal_path" else "Block", _money(site["price"])])
+		"signal_remove":
+			var found: Dictionary = host.SignalAt(p.x, p.z, 16.0)
+			if found["found"]:
+				_preview.visible = true
+				_preview.mesh.size = Vector3(5, 6, 5)
+				_preview.transform = Transform3D(Basis.IDENTITY, Vector3(found["x"], found["y"] + 3.0, found["z"]))
+				_material.albedo_color = ROAD_COLORS["valid"]
+				message.emit("Click to take this signal down")
+			else:
+				message.emit("Click a signal")
+		"rail_station":
+			var site: Dictionary = host.RailStationPreview(p.x, p.z)
+			if not site["valid"]:
+				message.emit("No room for a station here: click a track, away from its ends, not on another station")
+				return
+			_preview.visible = true
+			_preview.mesh.size = Vector3(36, 1, 4)
+			_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"], site["y"] + 0.6, site["z"]))
+			_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
+			message.emit("Rail station: cost %s   serves %d buildings and %d industries within %d m" % [_money(site["price"]), site["covered"], site["industries"], site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
+		"rail_depot":
+			var node: Dictionary = host.SnapToRailNode(p.x, p.z, 16.0)
+			if node["snapped"]:
+				_preview.visible = true
+				_preview.mesh.size = Vector3(16, 5, 12)
+				_preview.transform = Transform3D(Basis.IDENTITY, Vector3(node["x"] + 16.0, node["y"] + 2.5, node["z"] + 16.0))
+				_material.albedo_color = ROAD_COLORS["valid"]
+				message.emit("Click to build a rail depot here")
+			else:
+				message.emit("Click a track junction or end")
+
+
+func _click_rail(screen: Vector2, _target: Vector3) -> void:
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	match tool:
+		"track_remove":
+			var hit: Dictionary = host.TrackAt(p.x, p.z)
+			if not hit["found"]:
+				message.emit("No track there")
+				return
+			message.emit("Track removed (demolition %s)" % _money(hit["demolition"]) if host.RemoveTrack(hit["track"]) else "Can't remove that")
+		"signal_block", "signal_path":
+			var kind := 1 if tool == "signal_path" else 0
+			message.emit("Signal built" if host.BuildSignal(p.x, p.z, kind, _signal_forward) else "Can't put a signal there: click a track, with enough money")
+		"signal_remove":
+			var found: Dictionary = host.SignalAt(p.x, p.z, 16.0)
+			message.emit("Signal taken down" if found["found"] and host.RemoveSignal(found["signal"]) else "No signal there")
+		"rail_station":
+			var id: int = host.BuildRailStation(p.x, p.z)
+			message.emit("Station %s built" % host.StationName(id) if id >= 0 else "Can't build a station there: it needs a track with room on both sides, no station already, and enough money")
+		"rail_depot":
+			message.emit("Rail depot built" if host.BuildRailDepot(p.x, p.z) else "No free track junction or end nearby")
+	_hover_rail(screen)
+
+
+## Traffic light tools: a marker on the junction under the mouse.
+func _hover_light(screen: Vector2) -> void:
+	_preview.visible = false
+	_arc_preview.visible = false
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	if tool == "light":
+		var site: Dictionary = host.LightPreview(p.x, p.z)
+		if not site["valid"]:
+			message.emit("Click a junction of three roads or more without lights")
+			return
+		_preview.visible = true
+		_preview.mesh.size = Vector3(8, 6, 8)
+		_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"], site["y"] + 3.0, site["z"]))
+		_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
+		message.emit("Traffic lights: cost %s" % _money(site["price"]) + ("" if site["affordable"] else "   (not enough money)"))
+	else:
+		var found: Dictionary = host.LightAt(p.x, p.z)
+		if found["found"]:
+			_preview.visible = true
+			_preview.mesh.size = Vector3(8, 6, 8)
+			_preview.transform = Transform3D(Basis.IDENTITY, Vector3(found["x"], found["y"] + 3.0, found["z"]))
+			_material.albedo_color = ROAD_COLORS["valid"]
+			message.emit("Click to take the lights down")
+		else:
+			message.emit("Click a junction with traffic lights")
+
+
+func _click_light(screen: Vector2) -> void:
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	if tool == "light":
+		message.emit("Traffic lights built" if host.BuildTrafficLight(p.x, p.z) else "Can't put lights there: it needs a junction of three roads or more, without lights, and enough money")
+	else:
+		message.emit("Lights taken down" if host.RemoveTrafficLight(p.x, p.z) else "No lights there")
+	_hover_light(screen)

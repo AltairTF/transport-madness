@@ -24,6 +24,7 @@ public sealed partial class Simulation
         int myNext = _nextLane[i];
         int myMove = MoveIndex(lane, myNext);
         float worst = ExitBlocked(myNext, _length[i]) ? Interaction(v, toEdge, 0f) : 0f;
+        if (_lightCount > 0 && LaneIsRed(lane)) return MathF.Max(worst, Interaction(v, toEdge, 0f)); // a red light: nothing else matters
         float myArrival = TimeToCover(toEdge, v);
         float centre = _pos[i] - _length[i] * 0.5f - _laneZoneStart[lane]; // along the path through the junction, negative before it
 

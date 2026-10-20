@@ -139,6 +139,9 @@ public sealed partial class Simulation
         _sustainNeed = ResolveNeeds(tuning, t => t.Sustain, 1f);
         _constructionCap = ResolveNeeds(tuning, t => t.Construction, 1f);
         _passengerCargo = FindCargo(tuning, "passengers");
+        _rail = new RailNetwork(net.Terrain, tuning);
+        _railTuning = tuning.Rail;
+        ResolveWagonCargo();
         _models = tuning.Vehicles;
         _modelCargo = ResolveModelCargo(tuning);
         _ticksPerDay = (long)MathF.Round(_economy.DayLength / StepSeconds);
@@ -233,7 +236,7 @@ public sealed partial class Simulation
             Mix((ulong)_cooldown[i]);
             Mix((ulong)_phase[i]);
             Mix((ulong)(_target[i] + 1));
-            Mix((_halted[i] ? 1UL : 0UL) | (_aborting[i] ? 2UL : 0UL) | (_keepLane[i] ? 4UL : 0UL));
+            Mix((_halted[i] ? 1UL : 0UL) | (_aborting[i] ? 2UL : 0UL) | (_keepLane[i] ? 4UL : 0UL) | (_ghost[i] ? 8UL : 0UL) | (_ghostOut[i] ? 16UL : 0UL));
         }
         Mix(IncidentHash());
         Mix(StationHash());
@@ -241,6 +244,8 @@ public sealed partial class Simulation
         if (_industries.Count > 0 || _buildings.Count > 0) Mix(IndustryHash());
         if (_groups.Count > 0) Mix(TripHash());
         Mix(FleetHash());
+        if (_lights.Count > 0) Mix(LightHash());
+        if (RailInUse) Mix(RailHash());
         Mix((ulong)Company.Money);
         Mix((ulong)Company.Loan);
         Mix((ulong)(Company.Bankrupt ? Company.InsolventDays + 1 : Company.InsolventDays));
@@ -363,15 +368,22 @@ public sealed partial class Simulation
     public void Step()
     {
         SyncNetwork();
+        if (RailInUse)
+        {
+            SyncRail();
+            UpdateCrossings();
+        }
+        if (_lightCount > 0) SyncLights();
         DecideManoeuvres();
         PrepareOvertakes();
         GenerateCargo();
         UpdateIndustries();
         UpdateTrips();
         UpdateFleet();
+        StepGhosts();
         for (int i = 0; i < _count; i++)
         {
-            if (_halted[i]) continue;
+            if (_halted[i] || _ghost[i]) continue;
             float v = _speed[i];
             float v0 = FreeSpeed(i);
             float ratio = v / v0;
@@ -385,19 +397,25 @@ public sealed partial class Simulation
                 interaction = MathF.Max(interaction, Interaction(v, _extraGap[i], _extraSpeed[i]));
             interaction = MathF.Max(interaction, JunctionInteraction(i, v));
             if (_line[i] >= 0) interaction = MathF.Max(interaction, StopInteraction(i, v));
+            if (_zoneStart.Length > 0) interaction = MathF.Max(interaction, CrossingInteraction(i, v));
 
             float wanted = MathF.Max(-_drive.MaxBraking, _drive.MaxAccel * (1f - ratio * ratio * ratio * ratio - interaction));
             _accel[i] = MathF.Max(wanted, _accel[i] - _drive.BrakeJerk * StepSeconds);
         }
         for (int i = 0; i < _count; i++)
         {
-            if (_halted[i]) continue;
+            if (_halted[i] || _ghost[i]) continue;
             _speed[i] = MathF.Max(0f, _speed[i] + _accel[i] * StepSeconds);
             _pos[i] += _speed[i] * StepSeconds;
             if (_shift[i] != 0f) _shift[i] = MathF.Sign(_shift[i]) * MathF.Max(0f, MathF.Abs(_shift[i]) - LaneWidth / _laneChangeSeconds * StepSeconds);
             AdvanceLane(i);
         }
         RebuildOrder();
+        if (_trains.Count > 0)
+        {
+            StepTrains();
+            DetectCrossingCollisions();
+        }
         DetectIncidents();
         if ((Tick + 1) % _ticksPerDay == 0) CloseDay();
         Tick++;
@@ -708,13 +726,13 @@ public sealed partial class Simulation
     {
         Array.Clear(_laneStart);
         for (int i = 0; i < _count; i++)
-            if (_lane[i] >= 0 && !_bay[i]) _laneStart[_lane[i] + 1]++;
+            if (_lane[i] >= 0 && !_bay[i] && !_ghost[i]) _laneStart[_lane[i] + 1]++;
         for (int l = 0; l < _net.LaneCount; l++) _laneStart[l + 1] += _laneStart[l];
 
         // Counting sort by lane, in vehicle-id order (stable, deterministic).
         for (int l = 0; l < _cursor.Length; l++) _cursor[l] = _laneStart[l];
         for (int i = 0; i < _count; i++)
-            if (_lane[i] >= 0 && !_bay[i]) _order[_cursor[_lane[i]]++] = i;
+            if (_lane[i] >= 0 && !_bay[i] && !_ghost[i]) _order[_cursor[_lane[i]]++] = i;
 
         // Insertion sort by position within each lane; input is nearly sorted between steps.
         for (int l = 0; l < _net.LaneCount; l++)

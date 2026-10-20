@@ -33,7 +33,9 @@ public sealed partial class Simulation
         if (_lineFleetVersion == _transitVersion && _lineFleet.Length == _lines.Count) return;
         _lineFleet = new int[_lines.Count];
         for (int i = 0; i < _count; i++)
-            if (_line[i] >= 0 && _kind[i] == VehicleKind.Car) _lineFleet[_line[i]]++;
+            if (_line[i] >= 0 && _kind[i] == VehicleKind.Car && _returnDepot[i] < 0) _lineFleet[_line[i]]++;
+        foreach (var train in _trains)
+            if (train.Active && train.ReturnDepot < 0) _lineFleet[train.Line]++;
         _lineFleetVersion = _transitVersion;
     }
 
@@ -49,7 +51,9 @@ public sealed partial class Simulation
         _lineCycle = new float[_lines.Count];
         var dwell = new float[_lines.Count];
         for (int i = 0; i < _count; i++)
-            if (_line[i] >= 0 && _kind[i] == VehicleKind.Car) dwell[_line[i]] += _models[_model[i]].DwellSeconds;
+            if (_line[i] >= 0 && _kind[i] == VehicleKind.Car && _returnDepot[i] < 0) dwell[_line[i]] += _models[_model[i]].DwellSeconds;
+        foreach (var train in _trains)
+            if (train.Active && train.ReturnDepot < 0) dwell[train.Line] += _railTuning.Wagons[train.Wagon].DwellSeconds;
         foreach (var line in _lines)
         {
             float cycle = 0f;
@@ -79,6 +83,7 @@ public sealed partial class Simulation
     /// <summary>Seconds on the road from a station to another, by the way a car would drive it; infinity when no road joins them.</summary>
     float RideSeconds(Station from, Station to)
     {
+        if (from.Mode == StationMode.Rail) return RailRideSeconds(from, to);
         var field = FieldTo(to);
         float best = float.PositiveInfinity;
         foreach (var lane in _net.IncomingLanes(from.Node))
@@ -88,7 +93,7 @@ public sealed partial class Simulation
 
     float WalkSeconds(Building b, Station station)
     {
-        var (x, z) = _net.GetNode(station.Node);
+        var (x, z) = PointOf(station);
         float d = MathF.Sqrt((b.X - x) * (b.X - x) + (b.Z - z) * (b.Z - z));
         return d * _trips.WalkDetour / _trips.WalkSpeed;
     }
@@ -172,25 +177,33 @@ public sealed partial class Simulation
     /// </summary>
     int UnloadRiders(int vehicle, Station here)
     {
-        var riders = _riders[vehicle];
+        int unloaded = AlightRiders(_riders[vehicle], _lines[_line[vehicle]], here, out long income);
+        _income[vehicle] += income;
+        SetRiderLoad(vehicle);
+        return unloaded;
+    }
+
+    /// <summary>Lets the riders in a list off at a station, as <see cref="UnloadRiders"/> does for a bus; <paramref name="income"/> is what they paid.</summary>
+    int AlightRiders(List<PaxLot>? riders, Line line, Station here, out long income)
+    {
+        income = 0;
         if (riders == null) return 0;
         int unloaded = 0;
         for (int k = 0; k < riders.Count; k++)
         {
             var lot = riders[k];
             bool arrived = lot.Dest == here.Id;
-            if (!arrived && _stations[lot.Dest].Active && LineHasStop(_lines[_line[vehicle]], lot.Dest)) continue; // else the line no longer goes there
+            if (!arrived && _stations[lot.Dest].Active && LineHasStop(line, lot.Dest)) continue; // else the line no longer goes there
             riders.RemoveAt(k--);
             unloaded += lot.Count;
-            if (arrived) Pay(vehicle, _passengerCargo, lot.Count, _stations[lot.From], here, lot.Boarded);
+            if (arrived) income += PayFor(line, _passengerCargo, lot.Count, _stations[lot.From], here, lot.Boarded);
             here.Today = here.Today with { Alighted = here.Today.Alighted + lot.Count };
             var g = _groups[lot.Group];
-            var (x, z) = _net.GetNode(here.Node);
+            var (x, z) = PointOf(here);
             var to = _buildings[g.Destination];
             float d = MathF.Sqrt((to.X - x) * (to.X - x) + (to.Z - z) * (to.Z - z));
             Schedule(Tick + WalkTicks(d), new TripEvent(TripEventKind.Arrive, g.Id, lot.Count, -1, -1));
         }
-        SetRiderLoad(vehicle);
         return unloaded;
     }
 
@@ -201,6 +214,14 @@ public sealed partial class Simulation
         if (room <= 0 || here.Queue.Count == 0) return 0;
         var line = _lines[_line[vehicle]];
         var riders = _riders[vehicle] ??= new List<PaxLot>();
+        int boarded = BoardInto(riders, line, here, room);
+        SetRiderLoad(vehicle);
+        return boarded;
+    }
+
+    /// <summary>Takes up to <paramref name="room"/> people from the queue at a station into a list of riders: those bound for a station on the line, longest waiting first.</summary>
+    int BoardInto(List<PaxLot> riders, Line line, Station here, int room)
+    {
         int boarded = 0;
         for (int k = 0; k < here.Queue.Count && room > 0; k++)
         {
@@ -225,7 +246,6 @@ public sealed partial class Simulation
             boarded += take;
         }
         RefreshWaiting(here);
-        SetRiderLoad(vehicle);
         here.Today = here.Today with { Boarded = here.Today.Boarded + boarded };
         return boarded;
     }

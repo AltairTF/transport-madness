@@ -36,7 +36,7 @@ Roads and rail as straight segments and circular arcs with angle and node snappi
 Road types: dirt, 2-lane paved, 2x2 avenue, with simple on-ramps. Later: highway, roundabout. Junction control: yield, stop, traffic light. Level crossings between rail and road are in the MVP. Per-road speed limits.
 
 ### Vehicles and movement (ADR 0002)
-Kinematic microsimulation on the lane graph: car-following (IDM-style), lane changes, overtaking via the oncoming lane when it looks free, box-overlap collisions. Driver traits (patience, aggression, attention) make failed overtaking a natural outcome. Trains have consists with real length, acceleration and braking, curve and grade speed limits, block and path signals, and deadlock detection with a warning. No timetables in the MVP. Jolt is used only to animate accident scenes.
+Kinematic microsimulation on the lane graph: car-following (IDM-style), lane changes, overtaking via the oncoming lane when it looks free, box-overlap collisions. Driver traits (patience, aggression, attention) make failed overtaking a natural outcome. Trains have consists with real length, acceleration and braking, curve and grade speed limits, block and path signals, and deadlock detection with a warning. No timetables in the MVP. As built (M4, ADR 0004): trains hold the track they run on and cannot hit each other, the signals decide who waits; trains are push-pull and turn round in stations. Jolt is used only to animate accident scenes.
 
 Fidelity tiers:
 - Tier 0: the player's vehicles and anything near the camera or near them. Full behavior and incidents.

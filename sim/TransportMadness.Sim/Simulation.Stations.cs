@@ -11,6 +11,9 @@ public sealed partial class Simulation
     readonly List<Station> _stations = new();
 
     public IReadOnlyList<Station> Stations => _stations;
+
+    /// <summary>Where a station stands on the map: its road node, or its rail node.</summary>
+    public (float X, float Z) PointOf(Station station) => station.Mode == StationMode.Rail ? (station.X, station.Z) : _net.GetNode(station.Node);
     public IReadOnlyList<CargoTuning> CargoTypes => _cargo;
 
     /// <summary>The active station standing at a node, if any.</summary>
@@ -64,7 +67,7 @@ public sealed partial class Simulation
         foreach (var station in _stations)
         {
             if (!station.Active) continue;
-            var (sx, sz) = _net.GetNode(station.Node);
+            var (sx, sz) = PointOf(station);
             float d = (sx - x) * (sx - x) + (sz - z) * (sz - z);
             if (d <= bestDistance) { best = station.Id; bestDistance = d; }
         }
@@ -122,7 +125,7 @@ public sealed partial class Simulation
     /// <summary>Adds bays to an open station without them, for the bay price. Returns 1, 0 when refused.</summary>
     int AddStationBays(int station)
     {
-        if (station < 0 || station >= _stations.Count || !_stations[station].Active || _stations[station].HasBays) return 0;
+        if (station < 0 || station >= _stations.Count || !_stations[station].Active || _stations[station].HasBays || _stations[station].Mode != StationMode.Road) return 0;
         if (!TrySpend(_stationTuning.BayPrice, LedgerEntry.Stations)) return 0;
         _stations[station].HasBays = true;
         return 1;
@@ -163,7 +166,7 @@ public sealed partial class Simulation
     void CloseOrphanedStations()
     {
         foreach (var station in _stations)
-            if (station.Active && _net.RoadsAt(station.Node).Count == 0)
+            if (station.Active && station.Mode == StationMode.Road && _net.RoadsAt(station.Node).Count == 0)
             {
                 station.Active = false;
                 _coverageDirty = true;
@@ -196,6 +199,7 @@ public sealed partial class Simulation
         foreach (var station in _stations)
         {
             h = h * 31 + (ulong)station.Node;
+            if (station.Mode == StationMode.Rail) h = h * 31 + 13UL + (ulong)station.RailNode;
             h = h * 31 + (station.Active ? 1UL : 0UL);
             if (station.HasBays) h = h * 31 + 7UL;
             foreach (float w in station.Waiting) h = h * 31 + BitConverter.SingleToUInt32Bits(w);

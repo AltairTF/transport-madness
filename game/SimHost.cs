@@ -125,6 +125,7 @@ public partial class SimHost : Node3D
         AddChild(_townLabels);
         AddChild(new MultiMeshInstance3D { Name = "Crews", Multimesh = _crews, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         AddChild(new MultiMeshInstance3D { Name = "Vehicles", Multimesh = _vehicles, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        ReadyRail();
     }
 
     static StandardMaterial3D Flat(Color color) => new() { AlbedoColor = color, Roughness = 1f };
@@ -499,9 +500,10 @@ public partial class SimHost : Node3D
     /// <summary>A station's place on the ground.</summary>
     public Vector3 StationPosition(int station)
     {
-        var node = Sim.Stations[station].Node;
-        var (x, z) = Sim.Network.GetNode(node);
-        return new Vector3(x, Sim.Network.GetNodeHeight(node), z);
+        var s = Sim.Stations[station];
+        if (s.Mode == StationMode.Rail) return new Vector3(s.X, Sim.Rail.GetNodeHeight(s.RailNode), s.Z);
+        var (x, z) = Sim.Network.GetNode(s.Node);
+        return new Vector3(x, Sim.Network.GetNodeHeight(s.Node), z);
     }
 
     /// <summary>Creates a line through the stations in order. Returns its id, -1 when refused.</summary>
@@ -555,8 +557,8 @@ public partial class SimHost : Node3D
         for (int s = 0; s <= station; s++)
         {
             if (_stationNames.ContainsKey(s)) continue;
-            var (x, z) = Sim.Network.GetNode(Sim.Stations[s].Node);
-            string place = "Station";
+            var (x, z) = Sim.PointOf(Sim.Stations[s]);
+            string place = Sim.Stations[s].Mode == StationMode.Rail ? "Rail station" : "Station";
             float best = float.MaxValue;
             foreach (var town in Sim.Towns)
             {
@@ -600,9 +602,16 @@ public partial class SimHost : Node3D
         for (int v = 0; v < Sim.VehicleCount; v++)
         {
             if (!Sim.IsCompanyVehicle(v)) continue;
+            if (Sim.IsReturning(v)) continue;
             var info = Sim.GetFleetInfo(v);
             vehicles[info.Line]++;
             if (info.Loading) loading[info.Line]++;
+        }
+        foreach (var train in Sim.Trains)
+        {
+            if (!train.Active || train.ReturnDepot >= 0) continue;
+            vehicles[train.Line]++;
+            if (train.Status == TrainStatus.AtStation) loading[train.Line]++;
         }
         var lines = new Godot.Collections.Array<Godot.Collections.Dictionary>();
         foreach (var line in Sim.Lines)
@@ -618,6 +627,7 @@ public partial class SimHost : Node3D
                 ["color"] = LineColor(line.Id),
                 ["stations"] = names,
                 ["stop_ids"] = ids,
+                ["rail"] = line.Mode == StationMode.Rail,
                 ["income"] = line.Income,
                 ["upkeep"] = line.Upkeep,
                 ["profit"] = line.Profit,
@@ -645,7 +655,7 @@ public partial class SimHost : Node3D
             bool wrecked = state.Kind != VehicleKind.Car;
             int target = Sim.TargetStationOf(v);
             string where = target < 0 ? "" : StationName(target);
-            string what = wrecked ? "Wrecked, waiting for a crew" : info.Loading ? $"Loading at {where}" : $"Heading for {where}";
+            string what = wrecked ? "Wrecked, waiting for a crew" : Sim.IsReturning(v) ? "Going to a depot to wait there" : Sim.IsInDepot(v) ? $"Waiting in the depot to leave for {where}" : Sim.IsGhost(v) ? $"Leaving the depot for {where}" : info.Loading ? $"Loading at {where}" : $"Heading for {where}";
             float pos = Math.Min(state.Position, _laneLength[state.Lane.Value]);
             LaneFrame(state.Lane.Value, pos, out float x, out float z, out _, out _);
             list.Add(new Godot.Collections.Dictionary
@@ -656,6 +666,7 @@ public partial class SimHost : Node3D
                 ["state"] = what, ["wrecked"] = wrecked, ["x"] = x, ["y"] = _laneY[state.Lane.Value] + _laneGrade[state.Lane.Value] * pos, ["z"] = z,
             });
         }
+        foreach (var train in GetTrains()) list.Add(train);
         return list;
     }
 
@@ -694,7 +705,7 @@ public partial class SimHost : Node3D
             var p = StationPosition(station.Id);
             stations.Add(new Godot.Collections.Dictionary
             {
-                ["id"] = station.Id, ["name"] = StationName(station.Id), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["bays"] = station.HasBays, ["in_bay"] = station.InBay, ["bay_price"] = Sim.StationBayPrice,
+                ["id"] = station.Id, ["name"] = StationName(station.Id), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["rail"] = station.Mode == StationMode.Rail, ["bays"] = station.HasBays, ["in_bay"] = station.InBay, ["bay_price"] = Sim.StationBayPrice,
                 ["waiting"] = waiting, ["accepts"] = accepts, ["waiting_for"] = waitingFor, ["lines"] = lines,
                 ["homes"] = homes, ["shops"] = shops, ["workplaces"] = workplaces, ["industries"] = Sim.IndustriesCoveredBy(station).Count,
                 ["boarded"] = station.Yesterday.Boarded, ["alighted"] = station.Yesterday.Alighted, ["gave_up"] = station.Yesterday.GaveUp,
@@ -843,6 +854,7 @@ public partial class SimHost : Node3D
         return new Godot.Collections.Dictionary
         {
             ["vehicles"] = cars,
+            ["trains"] = Sim.Trains.Count(t => t.Active),
             ["wrecks"] = wrecks,
             ["overtaking"] = overtaking,
             ["mean_speed"] = cars > 0 ? speed / cars : 0.0,
@@ -893,6 +905,7 @@ public partial class SimHost : Node3D
         float fraction = _speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f;
         DrawVehicles(fraction);
         DrawCrews(fraction);
+        DrawRail(fraction);
     }
 
     // ---- Drawing --------------------------------------------------------------------------------------------
@@ -944,7 +957,7 @@ public partial class SimHost : Node3D
         {
             int o = i * FloatsPerInstance;
             var v = Sim.GetVehicle(i);
-            if (v.Kind == VehicleKind.Removed)
+            if (v.Kind == VehicleKind.Removed || Sim.IsInDepot(i))
             {
                 Array.Clear(buf, o, FloatsPerInstance);
                 continue;
@@ -1131,7 +1144,7 @@ public partial class SimHost : Node3D
         var net = Sim.Network;
         foreach (var station in Sim.Stations)
         {
-            if (!station.Active) continue;
+            if (!station.Active || station.Mode != StationMode.Road) continue;
             var (x, z) = net.GetNode(station.Node);
             var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(14f, 4f, 10f) }, MaterialOverride = _stationMaterial };
             platform.Position = new Vector3(x - 24f, _terrain.HeightAt(x - 24f, z - 24f) + 2f, z - 24f);

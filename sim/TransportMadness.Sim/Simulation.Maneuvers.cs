@@ -11,7 +11,7 @@ public sealed partial class Simulation
         for (int i = 0; i < _count; i++)
         {
             if (_cooldown[i] > 0) _cooldown[i]--;
-            if ((i + Tick) % _manoeuvre.DecisionInterval != 0 || _halted[i] || _keepLane[i] || _phase[i] != 0) continue;
+            if ((i + Tick) % _manoeuvre.DecisionInterval != 0 || _halted[i] || _ghost[i] || _keepLane[i] || _phase[i] != 0) continue;
             if (!TryLaneChange(i)) TryStartOvertake(i);
         }
     }

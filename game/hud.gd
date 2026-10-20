@@ -16,6 +16,11 @@ signal line_color(line: int, color: Color)
 signal station_action(kind: String, station: int, text: String)
 ## A vehicle row button: kind is "sell".
 signal vehicle_action(kind: String, vehicle: int)
+## A vehicle bought for a depot's garage: whether it is a train, which depot (its id among road or rail depots), what (a model id, or "locomotive:wagon:count").
+signal garage_buy(rail: bool, depot: int, option: String)
+## A parked vehicle put on a line.
+signal garage_assign(parked: int, line: int)
+signal garage_sell(parked: int)
 signal menu_requested
 ## The Towns window asks the camera to go to a town.
 signal town_focus(x: float, z: float)
@@ -37,7 +42,18 @@ const TOOL_CATEGORIES := [
 		["Faster", "faster", "Raise the speed limit by 10 km/h."],
 		["Slower", "slower", "Lower the speed limit by 10 km/h."],
 		["Move", "move", "Pick a junction, then click where it goes."],
-		["Remove", "remove", "Demolish a piece of road."]]},
+		["Remove", "remove", "Demolish a piece of road."],
+		["Traffic light", "light", "Put traffic lights at a junction: the two crossing streets take turns."],
+		["Remove light", "light_remove", "Take traffic lights down."]]},
+	{"name": "Rail", "tools": [
+		["Track", "track", "Lay a straight track. Click to start, click again to build; it joins tracks it meets, and crosses roads with level crossings."],
+		["Curved track", "track_curve", "Lay a curved track: start, a point on the curve, end."],
+		["Block signal", "signal_block", "A train waits here unless the whole block beyond is free. R turns the signal round."],
+		["Path signal", "signal_path", "A train waits here unless the path it will take, up to the next signal, is free. Lets trains pass at loops. R turns it round."],
+		["Remove signal", "signal_remove", "Take a signal down."],
+		["Remove track", "track_remove", "Tear a piece of track down. A train on it is lost."],
+		["Rail station", "rail_station", "Build a station on a track."],
+		["Rail depot", "rail_depot", "Build a depot at a track junction or end: trains are bought there."]]},
 	{"name": "Transport", "tools": [
 		["Depot", "depot", "Build a depot at a junction: vehicles are bought and repaired there."],
 		["Station", "station", "Build a station on a road."],
@@ -76,10 +92,19 @@ var _lines_box: VBoxContainer
 var _lines_empty: Label
 var _line_rows: Dictionary = {} # line id -> {"row": Control, "label": Label, "separator": Control}
 var _models: Array = []
+var _train_options: Array = [] ## what can be bought for a rail line: {id, label, price, upkeep, capacity, cargo}
 var _cargo_names: Array = []
 var _stations_known: Array = [] # [{id, name}] of the open stations, for the "add a stop" choices of the lines
 var _vehicles_box: VBoxContainer
 var _vehicles_empty: Label
+var _garage_depot: OptionButton
+var _garage_buy_box: HFlowContainer
+var _garage_hint: Label
+var _garage_depots: Array = []   ## the depots in the choice: {id, rail, name, x, z}
+var _garage_depot_key := ""
+var _parked_header: Label
+var _parked_box: VBoxContainer
+var _parked_rows: Dictionary = {} # garage id -> {"row", "separator", "label", "choice", "lines_key", "assign", "go", "go_call"}
 var _vehicle_rows: Dictionary = {} # vehicle id -> {"row": Control, "label": Label, "separator": Control}
 var _industries_box: VBoxContainer
 var _industries_empty: Label
@@ -279,10 +304,35 @@ func _build_stations_page() -> Control:
 
 func _build_vehicles_page() -> Control:
 	_vehicles_box = VBoxContainer.new()
+	var buy_title := Label.new()
+	buy_title.text = "Buy a vehicle"
+	_vehicles_box.add_child(buy_title)
+	var buy_note := Label.new()
+	buy_note.theme_type_variation = "Dim"
+	buy_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	buy_note.text = "It waits in the depot you pick until you put it on a line. Vehicles also come out of a depot at once when bought from the Lines window."
+	_vehicles_box.add_child(buy_note)
+	_garage_depot = OptionButton.new()
+	_garage_depot.item_selected.connect(func(_index: int) -> void: _rebuild_buy_buttons())
+	_vehicles_box.add_child(_garage_depot)
+	_garage_buy_box = HFlowContainer.new()
+	_vehicles_box.add_child(_garage_buy_box)
+	_garage_hint = Label.new()
+	_garage_hint.theme_type_variation = "Dim"
+	_garage_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_garage_hint.text = "No depot yet: build one under Transport > Depot, or under Rail > Rail depot for trains."
+	_vehicles_box.add_child(_garage_hint)
+	_vehicles_box.add_child(HSeparator.new())
+	_parked_header = Label.new()
+	_parked_header.text = "Waiting in depots"
+	_parked_header.visible = false
+	_vehicles_box.add_child(_parked_header)
+	_parked_box = VBoxContainer.new()
+	_vehicles_box.add_child(_parked_box)
 	_vehicles_empty = Label.new()
 	_vehicles_empty.theme_type_variation = "Dim"
 	_vehicles_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_vehicles_empty.text = "No vehicles yet. Make a line, then buy a bus or a truck for it in the Lines window."
+	_vehicles_empty.text = "No vehicles on the road yet. Buy one above and put it on a line."
 	_vehicles_box.add_child(_vehicles_empty)
 	return _vehicles_box
 
@@ -506,7 +556,7 @@ func show_stations(stations: Array) -> void:
 	var seen := {}
 	var known: Array = []
 	for station in stations:
-		known.append({"id": station["id"], "name": station["name"]})
+		known.append({"id": station["id"], "name": station["name"], "rail": station.get("rail", false)})
 	_stations_known = known
 	for station in stations:
 		var id: int = station["id"]
@@ -526,7 +576,7 @@ func show_stations(stations: Array) -> void:
 		if not name_edit.has_focus() and name_edit.text != station["name"]:
 			name_edit.text = station["name"]
 		var bays_button: Button = entry["bays_button"]
-		bays_button.visible = not station["bays"]
+		bays_button.visible = not station["bays"] and not station.get("rail", false)
 		bays_button.text = "Add bays (%s)" % _money_text(station["bay_price"])
 		entry["station_name"] = station["name"]
 		var served := ""
@@ -700,6 +750,13 @@ func _add_town_row(id: int, town: Dictionary) -> void:
 	_town_rows[id] = {"row": row, "label": label, "bar": bar, "separator": separator}
 
 
+## The trains the company can buy, for the buy buttons of the rail line rows (call before show_lines).
+func set_train_options(options: Array) -> void:
+	_train_options = options
+	for id in _line_rows.keys():
+		_remove_row(id)
+
+
 ## Models the company can buy, for the buy buttons of the line rows (call before show_lines).
 func set_models(models: Array) -> void:
 	_models = models
@@ -714,7 +771,7 @@ func show_lines(lines: Array) -> void:
 		var id: int = line["id"]
 		seen[id] = true
 		if not _line_rows.has(id):
-			_add_row(id)
+			_add_row(id, line.get("rail", false))
 		var entry: Dictionary = _line_rows[id]
 		var colour: Color = line["color"]
 		entry["color"] = colour
@@ -779,22 +836,24 @@ func _edit_stops(id: int, index: int, move: int) -> void:
 ## Fills the "add a stop" choice of a line with the open stations (again only when they have changed).
 func _fill_stop_choices(id: int) -> void:
 	var choice: OptionButton = _line_rows[id]["choice"]
-	var same := choice.item_count == _stations_known.size()
+	var rail: bool = _line_rows[id]["rail"]
+	var offered: Array = _stations_known.filter(func(station: Dictionary) -> bool: return station["rail"] == rail) # a line is all road or all rail
+	var same := choice.item_count == offered.size()
 	if same:
-		for i in _stations_known.size():
-			if choice.get_item_id(i) != _stations_known[i]["id"]:
+		for i in offered.size():
+			if choice.get_item_id(i) != offered[i]["id"]:
 				same = false
 	if same:
 		return
 	var selected := choice.get_selected_id()
 	choice.clear()
-	for station in _stations_known:
+	for station in offered:
 		choice.add_item(station["name"], station["id"])
 	if choice.item_count > 0:
 		choice.select(maxi(0, choice.get_item_index(selected)))
 
 
-func _add_row(id: int) -> void:
+func _add_row(id: int, rail := false) -> void:
 	var row := VBoxContainer.new()
 	var header := HBoxContainer.new()
 	row.add_child(header)
@@ -843,16 +902,24 @@ func _add_row(id: int) -> void:
 	add.add_child(add_button)
 	var buttons := HFlowContainer.new()
 	row.add_child(buttons)
-	for model in _models:
-		var button := Button.new()
-		button.text = "+ %s (%s)" % [model["name"], _money_text(model["price"])]
-		button.pressed.connect(func() -> void: line_action.emit("buy", id, model["id"]))
-		buttons.add_child(button)
+	if rail:
+		for option in _train_options:
+			var button := Button.new()
+			button.text = "+ %s (%s)" % [option["label"], _money_text(option["price"])]
+			button.tooltip_text = "Carries %d, costs %s a day to run." % [option["capacity"], _money_text(option["upkeep"])]
+			button.pressed.connect(func() -> void: line_action.emit("buy_train", id, option["id"]))
+			buttons.add_child(button)
+	else:
+		for model in _models:
+			var button := Button.new()
+			button.text = "+ %s (%s)" % [model["name"], _money_text(model["price"])]
+			button.pressed.connect(func() -> void: line_action.emit("buy", id, model["id"]))
+			buttons.add_child(button)
 	var separator := HSeparator.new()
 	_lines_box.add_child(row)
 	_lines_box.add_child(separator)
 	_line_rows[id] = {"row": row, "label": label, "separator": separator, "swatch": swatch, "name": name_edit, "stops": stops,
-		"choice": choice, "stop_ids": [], "stop_names": [], "color": swatch.color}
+		"choice": choice, "stop_ids": [], "stop_names": [], "color": swatch.color, "rail": rail}
 
 
 ## One row per company vehicle: what and where it is, what it carries and what it has earned, with buttons to go to it or sell it.
@@ -869,7 +936,7 @@ func show_vehicles(vehicles: Array) -> void:
 			carrying = "%d of %d %s" % [vehicle["load"], vehicle["capacity"], String(vehicle["cargo"]).to_lower()]
 		var label: Label = entry["label"]
 		label.text = "%s %d   %s\n%s\ncarrying %s\nearned %s   upkeep %s   profit %s" % [
-			vehicle["model"], id + 1, vehicle["line_name"], vehicle["state"], carrying,
+			vehicle["model"], id + 1 if id >= 0 else -id, vehicle["line_name"], vehicle["state"], carrying,
 			_money_text(vehicle["income"]), _money_text(vehicle["upkeep"]), _money_text(vehicle["profit"])]
 		label.add_theme_color_override("font_color", vehicle["color"])
 		entry["go"].pressed.disconnect(entry["go_call"])
@@ -896,6 +963,11 @@ func _add_vehicle_row(id: int, vehicle: Dictionary) -> void:
 	var go_call := func() -> void: town_focus.emit(vehicle["x"], vehicle["z"])
 	go.pressed.connect(go_call)
 	buttons.add_child(go)
+	var depot := Button.new()
+	depot.text = "To depot"
+	depot.tooltip_text = "Take it off its line: it drives to the nearest depot and waits there, ready for another line. What it carries is lost."
+	depot.pressed.connect(func() -> void: vehicle_action.emit("depot", id))
+	buttons.add_child(depot)
 	var sell := Button.new()
 	sell.text = "Sell"
 	sell.tooltip_text = "Sell the vehicle for part of its price. What it carries is lost."
@@ -905,6 +977,125 @@ func _add_vehicle_row(id: int, vehicle: Dictionary) -> void:
 	_vehicles_box.add_child(row)
 	_vehicles_box.add_child(separator)
 	_vehicle_rows[id] = {"row": row, "label": label, "separator": separator, "go": go, "go_call": go_call, "sell": sell}
+
+
+func _rebuild_buy_buttons() -> void:
+	for child in _garage_buy_box.get_children():
+		child.queue_free()
+	var index := _garage_depot.get_selected()
+	if index < 0 or index >= _garage_depots.size():
+		return
+	var depot: Dictionary = _garage_depots[index]
+	var depot_id: int = depot["id"]
+	var rail: bool = depot["rail"]
+	if rail:
+		for option in _train_options:
+			var button := Button.new()
+			button.text = "+ %s (%s)" % [option["label"], _money_text(option["price"])]
+			button.tooltip_text = "Carries %d, costs %s a day to run." % [option["capacity"], _money_text(option["upkeep"])]
+			button.pressed.connect(func() -> void: garage_buy.emit(true, depot_id, option["id"]))
+			_garage_buy_box.add_child(button)
+	else:
+		for model in _models:
+			var button := Button.new()
+			button.text = "+ %s (%s)" % [model["name"], _money_text(model["price"])]
+			button.tooltip_text = "Carries %d, costs %s a day to run." % [model["capacity"], _money_text(model["upkeep"])]
+			button.pressed.connect(func() -> void: garage_buy.emit(false, depot_id, model["id"]))
+			_garage_buy_box.add_child(button)
+
+
+## The depot choice and the vehicles waiting in depots (with a choice of line for each), from the host's depots, parked vehicles and lines.
+func show_garage(depots: Array, parked: Array, lines: Array) -> void:
+	var key := ""
+	for depot in depots:
+		key += "%s%d;" % ["r" if depot["rail"] else "d", depot["id"]]
+	if key != _garage_depot_key:
+		var previous := ""
+		var shown := _garage_depot.get_selected()
+		if shown >= 0 and shown < _garage_depots.size():
+			previous = _garage_depots[shown]["name"]
+		_garage_depot_key = key
+		_garage_depots = depots
+		_garage_depot.clear()
+		var keep := 0
+		for i in depots.size():
+			_garage_depot.add_item(depots[i]["name"])
+			if depots[i]["name"] == previous:
+				keep = i
+		if not depots.is_empty():
+			_garage_depot.select(keep)
+		_garage_depot.visible = not depots.is_empty()
+		_garage_hint.visible = depots.is_empty()
+		_rebuild_buy_buttons()
+
+	var seen := {}
+	for entry in parked:
+		var id: int = entry["id"]
+		seen[id] = true
+		if not _parked_rows.has(id):
+			_add_parked_row(id)
+		var row: Dictionary = _parked_rows[id]
+		var label: Label = row["label"]
+		label.text = "%s   waiting in %s\nworth %s new" % [entry["model"], entry["depot"], _money_text(entry["price"])]
+		var rail: bool = entry["rail"]
+		var offered := []
+		var lines_key := ""
+		for line in lines:
+			if line["rail"] == rail:
+				offered.append(line)
+				lines_key += "%d:%s;" % [line["id"], line["name"]]
+		var choice: OptionButton = row["choice"]
+		if row["lines_key"] != lines_key and not choice.get_popup().visible:
+			row["lines_key"] = lines_key
+			var selected := choice.get_selected_id()
+			choice.clear()
+			for line in offered:
+				choice.add_item(line["name"], line["id"])
+			if choice.item_count > 0:
+				choice.select(maxi(0, choice.get_item_index(selected)))
+		row["assign"].disabled = choice.item_count == 0
+		row["assign"].tooltip_text = "Send it out of its depot to work this line." if choice.item_count > 0 else "Make a %s line first." % ("rail" if rail else "road")
+		row["go"].pressed.disconnect(row["go_call"])
+		row["go_call"] = func() -> void: town_focus.emit(entry["x"], entry["z"])
+		row["go"].pressed.connect(row["go_call"])
+	for id in _parked_rows.keys():
+		if not seen.has(id):
+			_parked_rows[id]["row"].queue_free()
+			_parked_rows[id]["separator"].queue_free()
+			_parked_rows.erase(id)
+	_parked_header.visible = not _parked_rows.is_empty()
+
+
+func _add_parked_row(id: int) -> void:
+	var row := VBoxContainer.new()
+	var label := Label.new()
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(label)
+	var buttons := HBoxContainer.new()
+	row.add_child(buttons)
+	var choice := OptionButton.new()
+	choice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	buttons.add_child(choice)
+	var assign := Button.new()
+	assign.text = "Put on line"
+	assign.pressed.connect(func() -> void:
+		if choice.item_count > 0:
+			garage_assign.emit(id, choice.get_selected_id()))
+	buttons.add_child(assign)
+	var go := Button.new()
+	go.text = "Go to"
+	var go_call := func() -> void: pass
+	go.pressed.connect(go_call)
+	buttons.add_child(go)
+	var sell := Button.new()
+	sell.text = "Sell"
+	sell.tooltip_text = "Sell it for part of its price."
+	sell.pressed.connect(func() -> void: garage_sell.emit(id))
+	buttons.add_child(sell)
+	var separator := HSeparator.new()
+	_parked_box.add_child(row)
+	_parked_box.add_child(separator)
+	_parked_rows[id] = {"row": row, "separator": separator, "label": label, "choice": choice, "lines_key": "", "assign": assign, "go": go, "go_call": go_call}
 
 
 func _remove_row(id: int) -> void:
