@@ -1,6 +1,6 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: the M2 follow-ups and the first M3 balance pass (line editing, station and vehicle windows, bays, congestion, pay and coverage numbers). M0, M1, M2 and M3 are done. Open work is in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: 2026-10-19, after the housekeeping block (incident memory, rules out of `SimHost`, CI pin; section 5.18). M0, M1, M2 and M3 are done. Open work is in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
