@@ -194,7 +194,9 @@
     "pathSignalPrice": 2500,
     "stationPrice": 20000,
     "stationUpkeepPerDay": 500.0,
-    "depotPrice": 30000,
+    "depotPrice": 30000,             // a Simple rail depot; the Workshop and Complex levels cost these
+    "depotWorkshopPrice": 70000,
+    "depotComplexPrice": 150000,
     "snapRadius": 14.0,             // a click this close to a rail node or a track's centre line picks it
     "stationAlongStep": 5.0,
     "movement": {
@@ -230,6 +232,53 @@
       { "id": "coach", "name": "Passenger coach", "cargo": "passengers", "capacity": 48, "length": 20.0, "mass": 26000.0, "unitMass": 80.0, "price": 36000, "upkeepPerDay": 400.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.15 },
       { "id": "freight", "name": "Freight wagon", "cargo": "freight", "capacity": 40, "length": 16.0, "mass": 20000.0, "unitMass": 600.0, "price": 30000, "upkeepPerDay": 300.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.2 }
     ]
+  },
+
+  // Condition (0 to 100) of the company's vehicles and trains: it falls with the distance driven, rises with repairs done in depots, and a low one brings breakdowns.
+  "maintenance": {
+    "metresPerPoint": 1500.0,       // metres driven for one point lost
+    "loadedWear": 0.3,              // wear is this much faster at a full load
+    "patchedWearFactor": 1.5,       // wear of a patched vehicle until its next Service or Overhaul
+    "noRiskAbove": 60.0,            // no breakdown risk at or above this Condition
+    "highRiskBelow": 20.0,          // the risk reaches hazardPerKmAtFloor here ...
+    "hazardPerKmAtFloor": 0.005,    // ... breakdowns per km driven ...
+    "hazardPerKmAtZero": 0.1,       // ... and this at Condition 0
+    "brakeFadeBelow": 60.0,         // below this Condition the brakes lose strength ...
+    "worstBrakeShare": 0.6,         // ... down to this share of the braking at Condition 0
+    "wreckCondition": 5.0,          // Condition of a vehicle after a breakdown
+    "criticalCondition": 15.0,      // a breakdown below this is negligence (fined)
+    "trainBreakdownSeconds": 150.0, // a broken-down train stands this long before the crew has cleared it
+    "oldVehicleRepairFactor": 1.0,  // no effect until the campaign has model years
+    "patch": { "gain": 15.0, "ceiling": 100.0, "seconds": 20.0, "priceShare": 0.03 },
+    "service": { "gain": 50.0, "ceiling": 100.0, "seconds": 60.0, "priceShare": 0.12 },
+    "overhaul": { "gain": 100.0, "ceiling": 95.0, "seconds": 180.0, "priceShare": 0.4 },
+    "bays": { "simple": 1, "workshop": 2, "complex": 3 },   // vehicles a depot repairs at once
+    "defaultPolicy": { "everyDays": 60, "belowCondition": 40, "repair": "service" },
+    "frequency": { "off": 0.0, "low": 0.5, "normal": 1.0, "high": 2.0 },   // scale of the random events
+    "signals": {
+      "wearPerPassage": 0.3,        // points lost each time a train is let through
+      "passageMetres": 500.0,       // a passage counts as this many metres of driving in the breakdown risk
+      "repairedCondition": 70.0,    // after a crew has repaired a failure
+      "repairPrice": 600,
+      "fineAfterSeconds": 600.0     // a failure that takes longer to repair is negligence (no depot near)
+    },
+    "roads": {
+      "passesPerPoint": 4000.0,     // vehicles driving a section's whole length, for one point of Condition lost
+      "noEffectAbove": 80.0,        // no effect on speed or risk at or above this Condition
+      "worstSpeedShare": 0.7,       // of the speed limit at Condition 0 (it falls evenly below noEffectAbove)
+      "worstRiskFactor": 3.0,       // times the breakdown risk of a company vehicle at Condition 0
+      "resurfacePricePerMetre": 60.0,
+      "resurfaceMetresPerSecond": 2.0   // a crew resurfaces this much road each second; the road is closed for that long
+    },
+    "consequences": {
+      "injuredShare": 0.3,          // of the passengers aboard a company vehicle that crashes
+      "compensationPerInjured": 900,
+      "negligenceFine": 15000,
+      "townIncidentPenalty": 2.0,   // satisfaction lost by the town an incident of a company vehicle happens in
+      "townBlockedPenalty": 3.0,    // and again when such an incident has blocked a road for blockedSeconds
+      "blockedSeconds": 3600.0,
+      "townMargin": 60.0            // metres beyond the blocks of the town that still count as inside it
+    }
   },
 
   // Pay is quantity times distance (straight line between the stations) times the rate, reduced when the trip took long.

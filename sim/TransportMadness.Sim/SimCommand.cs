@@ -27,6 +27,18 @@ public sealed record MoveNodeCommand(int Node, float X, float Z) : SimCommand;
 /// <summary>Places a depot at a node. Result: the depot id, -1 when refused (the node has no road, it already has a depot, or not enough money).</summary>
 public sealed record AddDepotCommand(int Node, DepotLevel Level) : SimCommand;
 
+/// <summary>
+/// Raises a depot to a higher level in place, paying the difference in price: a Workshop does a Service and has two bays, a Complex also does an
+/// Overhaul and has three. A road depot's crews grow with its level. Result: 1, 0 when refused (no such open depot, not a higher level, or not enough money).
+/// </summary>
+public sealed record UpgradeDepotCommand(bool Rail, int Depot, DepotLevel Level) : SimCommand;
+
+/// <summary>
+/// Has a crew resurface a road: it is as good as new afterwards, costs a price per metre, and is closed (debris in its lanes) for as long as the work takes.
+/// Result: 1, 0 when refused (see <see cref="Simulation.WhyNotResurface"/>).
+/// </summary>
+public sealed record ResurfaceRoadCommand(int Road) : SimCommand;
+
 /// <summary>Adds ambient vehicles at random free spots. Result: how many were placed.</summary>
 public sealed record SeedTrafficCommand(int Count) : SimCommand;
 
@@ -104,7 +116,7 @@ public sealed record RemoveSignalCommand(int Signal) : SimCommand;
 public sealed record BuildRailStationCommand(float X, float Z) : SimCommand;
 
 /// <summary>Places a rail depot at the rail node near (X, Z). Result: the depot id, -1 when refused.</summary>
-public sealed record AddRailDepotCommand(float X, float Z) : SimCommand;
+public sealed record AddRailDepotCommand(float X, float Z, DepotLevel Level = DepotLevel.Simple) : SimCommand;
 
 /// <summary>Buys a train (a locomotive and <paramref name="Wagons"/> wagons, by their ids in the tuning file) at a rail depot for a rail line. Result: the train id, -1 when refused.</summary>
 /// <remarks>With <see cref="NearestDepot"/> for the depot, the rail depot with the quickest way to the line's first station that can take the train is used.</remarks>
@@ -137,6 +149,21 @@ public sealed record ParkVehicleCommand(int Vehicle) : SimCommand;
 
 /// <summary>Takes a train off its line and sends it to the nearest rail depot to wait there. Result: 1, 0 when refused.</summary>
 public sealed record ParkTrainCommand(int Train) : SimCommand;
+
+/// <summary>
+/// Sets a maintenance policy at the company, a line, a road vehicle (by its slot id) or a train (by its id). The most specific policy that does not
+/// inherit applies. Result: 1, 0 when refused (no such target, values out of range, or the company's policy set to inherit).
+/// </summary>
+public sealed record SetMaintenancePolicyCommand(PolicyScope Scope, int Target, MaintenancePolicy Policy) : SimCommand;
+
+/// <summary>
+/// Asks for a repair. A road vehicle or a train is repaired at its next stop (it goes to the nearest depot that can do it); a parked vehicle or
+/// train, by its garage id, is taken into a bay of the depot it stands in. Result: 1, 0 when refused (see <see cref="Simulation.WhyNotRepair"/>).
+/// </summary>
+public sealed record RequestRepairCommand(RepairSubject Subject, int Target, RepairKind Kind) : SimCommand;
+
+/// <summary>Changes how often the random events (breakdowns, later signal failures and the campaign's) happen. Result: 1, 0 when refused.</summary>
+public sealed record SetFrequencyCommand(IncidentFrequency Frequency) : SimCommand;
 
 /// <summary>A command and the tick it was applied at, i.e. the number of steps that had run before it.</summary>
 public readonly record struct LoggedCommand(long Tick, SimCommand Command);

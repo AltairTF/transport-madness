@@ -145,19 +145,19 @@ The road equivalent of an Overhaul, done by a road crew. Closes or narrows the r
 **Old vehicle**:
 A vehicle whose model is old. It has no permanent wear limit and top speed does not fall, but its Patch, Service and Overhaul costs are higher than when new (a multiplier by the age of the model, in the campaign).
 
-**Maintenance policy** (planned, M5):
+**Maintenance policy**:
 What a Company vehicle or train does about its Condition: when it is due (days since its last repair, Condition below a floor, either or both) and which repair it gets (Patch, Service or Overhaul), or nothing. Set for the whole Company, for a Line or for one vehicle; the most specific one wins and "inherit" passes the choice up. A due vehicle finishes unloading at its next stop, loads no more and goes to the nearest Depot able to do that repair, waits for a bay, and returns to its Line; with no such Depot it keeps running and the game says so.
 
-**Bay (depot)** (planned, M5):
+**Bay (depot)**:
 A place in a Depot where one repair is done at a time. A Simple Depot has one, a Workshop two, a Complex three; vehicles that wait for one queue inside as in the Garage. Not the Bay of a Station.
 
-**Breakdown** (planned, M5):
+**Breakdown**:
 A Wreck made by wear instead of a crash: the risk per metre driven is none while Condition is above 60 and grows as it falls. Cleared by a Rescue crew like any Wreck; the cargo is lost, and the vehicle goes to the Garage of the nearest Depot with minimal Condition. Only Company vehicles and trains wear.
 
-**Signal failure** (planned, M5):
+**Signal failure**:
 A Signal that shows red for some minutes whatever the track beyond it, until a Rescue crew repairs it. Trains still cannot hit each other; they wait, and a Deadlock may follow.
 
-**Frequency option** (planned, M5):
+**Frequency option**:
 Off, low, normal or high: scales the random breakdowns, signal failures and, in the campaign, random events and raids. It does not scale the incidents that come out of the driving (failed overtaking, junction crashes).
 
 **Campaign** (planned, ADR 0006):

@@ -20,7 +20,7 @@ public class IndustryTests
     static (Simulation Sim, int Depot) World(float length, IndustryPlan[] industries, BuildingPlan[]? buildings = null, Tuning? tuning = null)
     {
         var net = new RoadNetwork(DryLevelMap(), tuning);
-        var sim = new Simulation(net, 4);
+        var sim = new Simulation(net, 4, IncidentFrequency.Off);
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, length, 0, RoadType.TwoLane, 14f)));
         var towns = buildings == null ? Array.Empty<TownPlan>() : new[] { new TownPlan("Testville", length - 100, 0, 0, 1, buildings) };
         sim.AddTowns(new WorldPlan(1, towns, industries));

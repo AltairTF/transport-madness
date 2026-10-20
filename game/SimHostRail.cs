@@ -233,26 +233,31 @@ public partial class SimHost
             var loco = Sim.Locomotives[train.Locomotive];
             var wagon = Sim.Wagons[train.Wagon];
             string where = StationName(Sim.TargetStationOf(train));
-            string what = train.ReturnDepot >= 0 ? "Going to a depot to wait there"
+            var phase = Sim.RepairPhaseOf(train);
+            string what = train.Broken ? "Broken down, waiting for the crew"
+                : phase is RepairPhase.ToDepot or RepairPhase.Waiting or RepairPhase.Working ? PhaseText(phase, Sim.RepairOf(train))
+                : train.ReturnDepot >= 0 ? "Going to a depot to wait there"
                 : train.InDepot ? $"Waiting in the depot to leave for {where}"
                 : train.Deadlocked ? $"DEADLOCK: waits for track held by train {train.BlockedBy + 1}"
                 : train.Status switch
                 {
                     TrainStatus.AtStation => $"Loading at {where}",
-                    TrainStatus.WaitingForTrack => train.BlockedBy >= 0 ? $"Waiting at a signal for train {train.BlockedBy + 1}" : "Waiting at a signal",
+                    TrainStatus.WaitingForTrack => train.BlockedBy >= 0 ? $"Waiting at a signal for train {train.BlockedBy + 1}" : train.BlockedBy == -2 ? "Waiting at a signal that has failed" : "Waiting at a signal",
                     TrainStatus.Halted => "Halted after hitting a vehicle",
                     TrainStatus.NoRoute => $"No way to {where}",
                     _ => $"Heading for {where}",
                 };
             var (x, y, z, _, _) = Sim.RoutePoint(train, train.Head);
-            list.Add(new Godot.Collections.Dictionary
+            var entry = new Godot.Collections.Dictionary
             {
                 ["id"] = -1 - train.Id, ["model"] = $"{loco.Name} + {train.Wagons} x {wagon.Name.ToLowerInvariant()}", ["line"] = train.Line,
                 ["line_name"] = Sim.Lines[train.Line].Name, ["color"] = LineColor(train.Line),
                 ["load"] = train.Load, ["capacity"] = train.Capacity, ["cargo"] = train.LoadCargo >= 0 ? Sim.CargoTypes[train.LoadCargo].Name : "",
                 ["income"] = train.Income, ["upkeep"] = train.UpkeepPaid, ["profit"] = train.Income - train.UpkeepPaid,
                 ["state"] = what, ["wrecked"] = false, ["deadlocked"] = train.Deadlocked, ["x"] = x, ["y"] = y, ["z"] = z,
-            });
+            };
+            AddMaintenance(entry, train);
+            list.Add(entry);
         }
         return list;
     }
@@ -542,8 +547,7 @@ public partial class SimHost
                 buf[o + 4] = 0f;          buf[o + 5] = height; buf[o + 6] = 0f;  buf[o + 7] = car.Y + RailLift + 0.35f + height * 0.5f;
                 buf[o + 8] = fz * length; buf[o + 9] = 0f;     buf[o + 10] = fx; buf[o + 11] = car.Z;
                 Color c = train.Deadlocked ? new Color(0.95f, 0.15f, 0.12f)
-                    : car.IsLocomotive ? line
-                    : line.Lerp(new Color(0.85f, 0.85f, 0.85f), 0.55f);
+                    : ConditionTint(car.IsLocomotive ? line : line.Lerp(new Color(0.85f, 0.85f, 0.85f), 0.55f), train.Condition);
                 buf[o + 12] = c.R; buf[o + 13] = c.G; buf[o + 14] = c.B; buf[o + 15] = 1f;
                 n++;
             }

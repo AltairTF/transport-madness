@@ -17,6 +17,7 @@ var _towns_value: Label
 var _towns_slider: HSlider
 var _industries_row: Control
 var _industries_buttons: Array[Button] = []
+var _frequency_buttons: Array[Button] = []
 
 
 func _ready() -> void:
@@ -169,6 +170,28 @@ func _build_new_game_page() -> Control:
 		_industries_buttons.append(button)
 	_on_industries_changed(Session.industries)
 
+	var frequency_row := HBoxContainer.new()
+	column.add_child(frequency_row)
+	var frequency_label := Label.new()
+	frequency_label.text = "Random events"
+	frequency_label.tooltip_text = "How often breakdowns and signal failures happen. It can be changed in the Maintenance window during the game."
+	frequency_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	frequency_row.add_child(frequency_label)
+	for i in 4:
+		var button := Button.new()
+		button.text = ["Off", "Low", "Normal", "High"][i]
+		button.toggle_mode = true
+		button.custom_minimum_size = Vector2(90, 0)
+		button.pressed.connect(_on_frequency_changed.bind(i))
+		frequency_row.add_child(button)
+		_frequency_buttons.append(button)
+	_on_frequency_changed(Session.frequency)
+	var frequency_note := Label.new()
+	frequency_note.theme_type_variation = "Dim"
+	frequency_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	frequency_note.text = "Accidents that come out of the driving (overtaking gone wrong, crashes at junctions) are not scaled, so Off does not remove all accidents."
+	column.add_child(frequency_note)
+
 	var buttons := HBoxContainer.new()
 	column.add_child(buttons)
 	var back := _button(buttons, "Back", func() -> void: _show(_main_page))
@@ -195,6 +218,12 @@ func _on_industries_changed(setting: int) -> void:
 	Session.industries = setting
 	for i in _industries_buttons.size():
 		_industries_buttons[i].set_pressed_no_signal(i == setting)
+
+
+func _on_frequency_changed(setting: int) -> void:
+	Session.frequency = setting
+	for i in _frequency_buttons.size():
+		_frequency_buttons[i].set_pressed_no_signal(i == setting)
 
 
 func _on_towns_changed(value: float) -> void:

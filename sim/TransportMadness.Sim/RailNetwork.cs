@@ -69,6 +69,17 @@ public sealed class RailSignal
     public int Node { get; internal set; }
     public SignalKind Kind { get; internal set; }
     public bool Active { get; internal set; } = true;
+    /// <summary>0 to 100: falls with the trains let through, rises with a crew's service.</summary>
+    public float Condition { get; internal set; } = 100f;
+    /// <summary>Showing red to everybody until a crew has repaired it.</summary>
+    public bool Failed { get; internal set; }
+    public long LastRepairTick { get; internal set; }
+    internal bool Placed;
+    internal void SetConditionForTest(float condition) => Condition = condition;
+    /// <summary>The tick a crew on its way finishes its work, -1 when none is coming.</summary>
+    internal long PendingTick = -1;
+    internal long FailedTick;
+    internal sbyte PendingKind = -1; // the service it is due, -1 for the repair of a failure
 }
 
 /// <summary>What building a track would take.</summary>

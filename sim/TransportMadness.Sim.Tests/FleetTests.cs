@@ -9,7 +9,7 @@ public class FleetTests
     static (Simulation Sim, int Depot, int A, int B) StraightLine(Tuning? tuning = null)
     {
         var net = new RoadNetwork(Terrain.Flat(), tuning);
-        var sim = new Simulation(net, 5);
+        var sim = new Simulation(net, 5, IncidentFrequency.Off);
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, 1200, 0, RoadType.TwoLane, 14f)));
         int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(0, 0, 1f), DepotLevel.Simple));
         int a = sim.Execute(new BuildStationCommand(150, 0));
@@ -207,7 +207,7 @@ public class FleetTests
     {
         // A T junction: the depot is on the stem, the stations on the two arms; the bus must choose the right turn each time.
         var net = new RoadNetwork(Terrain.Flat());
-        var sim = new Simulation(net, 2);
+        var sim = new Simulation(net, 2, IncidentFrequency.Off);
         sim.Execute(new BuildRoadCommand(-600, 0, 600, 0, RoadType.TwoLane, 14f));
         sim.Execute(new BuildRoadCommand(0, 0, 0, 500, RoadType.TwoLane, 14f));
         int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(0, 500, 1f), DepotLevel.Simple));
@@ -284,7 +284,7 @@ public class FleetTests
         ulong second = Hash(out _);
 
         var net = new RoadNetwork(Terrain.Flat());
-        var replay = new Simulation(net, 5);
+        var replay = new Simulation(net, 5, IncidentFrequency.Off);
         replay.Replay(log, (long)Math.Round(8 * replay.DayLengthSeconds / Simulation.StepSeconds));
 
         Assert.Equal(first, second);
@@ -295,7 +295,7 @@ public class FleetTests
     public void AFleetOnAGridWithAmbientTraffic_KeepsRunning_AndEveryLineEarns()
     {
         var net = new RoadNetwork(Terrain.Flat());
-        var sim = new Simulation(net, 11);
+        var sim = new Simulation(net, 11, IncidentFrequency.Off);
         const int size = 5;
         const float spacing = 300f;
         for (int x = 0; x < size; x++)
@@ -374,7 +374,7 @@ public class FleetTests
         for (ulong seed = 1; seed < 60; seed++)
         {
             var net = new RoadNetwork(Terrain.Flat());
-            var sim = new Simulation(net, seed);
+            var sim = new Simulation(net, seed, IncidentFrequency.Off);
             Assert.Equal(1, sim.Execute(new BuildRoadCommand(-600, 0, 600, 0, RoadType.TwoLane, 14f)));
             Assert.True(sim.Execute(new BuildRoadCommand(0, -600, 0, 600, RoadType.TwoLane, 14f)) > 0);
             int centre = net.FindNodeNear(0, 0, 1f);

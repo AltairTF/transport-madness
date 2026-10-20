@@ -126,12 +126,13 @@ public sealed partial class Simulation
         if (current.Mode == StationMode.Rail) EditTrainsOfLine(line, before, stations);
         for (int i = 0; i < _count; i++)
         {
-            if (_line[i] != line || _kind[i] != VehicleKind.Car || _returnDepot[i] >= 0) continue;
+            // A vehicle on its way to a depot for a repair comes back to the line, so it keeps its stop in step too.
+            if (_line[i] != line || _kind[i] != VehicleKind.Car || (_returnDepot[i] >= 0 && _svcKind[i] < 0)) continue;
             int heading = before[_stopIndex[i]];
             int at = Array.IndexOf(stations, heading);
             _stopIndex[i] = at >= 0 ? at : Math.Min(_stopIndex[i], stations.Length - 1);
             // Not while it is in the middle of a junction: its path to the next lane is already set.
-            if (at < 0 && _dwell[i] == 0 && _lane[i] >= 0 && _pos[i] < _laneZoneStart[_lane[i]])
+            if (at < 0 && _returnDepot[i] < 0 && _dwell[i] == 0 && _lane[i] >= 0 && _pos[i] < _laneZoneStart[_lane[i]])
                 _nextLane[i] = RouteNextLane(i, _lane[i]);
         }
         return 1;
@@ -172,9 +173,17 @@ public sealed partial class Simulation
         _lines[line].Active = false;
         _transitVersion++;
         for (int i = 0; i < _count; i++)
-            if (_line[i] == line && _kind[i] == VehicleKind.Car && _returnDepot[i] < 0) SellVehicle(i);
+        {
+            if (_line[i] != line || _kind[i] != VehicleKind.Car) continue;
+            if (_returnDepot[i] < 0 || _servicing[i]) SellVehicle(i);
+            else _svcKind[i] = -1; // on its way to a depot for a repair: it parks there instead
+        }
         foreach (var train in _trains)
-            if (train.Active && train.Line == line && train.ReturnDepot < 0) SellTrain(train.Id);
+        {
+            if (!train.Active || train.Line != line) continue;
+            if (train.ReturnDepot < 0 || train.Servicing) SellTrain(train.Id);
+            else train.SvcKind = -1;
+        }
         return 1;
     }
 
@@ -199,7 +208,7 @@ public sealed partial class Simulation
     /// Puts a vehicle out of a depot on a line, the money already settled. A ghost when the road at the depot is busy. Returns the vehicle
     /// id, -1 when the line is not an open road line or there is no road from the depot to its first station.
     /// </summary>
-    int PlaceAtDepot(int depot, int model, int line)
+    int PlaceAtDepot(int depot, int model, int line, float condition = 100f, long lastRepair = -1, bool patched = false)
     {
         if (line < 0 || line >= _lines.Count || !_lines[line].Active || _lines[line].Mode != StationMode.Road) return -1;
         var spec = _models[model];
@@ -215,6 +224,7 @@ public sealed partial class Simulation
         _stopIndex[id] = 0;
         _desired[id] = spec.MaxSpeed;
         _length[id] = spec.Length;
+        SetVehicleCondition(id, condition, lastRepair < 0 ? Tick : lastRepair, patched);
         _nextLane[id] = RouteNextLane(id, lane);
         if (!clear)
         {
@@ -274,7 +284,7 @@ public sealed partial class Simulation
         if (!any) return;
         for (int i = 0; i < _count; i++)
         {
-            if (!_ghost[i] || _lane[i] < 0) continue;
+            if (!_ghost[i] || _servicing[i] || _lane[i] < 0) continue;
             int lane = _lane[i];
             if (!_ghostOut[i])
             {
@@ -282,7 +292,7 @@ public sealed partial class Simulation
                 bool queued = false;
                 for (int j = 0; j < _count && !queued; j++)
                 {
-                    if (j == i || !_ghost[j] || _lane[j] != lane) continue;
+                    if (j == i || !_ghost[j] || _servicing[j] || _lane[j] != lane) continue;
                     queued = _ghostOut[j] ? _pos[j] - _length[j] < _ghostFrom[i] + SpawnGap : j < i;
                 }
                 if (queued || TrafficNear(_ghostNode[i]) || !IsClearFor(new LaneId(lane), _ghostFrom[i], _length[i], _traffic.SpawnClearance)) continue;
@@ -425,7 +435,11 @@ public sealed partial class Simulation
                     RebuildOrder();
                 }
                 _halted[i] = false;
-                if (ReachedDepot(i)) ParkAtDepot(i);
+                if (ReachedDepot(i))
+                {
+                    if (_svcKind[i] >= 0) EnterServiceBay(i);
+                    else ParkAtDepot(i);
+                }
                 continue;
             }
             if (_dwell[i] > 0)
@@ -465,14 +479,27 @@ public sealed partial class Simulation
         var station = TargetStation(i)!;
         var spec = _models[_model[i]];
         int unloaded = 0, loaded = 0;
+        // Due for a repair that a depot can do: it unloads what this stop takes, puts the rest down here and loads nothing.
+        bool service = DecideService(i);
         if (CarriesQueuedPassengers(i))
         {
             unloaded = UnloadRiders(i, station);
-            loaded = BoardRiders(i, station);
+            if (service)
+            {
+                ReleaseRiders(i);
+                SetRiderLoad(i);
+            }
+            else loaded = BoardRiders(i, station);
         }
         else if (_load[i] > 0 && Accepts(station, _loadCargo[i])) unloaded = Deliver(i, station);
+        if (service && _load[i] > 0)
+        {
+            _load[i] = 0;
+            _loadCargo[i] = -1;
+            _loadFrom[i] = -1;
+        }
 
-        if (_load[i] == 0 && !CarriesQueuedPassengers(i))
+        if (!service && _load[i] == 0 && !CarriesQueuedPassengers(i))
         {
             int cargo = CargoToLoad(i, station);
             if (cargo >= 0)
@@ -603,6 +630,7 @@ public sealed partial class Simulation
         }
         _halted[i] = false;
         Retarget(i);
+        if (_svcKind[i] >= 0) StartServiceTrip(i);
     }
 
     /// <summary>Picks the next open station on the line after the current one and turns toward it at the next junction.</summary>
@@ -639,11 +667,19 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)line.Income;
             h = h * 31 + (ulong)line.Upkeep;
             h = h * 31 + (ulong)line.Delivered;
+            h = h * 31 + line.Policy.Bits;
         }
+        if (_lines.Count > 0 || _garage.Count > 0) h = h * 31 + MaintenanceHash();
+        if (_jobs.Count > 0 || _jobCount > 0) h = h * 31 + RepairHash();
         if (_garage.Count > 0) h = h * 31 + GarageHash();
         for (int i = 0; i < _count; i++)
         {
             if (_line[i] < 0) continue;
+            h = h * 31 + BitConverter.SingleToUInt32Bits(_condition[i]);
+            h = h * 31 + (ulong)_lastRepair[i];
+            h = h * 31 + (_patched[i] ? 1UL : 0UL) + (_servicing[i] ? 2UL : 0UL);
+            h = h * 31 + _policy[i].Bits;
+            h = h * 31 + (ulong)(_wantRepair[i] + 1) + ((ulong)(_svcKind[i] + 1) << 4);
             if (_ghost[i]) h = h * 31 + 13UL;
             if (_returnDepot[i] >= 0) h = h * 31 + (ulong)(_returnDepot[i] + 17);
             h = h * 31 + (ulong)i;

@@ -465,6 +465,8 @@ public sealed partial class Simulation
                     if (_pos[j] < centre - c.RoadHalf || _pos[j] - _length[j] > centre + c.RoadHalf) continue;
                     int incident = NewIncident(IncidentKind.LevelCrossing, j);
                     MakeWreck(j, incident);
+                    if (_line[j] >= 0) OnCompanyCrash(j, incident);
+                    OnTrainHit(hitter, incident);
                     c.Collisions++;
                     hitter.HaltSeconds = CrossingRules.CollisionHalt;
                     hitter.Speed = 0f;

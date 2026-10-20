@@ -67,6 +67,7 @@ func set_tool(tool_name: String) -> void:
 		"faster": message.emit("Faster: click a road to raise its speed limit by 10 km/h")
 		"slower": message.emit("Slower: click a road to lower its speed limit by 10 km/h")
 		"move": message.emit("Move: click a junction to pick it up, then click where it goes (roads keep their bend; vehicles carry on)")
+		"resurface": message.emit("Resurface: click a worn road piece; a crew restores it (the road is closed while they work)")
 		"remove": message.emit("Remove: click a road piece (junction to junction) to tear it down")
 		"depot": message.emit("Depot: click near a junction")
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
@@ -102,7 +103,7 @@ func _road_type() -> int:
 
 
 func _is_road_tool() -> bool:
-	return tool in ["upgrade", "downgrade", "remove", "faster", "slower"]
+	return tool in ["upgrade", "downgrade", "remove", "faster", "slower", "resurface"]
 
 
 func _reset() -> void:
@@ -232,6 +233,9 @@ func _click_road(screen: Vector2) -> void:
 		return
 	var road: int = hit["road"]
 	match tool:
+		"resurface":
+			var why: String = host.Resurface(road)
+			message.emit("Resurfacing started: the road is closed until the crew is done" if why == "" else "Can't resurface it: " + why)
 		"remove":
 			var cost: float = host.DemolitionCost(road)
 			message.emit("Road removed (demolition %s)" % _money(cost) if host.RemoveRoad(road) else "Can't remove that")
@@ -260,6 +264,13 @@ func _hover(screen: Vector2) -> void:
 	var width := (16.0 if hit["type"] == 1 else 7.0) + 2.0
 	var color: Color = ROAD_COLORS["invalid"]
 	match tool:
+		"resurface":
+			var info: Dictionary = host.ResurfaceInfo(_hover_road)
+			if info["why"] == "":
+				color = ROAD_COLORS["valid"]
+				message.emit("Condition %d of 100. Resurface %d m: %s, closed for %d s" % [roundi(info["condition"]), hit["length"], _money(info["price"]), roundi(info["seconds"])])
+			else:
+				message.emit("Condition %d of 100: %s" % [roundi(info["condition"]), info["why"]])
 		"remove":
 			color = ROAD_COLORS["valid"]
 			message.emit("Remove %d m of road: demolition %s" % [hit["length"], _money(host.DemolitionCost(_hover_road))])

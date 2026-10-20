@@ -53,6 +53,14 @@ public sealed class Incident
     public long DispatchTick { get; internal set; }
     public long CrewArrivalTick { get; internal set; }
     public long ClearedTick { get; internal set; }
+    /// <summary>The wreck is a company vehicle that broke down from low Condition: after clearing it is towed to a depot's garage instead of being scrapped.</summary>
+    public bool FromCondition { get; internal set; }
+    /// <summary>A breakdown of a vehicle that was not maintained (below the critical Condition): negligence, which is fined.</summary>
+    public bool Negligent { get; internal set; }
+    /// <summary>A vehicle or train of the company is part of it.</summary>
+    public bool CompanyInvolved { get; internal set; }
+    internal bool TownPenalised;
+    internal bool BlockedPenalised;
     /// <summary>Wrecks and debris that still need clearing, by vehicle id.</summary>
     public IReadOnlyList<int> VehicleIds => Vehicles;
 }
@@ -70,8 +78,9 @@ public sealed class Depot
     public int Id { get; }
     /// <summary>The node it stands at; follows the node when that is moved.</summary>
     public int Node { get; internal set; }
-    public DepotLevel Level { get; }
-    public int Crews { get; }
+    /// <summary>What the depot can repair and how many bays it has; raised in place by an upgrade.</summary>
+    public DepotLevel Level { get; internal set; }
+    public int Crews { get; internal set; }
     public int BusyCrews { get; internal set; }
     /// <summary>False once every road at its node has been torn down: the depot sends no more crews.</summary>
     public bool Active { get; internal set; } = true;
@@ -194,8 +203,16 @@ public sealed partial class Simulation
         _blockedCount[lane]++;
     }
 
+    /// <summary>Takes a vehicle out of the world (for tests that need an empty road after driving on it).</summary>
+    internal void RemoveVehicleForTest(int vehicle)
+    {
+        RemoveVehicle(vehicle);
+        RebuildOrder();
+    }
+
     void RemoveVehicle(int vehicle)
     {
+        if (_servicing[vehicle]) CancelJobsFor(RepairSubject.Vehicle, vehicle);
         LeaveBay(vehicle);
         ReleaseTripSlot(vehicle);
         if (_blockLane[vehicle] >= 0) _blockedCount[_blockLane[vehicle]]--;
@@ -211,6 +228,10 @@ public sealed partial class Simulation
         _ghost[vehicle] = false;
         _ghostOut[vehicle] = false;
         _returnDepot[vehicle] = -1;
+        _servicing[vehicle] = false;
+        _svcKind[vehicle] = -1;
+        _svcDepot[vehicle] = -1;
+        _wantRepair[vehicle] = -1;
         _speed[vehicle] = 0f;
         _phase[vehicle] = 0;
         _lat[vehicle] = 0f;
@@ -354,7 +375,7 @@ public sealed partial class Simulation
         rearA < frontB && rearB < frontA && MathF.Abs(yA - yB) < VehicleWidth;
 
     /// <summary>Wrecks every moving vehicle involved; one that runs into an existing wreck joins that incident.</summary>
-    void Collide(int a, int b, IncidentKind kind)
+    internal void Collide(int a, int b, IncidentKind kind)
     {
         bool aMoving = _kind[a] == VehicleKind.Car, bMoving = _kind[b] == VehicleKind.Car;
         if (!aMoving && !bMoving) return;
@@ -365,6 +386,8 @@ public sealed partial class Simulation
         if (GetIncident(incident).State == IncidentState.Clearing) GetIncident(incident).CrewArrivalTick = Tick;
         if (aMoving) MakeWreck(a, incident);
         if (bMoving) MakeWreck(b, incident);
+        if (aMoving && _line[a] >= 0) OnCompanyCrash(a, incident);
+        if (bMoving && _line[b] >= 0) OnCompanyCrash(b, incident);
 
         // An overtaker wrecked out in the oncoming lane also leaves wreckage across its own lane.
         if (kind == IncidentKind.HeadOn && _lat[a] >= HomeLaneLat && aMoving)
@@ -390,6 +413,7 @@ public sealed partial class Simulation
 
     void UpdateCrews()
     {
+        if (_openIncidents.Count > 0) CheckBlockedIncidents();
         for (int k = 0; k < _openIncidents.Count; k++)
         {
             var incident = GetIncident(_openIncidents[k]);
@@ -462,7 +486,12 @@ public sealed partial class Simulation
 
     void Clear(Incident incident)
     {
-        foreach (int v in incident.Vehicles) RemoveVehicle(v);
+        foreach (int v in incident.Vehicles)
+        {
+            // A company vehicle that broke down is towed to a depot's garage; other wrecks are scrapped.
+            if (incident.FromCondition && _kind[v] == VehicleKind.Wreck && _line[v] >= 0 && TowToGarage(v)) continue;
+            RemoveVehicle(v);
+        }
         incident.Vehicles.Clear();
         incident.State = IncidentState.Cleared;
         incident.ClearedTick = Tick;

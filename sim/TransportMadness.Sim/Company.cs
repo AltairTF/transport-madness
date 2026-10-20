@@ -1,7 +1,7 @@
 namespace TransportMadness.Sim;
 
 /// <summary>Where money came from or went to; the company keeps a running total for each.</summary>
-public enum LedgerEntry { Construction, Stations, Depots, Vehicles, Income, Upkeep, Interest, Demolition }
+public enum LedgerEntry { Construction, Stations, Depots, Vehicles, Income, Upkeep, Interest, Demolition, Maintenance, Compensation, Fines }
 
 /// <summary>The player's transport business: money, loan and how it has been spent.</summary>
 public sealed class Company
@@ -18,6 +18,8 @@ public sealed class Company
     public int InsolventDays { get; internal set; }
     /// <summary>Insolvent for too long. Challenge mode would end the game here; the sandbox carries on.</summary>
     public bool Bankrupt { get; internal set; }
+    /// <summary>People hurt in crashes of the company's vehicles so far (each was paid compensation).</summary>
+    public long Injured { get; internal set; }
 
     /// <summary>Net money moved under this heading since the start: income positive, spending negative.</summary>
     public long Total(LedgerEntry entry) => _ledger[(int)entry];

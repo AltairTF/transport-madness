@@ -1,0 +1,47 @@
+namespace TransportMadness.Sim;
+
+public enum SimEventKind : byte
+{
+    /// <summary>A company vehicle broke down on the road.</summary>
+    Breakdown,
+    /// <summary>A train broke down.</summary>
+    TrainBreakdown,
+    /// <summary>A vehicle is due for a repair that no depot it can reach can do.</summary>
+    NoDepot,
+    /// <summary>A rail signal failed.</summary>
+    SignalFailure,
+    /// <summary>A company vehicle or train crashed.</summary>
+    Crash,
+    /// <summary>A town is unhappy about an incident of the company's.</summary>
+    TownUnhappy,
+}
+
+public enum EventSeverity : byte { Info, Warning, Serious }
+
+/// <summary>Something the player needs to see: an incident, a breakdown, a warning. <see cref="X"/> and <see cref="Z"/> are where it happened, for the camera.</summary>
+public readonly record struct SimEvent(int Id, long Tick, SimEventKind Kind, EventSeverity Severity, float X, float Z, int Subject, string Text);
+
+/// <summary>The event feed: what the player should be told, newest last. Not part of the state hash (it is made from what the simulation does).</summary>
+public sealed partial class Simulation
+{
+    const int EventsKept = 300;
+
+    readonly List<SimEvent> _events = new();
+    int _eventBase;
+
+    /// <summary>The events still remembered, oldest first.</summary>
+    public IReadOnlyList<SimEvent> Events => _events;
+    /// <summary>How many events there have been in all; the one with id n is at <c>n - EventsDropped</c> in <see cref="Events"/>.</summary>
+    public int EventCount => _eventBase + _events.Count;
+    public int EventsDropped => _eventBase;
+
+    void AddEvent(SimEventKind kind, EventSeverity severity, float x, float z, int subject, string text)
+    {
+        _events.Add(new SimEvent(EventCount, Tick, kind, severity, x, z, subject, text));
+        if (_events.Count > EventsKept + 50)
+        {
+            _events.RemoveRange(0, 50);
+            _eventBase += 50;
+        }
+    }
+}

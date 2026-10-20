@@ -118,7 +118,7 @@ public sealed partial class Simulation
     readonly List<int> _overtakers = new();
 
     /// <summary>The network may keep growing: roads added later are picked up at the start of the next step or spawn.</summary>
-    public Simulation(RoadNetwork net, ulong seed)
+    public Simulation(RoadNetwork net, ulong seed, IncidentFrequency frequency = IncidentFrequency.Normal)
     {
         _net = net;
         var tuning = net.Tuning;
@@ -142,6 +142,10 @@ public sealed partial class Simulation
         _passengerCargo = FindCargo(tuning, "passengers");
         _rail = new RailNetwork(net.Terrain, tuning);
         _railTuning = tuning.Rail;
+        _maint = tuning.Maintenance;
+        _companyPolicy = new MaintenancePolicy(PolicyMode.On, _maint.DefaultPolicy.EveryDays, _maint.DefaultPolicy.BelowCondition, Enum.Parse<RepairKind>(_maint.DefaultPolicy.Repair, ignoreCase: true));
+        _frequency = frequency;
+        _frequencyScale = _maint.Frequency.For(frequency);
         ResolveWagonCargo();
         _models = tuning.Vehicles;
         _modelCargo = ResolveModelCargo(tuning);
@@ -246,6 +250,7 @@ public sealed partial class Simulation
         if (_industries.Count > 0 || _buildings.Count > 0) Mix(IndustryHash());
         if (_groups.Count > 0) Mix(TripHash());
         Mix(FleetHash());
+        if (_lines.Count > 0 || _roadWorks.Count > 0 || _resurfaced > 0) Mix(RoadWearHash());
         if (_lights.Count > 0) Mix(LightHash());
         if (_roadSigns.Count > 0) Mix(SignHash());
         if (RailInUse) Mix(RailHash());
@@ -300,6 +305,7 @@ public sealed partial class Simulation
         _incident[id] = -1;
         _prevLane[id] = -1;
         ResetFleetSlot(id);
+        ResetConditionSlot(id);
         _nextLane[id] = ChooseNextLane(lane.Value);
         RebuildOrder();
         return id;
@@ -385,6 +391,9 @@ public sealed partial class Simulation
         UpdateIndustries();
         UpdateTrips();
         UpdateFleet();
+        StepRepairs();
+        StepRoadWorks();
+        StepSignals();
         StepGhosts();
         for (int i = 0; i < _count; i++)
         {
@@ -404,7 +413,8 @@ public sealed partial class Simulation
             if (_line[i] >= 0) interaction = MathF.Max(interaction, StopInteraction(i, v));
             if (_zoneStart.Length > 0) interaction = MathF.Max(interaction, CrossingInteraction(i, v));
 
-            float wanted = MathF.Max(-_drive.MaxBraking, _drive.MaxAccel * (1f - ratio * ratio * ratio * ratio - interaction));
+            float maxBraking = _line[i] >= 0 ? _drive.MaxBraking * BrakeShare(_condition[i]) : _drive.MaxBraking;
+            float wanted = MathF.Max(-maxBraking, _drive.MaxAccel * (1f - ratio * ratio * ratio * ratio - interaction));
             _accel[i] = MathF.Max(wanted, _accel[i] - _drive.BrakeJerk * StepSeconds);
         }
         for (int i = 0; i < _count; i++)
@@ -421,6 +431,7 @@ public sealed partial class Simulation
             StepTrains();
             DetectCrossingCollisions();
         }
+        StepCondition();
         DetectIncidents();
         if ((Tick + 1) % _ticksPerDay == 0) CloseDay();
         Tick++;
@@ -436,7 +447,7 @@ public sealed partial class Simulation
     /// <summary>The speed a driver aims for when nothing is in the way.</summary>
     float FreeSpeed(int i)
     {
-        float v0 = _laneLimit[_lane[i]] * _factor[i];
+        float v0 = _laneLimit[_lane[i]] * _factor[i] * RoadSpeedShare(_lane[i]);
         // Slow down for the turn at the end of the lane: the speed it allows, rising with the distance left to brake in.
         float toTurn = _laneZoneStart[_lane[i]] - _pos[i];
         if (toTurn < TurnLookahead)
@@ -572,6 +583,7 @@ public sealed partial class Simulation
             _laneZoneStart[l] = lane.Length - _laneReach[l];
         }
         SyncLinks();
+        SyncRoadWear();
         EvaluateAccess();
 
         for (int i = 0; i < _count; i++)
@@ -824,6 +836,7 @@ public sealed partial class Simulation
         Array.Resize(ref _oncGap, n);
         Array.Resize(ref _oncSpeed, n);
         GrowFleetArrays(n);
+        GrowConditionArrays(n);
         Array.Resize(ref _order, n);
         Array.Resize(ref _rankInOrder, n);
     }

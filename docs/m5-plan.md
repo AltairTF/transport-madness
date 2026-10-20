@@ -1,6 +1,6 @@
 # M5 plan: maintenance, depots, full incidents
 
-Status: planned (decisions taken 2026-10-21 in an interview with the developer). Done when (game-plan.md): the management layer is playable end to end, here meaning that a fleet wears, breaks down, is serviced by a policy the player sets in depots that can do the work, and the incidents that follow cost money and goodwill. Architecture: ADR 0005. Vocabulary: `CONTEXT.md`.
+Status: built (decisions taken 2026-10-21 in an interview with the developer; what was built and where it differs from this plan is in `project-status.md` 5.24). Done when (game-plan.md): the management layer is playable end to end, here meaning that a fleet wears, breaks down, is serviced by a policy the player sets in depots that can do the work, and the incidents that follow cost money and goodwill. Architecture: ADR 0005. Vocabulary: `CONTEXT.md`.
 
 Contracts and the random events (festival, industry boom or slump) of the first plan are not here. The campaign (ADR 0006, `docs/campaign-plan.md`) replaces contracts with government orders and gives random events a war setting; only the event feed, which the incidents need, is built in M5. M5 is built after the first campaign slice, C1 (the new time scale), so that the wear and repair numbers are calibrated once.
 
@@ -37,3 +37,11 @@ The order is the order of dependency: 5a feeds the others. The game layer of eac
 - Contracts: replaced by the government's orders (`docs/campaign-plan.md`, C5).
 - Insurance, and wear and repair of rail track: not planned.
 - The "old vehicle" cost multiplier is a tuning field only until the campaign has model years (C8).
+
+## What changed on the way
+
+- Prices of repairs and wear are different from the starting points above: a point per 1500 m, Patch 3 %, Service 12 % and Overhaul 40 % of the price, because the plan's own balance target (8 to 12 % of a line's revenue) needed them; the target is a test (`MaintenanceEconomyTests`).
+- Bays and the queue were built with the repairs (5a) rather than in 5b, since a repair cannot exist without a bay; 5b added the upgrade command and the windows.
+- A vehicle that is serviced keeps its identity (it goes inside the depot as a ghost and comes out again); only a vehicle that is parked or towed becomes a garage entry, which now carries its Condition.
+- The railway got depot levels (`AddRailDepotCommand` takes one, `UpgradeDepotCommand` raises it) so that trains can have a Service or an Overhaul.
+- The rest of 5c and 5f is as planned. Compensation also covers a train that hits a vehicle at a crossing.

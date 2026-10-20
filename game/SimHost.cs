@@ -132,12 +132,17 @@ public partial class SimHost : Node3D
 
     // ---- API for GDScript -----------------------------------------------------------------------------------
 
+    /// <summary>How often random events happen in the next world that is started: 0 off, 1 low, 2 normal, 3 high (the Maintenance window changes it in the running game).</summary>
+    public int StartFrequency { get; set; } = (int)IncidentFrequency.Normal;
+
+    IncidentFrequency StartingFrequency => (IncidentFrequency)Math.Clamp(StartFrequency, 0, 3);
+
     /// <summary>Starts a fresh demo world with the given seed and number of ambient vehicles.</summary>
     public void NewDemoWorld(long seed, int vehicles)
     {
         var net = new RoadNetwork(Terrain.Flat());
         DemoWorld.Build(net);
-        Sim = new Simulation(net, (ulong)seed);
+        Sim = new Simulation(net, (ulong)seed, StartingFrequency);
         // The grid itself is the initial world; everything after it goes through commands so it is logged.
         foreach (int node in new[] { net.NodeCount / 5, net.NodeCount * 2 / 5, net.NodeCount * 3 / 5, net.NodeCount * 4 / 5 })
             Sim.Execute(new AddDepotCommand(node, DepotLevel.Simple));
@@ -149,7 +154,7 @@ public partial class SimHost : Node3D
     /// <summary>Starts an empty flat map.</summary>
     public void NewEmptyWorld(long seed)
     {
-        Sim = new Simulation(new RoadNetwork(Terrain.Flat()), (ulong)seed);
+        Sim = new Simulation(new RoadNetwork(Terrain.Flat()), (ulong)seed, StartingFrequency);
         RebuildRoads();
         _accumulator = 0;
     }
@@ -157,7 +162,7 @@ public partial class SimHost : Node3D
     /// <summary>Starts an empty map of generated hills.</summary>
     public void NewHillsWorld(long seed)
     {
-        Sim = new Simulation(new RoadNetwork(Terrain.Generate((ulong)seed)), (ulong)seed);
+        Sim = new Simulation(new RoadNetwork(Terrain.Generate((ulong)seed)), (ulong)seed, StartingFrequency);
         RebuildRoads();
         _accumulator = 0;
     }
@@ -169,7 +174,7 @@ public partial class SimHost : Node3D
     /// </summary>
     public int NewTownsWorld(long seed, int towns, int industries)
     {
-        var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2));
+        var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2), frequency: StartingFrequency);
         Sim = sim;
         UnlinkedIndustries = plan.Unlinked?.Count ?? 0;
         RebuildRoads();
@@ -286,12 +291,12 @@ public partial class SimHost : Node3D
         return true;
     }
 
-    /// <summary>The road piece nearest to a point within 14 m: {found, road, type, length, structure} (structure: 0 ground, 1 bridge, 2 tunnel).</summary>
+    /// <summary>The road piece nearest to a point within 14 m: {found, road, type, length, structure, condition} (structure: 0 ground, 1 bridge, 2 tunnel).</summary>
     public Godot.Collections.Dictionary RoadAt(float x, float z)
     {
         if (Sim.Network.RoadAt(x, z, 14f) is not { } id) return new Godot.Collections.Dictionary { ["found"] = false };
         var road = Sim.Network.GetRoad(id);
-        return new Godot.Collections.Dictionary { ["found"] = true, ["road"] = id.Value, ["type"] = road.Type == RoadType.Avenue2x2 ? 1 : 0, ["length"] = road.Length, ["structure"] = (int)road.Structure };
+        return new Godot.Collections.Dictionary { ["found"] = true, ["road"] = id.Value, ["type"] = road.Type == RoadType.Avenue2x2 ? 1 : 0, ["length"] = road.Length, ["structure"] = (int)road.Structure, ["condition"] = Sim.RoadConditionOf(id.Value) };
     }
 
     /// <summary>Points along a road's centre line at road height (for highlighting it).</summary>
@@ -634,6 +639,8 @@ public partial class SimHost : Node3D
                 ["delivered"] = line.Delivered,
                 ["vehicles"] = vehicles[line.Id],
                 ["loading"] = loading[line.Id],
+                ["policy"] = PolicyDictionary(line.Policy),
+                ["policy_text"] = PolicyText(line.Policy),
             });
         }
         return lines;
@@ -655,16 +662,21 @@ public partial class SimHost : Node3D
             bool wrecked = state.Kind != VehicleKind.Car;
             int target = Sim.TargetStationOf(v);
             string where = target < 0 ? "" : StationName(target);
-            string what = wrecked ? "Wrecked, waiting for a crew" : Sim.IsReturning(v) ? "Going to a depot to wait there" : Sim.IsInDepot(v) ? $"Waiting in the depot to leave for {where}" : Sim.IsGhost(v) ? $"Leaving the depot for {where}" : info.Loading ? $"Loading at {where}" : $"Heading for {where}";
+            var phase = Sim.RepairPhaseOf(v);
+            string what = wrecked ? "Wrecked, waiting for a crew"
+                : phase is RepairPhase.ToDepot or RepairPhase.Waiting or RepairPhase.Working ? PhaseText(phase, Sim.RepairOf(v))
+                : Sim.IsReturning(v) ? "Going to a depot to wait there" : Sim.IsInDepot(v) ? $"Waiting in the depot to leave for {where}" : Sim.IsGhost(v) ? $"Leaving the depot for {where}" : info.Loading ? $"Loading at {where}" : $"Heading for {where}";
             float pos = Math.Min(state.Position, _laneLength[state.Lane.Value]);
             LaneFrame(state.Lane.Value, pos, out float x, out float z, out _, out _);
-            list.Add(new Godot.Collections.Dictionary
+            var entry = new Godot.Collections.Dictionary
             {
                 ["id"] = v, ["model"] = model.Name, ["line"] = info.Line, ["line_name"] = Sim.Lines[info.Line].Name, ["color"] = LineColor(info.Line),
                 ["load"] = info.Load, ["capacity"] = model.Capacity, ["cargo"] = info.Cargo >= 0 ? Sim.CargoTypes[info.Cargo].Name : "",
                 ["income"] = Sim.IncomeOf(v), ["upkeep"] = Sim.UpkeepPaidFor(v), ["profit"] = Sim.IncomeOf(v) - Sim.UpkeepPaidFor(v),
                 ["state"] = what, ["wrecked"] = wrecked, ["x"] = x, ["y"] = _laneY[state.Lane.Value] + _laneGrade[state.Lane.Value] * pos, ["z"] = z,
-            });
+            };
+            AddMaintenance(entry, v);
+            list.Add(entry);
         }
         foreach (var train in GetTrains()) list.Add(train);
         return list;
@@ -1002,7 +1014,7 @@ public partial class SimHost : Node3D
             {
                 VehicleKind.Wreck => new Color(0.8f, 0.1f, 0.08f),
                 VehicleKind.Debris => new Color(0.9f, 0.55f, 0.1f),
-                _ when company => LineColor(Sim.GetFleetInfo(i).Line),
+                _ when company => ConditionTint(LineColor(Sim.GetFleetInfo(i).Line), Sim.ConditionOf(i)),
                 _ => v.Overtake != OvertakePhase.None ? new Color(1f, 0.9f, 0.2f) : CarColor(i),
             };
             buf[o + 12] = c.R; buf[o + 13] = c.G; buf[o + 14] = c.B; buf[o + 15] = 1f;

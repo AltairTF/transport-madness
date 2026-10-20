@@ -30,6 +30,8 @@ public sealed record RailTuning
     public required long StationPrice { get; init; }
     public required float StationUpkeepPerDay { get; init; }
     public required long DepotPrice { get; init; }
+    public required long DepotWorkshopPrice { get; init; }
+    public required long DepotComplexPrice { get; init; }
     public required float SnapRadius { get; init; }
     public required float StationAlongStep { get; init; }
     public required RailMovementTuning Movement { get; init; }

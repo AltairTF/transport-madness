@@ -47,6 +47,11 @@ public sealed partial class Simulation
     void StepTrain(Train t)
     {
         var mv = _railTuning.Movement;
+        if (t.Servicing)
+        {
+            t.Status = TrainStatus.Servicing;
+            return;
+        }
         if (t.InDepot)
         {
             if (_nodeOwner[t.SpawnNode] != -1) { t.Status = TrainStatus.InDepot; return; }
@@ -67,6 +72,7 @@ public sealed partial class Simulation
             t.Status = TrainStatus.Halted;
             t.Speed = 0f;
             t.Acceleration = 0f;
+            if (t.HaltSeconds <= 0f && t.Broken) TowTrain(t);
             return;
         }
         if (t.ReturnDepot < 0 && !_stations[_lines[t.Line].Stops[t.StopIndex]].Active && !float.IsPositiveInfinity(t.StopAt)) CutRouteAfterApproved(t);
@@ -148,10 +154,17 @@ public sealed partial class Simulation
         int startNode = StartNodeOf(_rail, t.Steps[k]);
         var arrival = k > 0 ? t.Steps[k - 1].Track : TrackId.None;
         bool block = false;
+        RailSignal? passing = null;
         if (!arrival.IsNone && IsBoundary(startNode))
         {
-            var signal = _rail.SignalFor(arrival, startNode);
-            block = signal == null || signal.Kind == SignalKind.Block;
+            passing = _rail.SignalFor(arrival, startNode);
+            block = passing == null || passing.Kind == SignalKind.Block;
+            if (passing != null && t.RolledSignal != passing.Id.Value)
+            {
+                t.RolledSignal = passing.Id.Value; // once for each approach, however long the train has to wait
+                MaybeFailSignal(passing);
+            }
+            if (passing is { Failed: true }) return -2; // a failed signal shows red to everybody
         }
 
         // The route up to the next boundary.
@@ -200,6 +213,11 @@ public sealed partial class Simulation
         }
         foreach (var item in items) AddHold(t, item.IsNode, item.Id, item.Lo, item.Hi);
         t.Approved = newApproved;
+        if (passing != null)
+        {
+            t.RolledSignal = -1;
+            SignalPassed(passing);
+        }
         return -1;
     }
 
@@ -358,7 +376,8 @@ public sealed partial class Simulation
     {
         if (t.ReturnDepot >= 0)
         {
-            ParkTrainAtDepot(t);
+            if (t.SvcKind >= 0) EnterTrainService(t);
+            else ParkTrainAtDepot(t);
             return;
         }
         var line = _lines[t.Line];
@@ -367,12 +386,21 @@ public sealed partial class Simulation
         int fixedCargo = _wagonCargo[t.Wagon];
         bool passengers = Settled && _passengerCargo >= 0 && fixedCargo == _passengerCargo;
         int unloaded = 0, loaded = 0;
+        // Due for a repair that a rail depot can do: it unloads what this stop takes, puts the rest down here and loads nothing.
+        bool service = DecideTrainService(t);
         if (passengers)
         {
             unloaded = AlightRiders(t.Riders, line, station, out long income);
             t.Income += income;
             SetTrainRiderLoad(t);
-            if (station.Queue.Count > 0)
+            if (service)
+            {
+                if (t.Riders != null)
+                    foreach (var lot in t.Riders) GiveUp(_groups[lot.Group], lot.Count, lot.From);
+                t.Riders = null;
+                SetTrainRiderLoad(t);
+            }
+            else if (station.Queue.Count > 0)
             {
                 int room = t.Capacity - t.Load;
                 if (room > 0)
@@ -384,8 +412,14 @@ public sealed partial class Simulation
             }
         }
         else if (t.Load > 0 && Accepts(station, t.LoadCargo)) unloaded = DeliverTrain(t, station);
+        if (service && t.Load > 0)
+        {
+            t.Load = 0;
+            t.LoadCargo = -1;
+            t.LoadFrom = -1;
+        }
 
-        if (t.Load == 0 && !passengers)
+        if (!service && t.Load == 0 && !passengers)
         {
             int cargo = CargoToLoadFor(fixedCargo, line, t.StopIndex, station);
             if (cargo >= 0)
@@ -434,6 +468,7 @@ public sealed partial class Simulation
         }
         t.StopAt = float.PositiveInfinity;
         t.ReplanTick = 0;
+        if (t.SvcKind >= 0) StartTrainServiceTrip(t);
         if (PlanLeg(t)) t.Status = TrainStatus.Running;
         else
         {
@@ -597,11 +632,12 @@ public sealed partial class Simulation
     {
         foreach (var t in _trains)
         {
-            if (!t.Active || t.Line != line || t.ReturnDepot >= 0) continue;
+            // A train on its way to a depot for a repair comes back to the line, so it keeps its stop in step too (its route to the depot stays).
+            if (!t.Active || t.Line != line || (t.ReturnDepot >= 0 && t.SvcKind < 0)) continue;
             int heading = before[Math.Min(t.StopIndex, before.Count - 1)];
             int at = Array.IndexOf(stations, heading);
             t.StopIndex = at >= 0 ? at : Math.Min(t.StopIndex, stations.Length - 1);
-            if (at < 0 && t.Dwell == 0) CutRouteAfterApproved(t);
+            if (at < 0 && t.Dwell == 0 && t.ReturnDepot < 0) CutRouteAfterApproved(t);
         }
     }
 
@@ -704,6 +740,7 @@ public sealed partial class Simulation
     public bool IsSignalClear(RailSignal signal)
     {
         if (!signal.Active) return true;
+        if (signal.Failed) return false;
         SyncRail();
         var track = _rail.GetTrack(signal.Track);
         int startNode = signal.Node;

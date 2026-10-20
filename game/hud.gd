@@ -21,6 +21,17 @@ signal garage_buy(rail: bool, depot: int, option: String)
 ## A parked vehicle put on a line.
 signal garage_assign(parked: int, line: int)
 signal garage_sell(parked: int)
+## The maintenance policy block of the company (scope 0), a line (1) or a vehicle or train (2, target a vehicle id) was set: mode 0 inherit, 1 off, 2 on; kind 0 patch, 1 service, 2 overhaul.
+signal policy_set(scope: int, target: int, mode: int, days: int, below: int, kind: int)
+## A repair asked for a vehicle (a train when the id is negative) or for a vehicle waiting in a depot.
+signal repair_requested(vehicle: int, kind: int)
+signal parked_repair(parked: int, kind: int)
+## A depot is to be raised to a level.
+signal depot_upgrade(rail: bool, depot: int, level: int)
+## The option for how often random events happen: 0 off, 1 low, 2 normal, 3 high.
+signal frequency_selected(frequency: int)
+## A worn road is to be resurfaced.
+signal resurface_requested(road: int)
 signal menu_requested
 ## The Towns window asks the camera to go to a town.
 signal town_focus(x: float, z: float)
@@ -42,6 +53,7 @@ const TOOL_CATEGORIES := [
 		["Faster", "faster", "Raise the speed limit by 10 km/h."],
 		["Slower", "slower", "Lower the speed limit by 10 km/h."],
 		["Move", "move", "Pick a junction, then click where it goes."],
+		["Resurface", "resurface", "Have a crew resurface a worn road: it is closed while they work and costs a price per metre."],
 		["Remove", "remove", "Demolish a piece of road."],
 		["Traffic light", "light", "Put traffic lights at a junction: the two crossing streets take turns."],
 		["Remove light", "light_remove", "Take traffic lights down."],
@@ -69,6 +81,8 @@ const WINDOWS := [
 	["Company", "company", ""],
 	["Lines", "lines", ""],
 	["Vehicles", "vehicles", ""],
+	["Maintenance", "maintenance", ""],
+	["Depots", "depots", ""],
 	["Stations", "stations", ""],
 	["Towns", "towns", ""],
 	["Industries", "industries", ""],
@@ -116,6 +130,24 @@ var _industry_rows: Dictionary = {} # industry id -> {"row": Control, "label": L
 var _stations_box: VBoxContainer
 var _stations_empty: Label
 var _station_rows: Dictionary = {} # station id -> {"row": Control, "label": Label, "separator": Control}
+var _maintenance_policy: Dictionary ## the policy block of the Maintenance window
+var _maintenance_frequency: OptionButton
+var _maintenance_totals: Label
+var _maintenance_rules: Label
+var _maintenance_fleet: VBoxContainer
+var _maintenance_empty: Label
+var _fleet_rows: Dictionary = {} # vehicle id -> {"row", "label", "bar", "fill", "go", "go_call"}
+var _roads_box: VBoxContainer
+var _road_rows: Dictionary = {} # road id -> {"row", "label", "bar", "go", "go_call", "resurface"}
+var _roads_empty: Label
+var _depots_box: VBoxContainer
+var _depots_empty: Label
+var _depot_rows: Dictionary = {} # "r3" / "d1" -> {"row", "label", "jobs", "upgrades", "upgrade_key", "go", "go_call"}
+var _feed: VBoxContainer
+var _feed_items: Array = [] ## the entries of the event feed: {"node": Button, "age": float, "lifetime": float}
+const FEED_MAX := 6
+const REPAIR_NAMES := ["Patch", "Service", "Overhaul"]
+const FREQUENCY_NAMES := ["Off", "Low", "Normal", "High"]
 var _towns_box: VBoxContainer
 var _towns_empty: Label
 var _town_rows: Dictionary = {} # town id -> {"row": Control, "label": Label, "bar": ProgressBar}
@@ -130,6 +162,7 @@ func _ready() -> void:
 	add_child(_root)
 	_build_top_bar()
 	_build_window_panel()
+	_build_feed()
 	_build_debug_panel()
 	_build_bottom()
 	select_tool("pointer")
@@ -141,6 +174,12 @@ func _process(delta: float) -> void:
 		_message_age += delta
 		if _message_age > MESSAGE_SECONDS:
 			_message.visible = false
+	for i in range(_feed_items.size() - 1, -1, -1):
+		var item: Dictionary = _feed_items[i]
+		item["age"] += delta
+		if item["age"] > item["lifetime"]:
+			item["node"].queue_free()
+			_feed_items.remove_at(i)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -240,6 +279,10 @@ func _build_window_panel() -> void:
 				page = _build_stations_page()
 			"vehicles":
 				page = _build_vehicles_page()
+			"maintenance":
+				page = _build_maintenance_page()
+			"depots":
+				page = _build_depots_page()
 			_:
 				page = _placeholder(entry[2])
 		page.visible = false
@@ -339,6 +382,190 @@ func _build_vehicles_page() -> Control:
 	_vehicles_empty.text = "No vehicles on the road yet. Buy one above and put it on a line."
 	_vehicles_box.add_child(_vehicles_empty)
 	return _vehicles_box
+
+
+## A row of controls that edits a maintenance policy: whether it applies (or inherits the level above's), when a vehicle is due (days
+## since the last repair, Condition below a floor, either or both, 0 meaning not by that) and which repair it gets. Scope is 0 for the
+## company, 1 for a line, 2 for a vehicle or train.
+func _make_policy_block(scope: int, target: int) -> Dictionary:
+	var box := VBoxContainer.new()
+	var summary := Label.new()
+	summary.theme_type_variation = "Dim"
+	summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(summary)
+	var row := HFlowContainer.new()
+	box.add_child(row)
+	var mode := OptionButton.new()
+	if scope != 0:
+		mode.add_item("Inherit", 0)
+	mode.add_item("Off", 1)
+	mode.add_item("On", 2)
+	mode.tooltip_text = "Inherit: the level above decides. Off: no maintenance, the risk is yours. On: due by the triggers below."
+	row.add_child(mode)
+	var days := SpinBox.new()
+	days.min_value = 0
+	days.max_value = 3650
+	days.step = 5
+	days.prefix = "every "
+	days.suffix = " days"
+	days.tooltip_text = "Due this many days after the last repair. 0: not by days."
+	row.add_child(days)
+	var below := SpinBox.new()
+	below.min_value = 0
+	below.max_value = 100
+	below.step = 5
+	below.prefix = "below "
+	below.tooltip_text = "Due when Condition is below this. 0: not by Condition."
+	row.add_child(below)
+	var kind := OptionButton.new()
+	for i in REPAIR_NAMES.size():
+		kind.add_item(REPAIR_NAMES[i], i)
+	kind.tooltip_text = "Patch: quick and cheap, +15, leaves the vehicle patched (it wears faster). Service: +50. Overhaul: up to 95, clears patches. A depot of a higher level does the bigger repairs."
+	row.add_child(kind)
+	var apply := Button.new()
+	apply.text = "Set"
+	apply.tooltip_text = "Use this policy."
+	apply.pressed.connect(func() -> void: policy_set.emit(scope, target, mode.get_selected_id(), int(days.value), int(below.value), kind.get_selected_id()))
+	row.add_child(apply)
+	return {"box": box, "summary": summary, "mode": mode, "days": days, "below": below, "kind": kind, "last": {}}
+
+
+## Shows a policy in its block, unless the player is typing in it.
+func _show_policy(block: Dictionary, policy: Dictionary, text: String) -> void:
+	block["summary"].text = text
+	if block["last"] == policy:
+		return
+	if block["days"].get_line_edit().has_focus() or block["below"].get_line_edit().has_focus():
+		return
+	block["last"] = policy.duplicate()
+	var index: int = block["mode"].get_item_index(int(policy["mode"]))
+	if index >= 0:
+		block["mode"].select(index)
+	block["days"].value = policy["days"]
+	block["below"].value = policy["below"]
+	block["kind"].select(int(policy["kind"]))
+
+
+func _condition_color(value: float) -> Color:
+	if value >= 60.0:
+		return Color(0.25, 0.75, 0.35)
+	if value >= 40.0:
+		return Color(0.85, 0.75, 0.2)
+	if value >= 20.0:
+		return Color(0.9, 0.5, 0.15)
+	return Color(0.85, 0.2, 0.15)
+
+
+## A bar for a Condition from 0 to 100; returns the bar and the style of its fill (to colour by the value).
+func _make_condition_bar() -> Dictionary:
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(110, 16)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = _condition_color(100.0)
+	bar.add_theme_stylebox_override("fill", fill)
+	return {"bar": bar, "fill": fill}
+
+
+func _set_condition_bar(entry: Dictionary, value: float) -> void:
+	entry["bar"].value = value
+	entry["fill"].bg_color = _condition_color(value)
+	entry["bar"].tooltip_text = "Condition %d of 100. Below 60 a breakdown becomes possible, below 40 the vehicle is darker on the map, below 20 reddish and the brakes weaker." % roundi(value)
+
+
+func _build_maintenance_page() -> Control:
+	var column := VBoxContainer.new()
+	var heading := Label.new()
+	heading.text = "Company policy"
+	column.add_child(heading)
+	var note := Label.new()
+	note.theme_type_variation = "Dim"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.text = "When a vehicle or train is due it unloads at its next stop, loads nothing and drives to the nearest depot that can do the repair. Lines, vehicles and trains can have a policy of their own; the most specific one that does not inherit wins. Signals follow the company policy."
+	column.add_child(note)
+	_maintenance_policy = _make_policy_block(0, 0)
+	column.add_child(_maintenance_policy["box"])
+	column.add_child(HSeparator.new())
+
+	var events := Label.new()
+	events.text = "Random events"
+	column.add_child(events)
+	_maintenance_frequency = OptionButton.new()
+	for i in FREQUENCY_NAMES.size():
+		_maintenance_frequency.add_item(FREQUENCY_NAMES[i], i)
+	_maintenance_frequency.tooltip_text = "How often breakdowns and signal failures happen."
+	_maintenance_frequency.item_selected.connect(func(index: int) -> void: frequency_selected.emit(_maintenance_frequency.get_item_id(index)))
+	column.add_child(_maintenance_frequency)
+	var frequency_note := Label.new()
+	frequency_note.theme_type_variation = "Dim"
+	frequency_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	frequency_note.text = "Accidents that come out of the driving (an overtaking gone wrong, a crash at a junction) are not scaled, so Off does not remove all accidents."
+	column.add_child(frequency_note)
+	column.add_child(HSeparator.new())
+
+	_maintenance_totals = Label.new()
+	_maintenance_totals.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(_maintenance_totals)
+	_maintenance_rules = Label.new()
+	_maintenance_rules.theme_type_variation = "Dim"
+	_maintenance_rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(_maintenance_rules)
+	column.add_child(HSeparator.new())
+
+	var fleet := Label.new()
+	fleet.text = "Fleet by Condition"
+	column.add_child(fleet)
+	_maintenance_fleet = VBoxContainer.new()
+	column.add_child(_maintenance_fleet)
+	_maintenance_empty = Label.new()
+	_maintenance_empty.theme_type_variation = "Dim"
+	_maintenance_empty.text = "No vehicles yet."
+	column.add_child(_maintenance_empty)
+	column.add_child(HSeparator.new())
+
+	var roads := Label.new()
+	roads.text = "Worn roads"
+	column.add_child(roads)
+	var roads_note := Label.new()
+	roads_note.theme_type_variation = "Dim"
+	roads_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	roads_note.text = "Traffic wears roads. Below Condition 80 drivers go slower and company vehicles break down more often. Resurfacing costs a price per metre and closes the road while the crew works."
+	column.add_child(roads_note)
+	_roads_box = VBoxContainer.new()
+	column.add_child(_roads_box)
+	_roads_empty = Label.new()
+	_roads_empty.theme_type_variation = "Dim"
+	_roads_empty.text = "No road is worn."
+	column.add_child(_roads_empty)
+	return column
+
+
+func _build_depots_page() -> Control:
+	_depots_box = VBoxContainer.new()
+	var note := Label.new()
+	note.theme_type_variation = "Dim"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.text = "A Simple depot patches, a Workshop also services, a Complex also overhauls. Bays: how many vehicles it repairs at once; the rest wait inside. A depot is upgraded in place for the difference in price."
+	_depots_box.add_child(note)
+	_depots_empty = Label.new()
+	_depots_empty.theme_type_variation = "Dim"
+	_depots_empty.text = "No depots yet."
+	_depots_box.add_child(_depots_empty)
+	return _depots_box
+
+
+## The event feed: a few lines at the top left that fade out; a click moves the camera to the place.
+func _build_feed() -> void:
+	_feed = VBoxContainer.new()
+	_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_feed.offset_left = 12.0
+	_feed.offset_top = 84.0
+	_feed.custom_minimum_size = Vector2(440, 0)
+	_root.add_child(_feed)
 
 
 func _placeholder(text: String) -> Control:
@@ -789,6 +1016,7 @@ func show_lines(lines: Array) -> void:
 			line["vehicles"], line["loading"], line["delivered"],
 			_money_text(line["income"]), _money_text(line["upkeep"]), _money_text(line["profit"])]
 		label.add_theme_color_override("font_color", colour)
+		_show_policy(entry["policy"], line["policy"], "Maintenance of its vehicles: %s" % line["policy_text"])
 		_show_stops(id, line["stop_ids"], line["stations"])
 		_fill_stop_choices(id)
 	for id in _line_rows.keys():
@@ -887,6 +1115,8 @@ func _add_row(id: int, rail := false) -> void:
 	header.add_child(remove_button)
 	var label := Label.new()
 	row.add_child(label)
+	var policy := _make_policy_block(1, id)
+	row.add_child(policy["box"])
 	var stops := VBoxContainer.new()
 	row.add_child(stops)
 	var add := HBoxContainer.new()
@@ -923,7 +1153,7 @@ func _add_row(id: int, rail := false) -> void:
 	_lines_box.add_child(row)
 	_lines_box.add_child(separator)
 	_line_rows[id] = {"row": row, "label": label, "separator": separator, "swatch": swatch, "name": name_edit, "stops": stops,
-		"choice": choice, "stop_ids": [], "stop_names": [], "color": swatch.color, "rail": rail}
+		"choice": choice, "stop_ids": [], "stop_names": [], "color": swatch.color, "rail": rail, "policy": policy}
 
 
 ## One row per company vehicle: what and where it is, what it carries and what it has earned, with buttons to go to it or sell it.
@@ -943,6 +1173,13 @@ func show_vehicles(vehicles: Array) -> void:
 			vehicle["model"], id + 1 if id >= 0 else -id, vehicle["line_name"], vehicle["state"], carrying,
 			_money_text(vehicle["income"]), _money_text(vehicle["upkeep"]), _money_text(vehicle["profit"])]
 		label.add_theme_color_override("font_color", vehicle["color"])
+		_set_condition_bar(entry["condition"], vehicle["condition"])
+		var upkeep_note := "last repaired %d days ago" % vehicle["days_since"]
+		if vehicle["patched"]:
+			upkeep_note += "   patched: wears faster until a service"
+		entry["repair"].text = upkeep_note if vehicle["repair"] == "" else upkeep_note + "\n" + vehicle["repair"]
+		entry["ask"].disabled = vehicle["repair_phase"] != 0 or vehicle["wrecked"]
+		_show_policy(entry["policy"], vehicle["policy"], "Maintenance: %s (from the %s)" % [vehicle["policy_text"], vehicle["policy_source"]])
 		entry["go"].pressed.disconnect(entry["go_call"])
 		entry["go_call"] = func() -> void: town_focus.emit(vehicle["x"], vehicle["z"])
 		entry["go"].pressed.connect(entry["go_call"])
@@ -960,6 +1197,18 @@ func _add_vehicle_row(id: int, vehicle: Dictionary) -> void:
 	var label := Label.new()
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(label)
+	var condition_row := HBoxContainer.new()
+	row.add_child(condition_row)
+	var caption := Label.new()
+	caption.theme_type_variation = "Dim"
+	caption.text = "Condition"
+	condition_row.add_child(caption)
+	var condition := _make_condition_bar()
+	condition_row.add_child(condition["bar"])
+	var repair_note := Label.new()
+	repair_note.theme_type_variation = "Dim"
+	repair_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(repair_note)
 	var buttons := HBoxContainer.new()
 	row.add_child(buttons)
 	var go := Button.new()
@@ -977,10 +1226,26 @@ func _add_vehicle_row(id: int, vehicle: Dictionary) -> void:
 	sell.tooltip_text = "Sell the vehicle for part of its price. What it carries is lost."
 	sell.pressed.connect(func() -> void: vehicle_action.emit("sell", id))
 	buttons.add_child(sell)
+	var repairs := HBoxContainer.new()
+	row.add_child(repairs)
+	var kind := OptionButton.new()
+	for i in REPAIR_NAMES.size():
+		kind.add_item(REPAIR_NAMES[i], i)
+	kind.select(1)
+	kind.tooltip_text = "The repair to ask for."
+	repairs.add_child(kind)
+	var ask := Button.new()
+	ask.text = "Repair at next stop"
+	ask.tooltip_text = "At its next stop it unloads, loads nothing and goes to the nearest depot that can do this repair, then comes back to its line."
+	ask.pressed.connect(func() -> void: repair_requested.emit(id, kind.get_selected_id()))
+	repairs.add_child(ask)
+	var policy := _make_policy_block(2, id)
+	row.add_child(policy["box"])
 	var separator := HSeparator.new()
 	_vehicles_box.add_child(row)
 	_vehicles_box.add_child(separator)
-	_vehicle_rows[id] = {"row": row, "label": label, "separator": separator, "go": go, "go_call": go_call, "sell": sell}
+	_vehicle_rows[id] = {"row": row, "label": label, "separator": separator, "go": go, "go_call": go_call, "sell": sell,
+		"condition": condition, "repair": repair_note, "ask": ask, "policy": policy}
 
 
 func _rebuild_buy_buttons() -> void:
@@ -1040,7 +1305,14 @@ func show_garage(depots: Array, parked: Array, lines: Array) -> void:
 			_add_parked_row(id)
 		var row: Dictionary = _parked_rows[id]
 		var label: Label = row["label"]
-		label.text = "%s   waiting in %s\nworth %s new" % [entry["model"], entry["depot"], _money_text(entry["price"])]
+		label.text = "%s   waiting in %s\nworth %s new   Condition %d" % [entry["model"], entry["depot"], _money_text(entry["price"]), roundi(entry["condition"])]
+		if entry["repair"] != "":
+			label.text += "\n" + entry["repair"]
+		var repair_kind: OptionButton = row["repair_kind"]
+		for i in REPAIR_NAMES.size():
+			repair_kind.set_item_disabled(i, not entry["can_repair"][i])
+			repair_kind.set_item_text(i, "%s (%s)" % [REPAIR_NAMES[i], _money_text(entry["repair_price"][i])])
+		row["repair_button"].disabled = entry["repair"] != ""
 		var rail: bool = entry["rail"]
 		var offered := []
 		var lines_key := ""
@@ -1096,10 +1368,221 @@ func _add_parked_row(id: int) -> void:
 	sell.tooltip_text = "Sell it for part of its price."
 	sell.pressed.connect(func() -> void: garage_sell.emit(id))
 	buttons.add_child(sell)
+	var repairs := HBoxContainer.new()
+	row.add_child(repairs)
+	var repair_kind := OptionButton.new()
+	for i in REPAIR_NAMES.size():
+		repair_kind.add_item(REPAIR_NAMES[i], i)
+	repair_kind.select(1)
+	repair_kind.tooltip_text = "Greyed out repairs need a better depot (see the Depots window)."
+	repair_kind.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	repairs.add_child(repair_kind)
+	var repair_button := Button.new()
+	repair_button.text = "Repair"
+	repair_button.tooltip_text = "Take it into a bay of the depot it stands in."
+	repair_button.pressed.connect(func() -> void: parked_repair.emit(id, repair_kind.get_selected_id()))
+	repairs.add_child(repair_button)
 	var separator := HSeparator.new()
 	_parked_box.add_child(row)
 	_parked_box.add_child(separator)
-	_parked_rows[id] = {"row": row, "separator": separator, "label": label, "choice": choice, "lines_key": "", "assign": assign, "go": go, "go_call": go_call}
+	_parked_rows[id] = {"row": row, "separator": separator, "label": label, "choice": choice, "lines_key": "", "assign": assign, "go": go, "go_call": go_call,
+		"repair_kind": repair_kind, "repair_button": repair_button}
+
+
+## The Maintenance window: the company policy, the option for random events, the totals, the repairs and the fleet from the worst Condition up.
+func show_maintenance(maint: Dictionary, vehicles: Array) -> void:
+	_show_policy(_maintenance_policy, maint["company"], "Now: %s" % maint["company_text"])
+	if _maintenance_frequency.get_selected_id() != maint["frequency"] and not _maintenance_frequency.get_popup().visible:
+		_maintenance_frequency.select(_maintenance_frequency.get_item_index(maint["frequency"]))
+	_maintenance_totals.text = "Spent on maintenance   %s\nCompensation paid   %s   (%d people injured)\nFines   %s" % [
+		_money_text(maint["maintenance"]), _money_text(maint["compensation"]), maint["injured"], _money_text(maint["fines"])]
+	var rules := ""
+	for repair in maint["repairs"]:
+		rules += "%s: +%d Condition (up to %d), %d s in a bay, %d%% of the price, from a %s\n" % [
+			repair["name"], roundi(repair["gain"]), roundi(repair["ceiling"]), roundi(repair["seconds"]), roundi(100.0 * repair["share"]), String(repair["level_name"]).to_lower() if repair["level"] > 0 else "depot of any level"]
+	rules += "A breakdown below Condition %d counts as negligence and is fined." % roundi(maint["critical"])
+	_maintenance_rules.text = rules
+
+	var ordered: Array = vehicles.duplicate()
+	ordered.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["condition"] < b["condition"])
+	var seen := {}
+	for vehicle in ordered:
+		var id: int = vehicle["id"]
+		seen[id] = true
+		if not _fleet_rows.has(id):
+			_add_fleet_row(id)
+		var entry: Dictionary = _fleet_rows[id]
+		entry["label"].text = "%s %d   %s" % [vehicle["model"], id + 1 if id >= 0 else -id, vehicle["line_name"]]
+		entry["label"].add_theme_color_override("font_color", vehicle["color"])
+		_set_condition_bar(entry["bar"], vehicle["condition"])
+		entry["go"].pressed.disconnect(entry["go_call"])
+		entry["go_call"] = func() -> void: town_focus.emit(vehicle["x"], vehicle["z"])
+		entry["go"].pressed.connect(entry["go_call"])
+	for id in _fleet_rows.keys():
+		if not seen.has(id):
+			_fleet_rows[id]["row"].queue_free()
+			_fleet_rows.erase(id)
+	for i in ordered.size():
+		_maintenance_fleet.move_child(_fleet_rows[ordered[i]["id"]]["row"], i)
+	_maintenance_empty.visible = _fleet_rows.is_empty()
+
+
+## The worn roads of the Maintenance window, worst first (from the host's worn roads).
+func show_worn_roads(roads: Array) -> void:
+	var seen := {}
+	for road in roads:
+		var id: int = road["road"]
+		seen[id] = true
+		if not _road_rows.has(id):
+			_add_road_row(id)
+		var entry: Dictionary = _road_rows[id]
+		entry["label"].text = "Road %d   %d m" % [id + 1, roundi(road["length"])]
+		_set_condition_bar(entry["bar"], road["condition"])
+		entry["resurface"].text = "Resurface (%s)" % _money_text(road["price"])
+		entry["resurface"].disabled = road["why"] != ""
+		entry["resurface"].tooltip_text = road["why"] if road["why"] != "" else "A crew restores the road; it is closed while they work."
+		entry["go"].pressed.disconnect(entry["go_call"])
+		entry["go_call"] = func() -> void: town_focus.emit(road["x"], road["z"])
+		entry["go"].pressed.connect(entry["go_call"])
+	for id in _road_rows.keys():
+		if not seen.has(id):
+			_road_rows[id]["row"].queue_free()
+			_road_rows.erase(id)
+	for i in roads.size():
+		_roads_box.move_child(_road_rows[roads[i]["road"]]["row"], i)
+	_roads_empty.visible = _road_rows.is_empty()
+
+
+func _add_road_row(id: int) -> void:
+	var row := VBoxContainer.new()
+	var top := HBoxContainer.new()
+	row.add_child(top)
+	var label := Label.new()
+	label.custom_minimum_size = Vector2(150, 0)
+	top.add_child(label)
+	var bar := _make_condition_bar()
+	top.add_child(bar["bar"])
+	var buttons := HBoxContainer.new()
+	row.add_child(buttons)
+	var go := Button.new()
+	go.text = "Go to"
+	var go_call := func() -> void: pass
+	go.pressed.connect(go_call)
+	buttons.add_child(go)
+	var resurface := Button.new()
+	resurface.pressed.connect(func() -> void: resurface_requested.emit(id))
+	buttons.add_child(resurface)
+	_roads_box.add_child(row)
+	_road_rows[id] = {"row": row, "label": label, "bar": bar, "go": go, "go_call": go_call, "resurface": resurface}
+
+
+func _add_fleet_row(id: int) -> void:
+	var row := HBoxContainer.new()
+	var label := Label.new()
+	label.custom_minimum_size = Vector2(190, 0)
+	row.add_child(label)
+	var bar := _make_condition_bar()
+	row.add_child(bar["bar"])
+	var go := Button.new()
+	go.text = "Go to"
+	var go_call := func() -> void: pass
+	go.pressed.connect(go_call)
+	row.add_child(go)
+	_maintenance_fleet.add_child(row)
+	_fleet_rows[id] = {"row": row, "label": label, "bar": bar, "go": go, "go_call": go_call}
+
+
+## The Depots window: for each depot its level and bays, what is being repaired and who waits, and the buttons that raise its level.
+func show_depots(depots: Array) -> void:
+	var seen := {}
+	for depot in depots:
+		var key := "%s%d" % ["r" if depot["rail"] else "d", depot["id"]]
+		seen[key] = true
+		if not _depot_rows.has(key):
+			_add_depot_row(key)
+		var entry: Dictionary = _depot_rows[key]
+		entry["label"].text = "%s   %s, %d bays" % [depot["name"], depot["level_name"], depot["bays"]]
+		var jobs := ""
+		for job in depot["jobs"]:
+			jobs += "%s: %s%s\n" % [job["label"], String(REPAIR_NAMES[job["kind"]]).to_lower(), (" (%d s left)" % ceili(job["seconds"])) if job["working"] else ", waiting for a bay"]
+		entry["jobs"].text = jobs.strip_edges()
+		entry["jobs"].visible = jobs != ""
+		var upgrade_key := ""
+		for upgrade in depot["upgrades"]:
+			upgrade_key += "%d:%d;" % [upgrade["level"], upgrade["price"]]
+		if upgrade_key != entry["upgrade_key"]:
+			entry["upgrade_key"] = upgrade_key
+			for child in entry["upgrades"].get_children():
+				child.queue_free()
+			for upgrade in depot["upgrades"]:
+				var button := Button.new()
+				button.text = "Upgrade to %s (%s)" % [upgrade["name"], _money_text(upgrade["price"])]
+				button.tooltip_text = "Pay the difference in price; the depot keeps its place."
+				var rail: bool = depot["rail"]
+				var depot_id: int = depot["id"]
+				var level: int = upgrade["level"]
+				button.pressed.connect(func() -> void: depot_upgrade.emit(rail, depot_id, level))
+				entry["upgrades"].add_child(button)
+		entry["go"].pressed.disconnect(entry["go_call"])
+		entry["go_call"] = func() -> void: town_focus.emit(depot["x"], depot["z"])
+		entry["go"].pressed.connect(entry["go_call"])
+	for key in _depot_rows.keys():
+		if not seen.has(key):
+			_depot_rows[key]["row"].queue_free()
+			_depot_rows[key]["separator"].queue_free()
+			_depot_rows.erase(key)
+	_depots_empty.visible = _depot_rows.is_empty()
+
+
+func _add_depot_row(key: String) -> void:
+	var row := VBoxContainer.new()
+	var label := Label.new()
+	row.add_child(label)
+	var jobs := Label.new()
+	jobs.theme_type_variation = "Dim"
+	jobs.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(jobs)
+	var buttons := HFlowContainer.new()
+	row.add_child(buttons)
+	var upgrades := HBoxContainer.new()
+	buttons.add_child(upgrades)
+	var go := Button.new()
+	go.text = "Go to"
+	var go_call := func() -> void: pass
+	go.pressed.connect(go_call)
+	buttons.add_child(go)
+	var separator := HSeparator.new()
+	_depots_box.add_child(row)
+	_depots_box.add_child(separator)
+	_depot_rows[key] = {"row": row, "separator": separator, "label": label, "jobs": jobs, "upgrades": upgrades, "upgrade_key": "?", "go": go, "go_call": go_call}
+
+
+## New entries of the event feed (from the host): serious ones also show as a message; a click on one moves the camera to the place.
+func show_events(events: Array) -> void:
+	for event in events:
+		var button := Button.new()
+		button.text = event["text"]
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		button.custom_minimum_size = Vector2(440, 0)
+		button.tooltip_text = "Click to go there."
+		var colour := UiTheme.TEXT
+		if event["severity"] == 2:
+			colour = Color(1.0, 0.5, 0.45)
+		elif event["severity"] == 1:
+			colour = Color(1.0, 0.85, 0.4)
+		button.add_theme_color_override("font_color", colour)
+		button.add_theme_color_override("font_hover_color", colour.lightened(0.3))
+		var x: float = event["x"]
+		var z: float = event["z"]
+		button.pressed.connect(func() -> void: town_focus.emit(x, z))
+		_feed.add_child(button)
+		_feed_items.append({"node": button, "age": 0.0, "lifetime": 90.0 if event["severity"] == 2 else 45.0})
+		if event["severity"] == 2:
+			show_message(event["text"])
+	while _feed_items.size() > FEED_MAX:
+		_feed_items[0]["node"].queue_free()
+		_feed_items.remove_at(0)
 
 
 func _remove_row(id: int) -> void:

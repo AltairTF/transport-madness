@@ -68,6 +68,26 @@ func _ready() -> void:
 	hud.vehicle_action.connect(_on_vehicle_action)
 	hud.garage_buy.connect(_on_garage_buy)
 	hud.garage_assign.connect(_on_garage_assign)
+	hud.policy_set.connect(func(scope: int, target: int, mode: int, days: int, below: int, kind: int) -> void:
+		hud.show_message("Maintenance policy set" if host.SetPolicy(scope, target, mode, days, below, kind) else "That policy can't be set")
+	)
+	hud.repair_requested.connect(func(vehicle: int, kind: int) -> void:
+		var why: String = host.RequestRepair(vehicle, kind)
+		hud.show_message("It will be repaired at its next stop" if why == "" else "Can't ask for that repair: " + why)
+	)
+	hud.parked_repair.connect(func(parked: int, kind: int) -> void:
+		var why: String = host.RepairParked(parked, kind)
+		hud.show_message("Taken into a bay" if why == "" else "Can't repair it: " + why)
+	)
+	hud.depot_upgrade.connect(func(rail: bool, depot: int, level: int) -> void:
+		var why: String = host.UpgradeDepot(rail, depot, level)
+		hud.show_message("Depot upgraded" if why == "" else "Can't upgrade it: " + why)
+	)
+	hud.frequency_selected.connect(func(frequency: int) -> void: host.SetFrequency(frequency))
+	hud.resurface_requested.connect(func(road: int) -> void:
+		var why: String = host.Resurface(road)
+		hud.show_message("Resurfacing started: the road is closed until the crew is done" if why == "" else "Can't resurface it: " + why)
+	)
 	hud.garage_sell.connect(func(parked: int) -> void: hud.show_message("Sold" if host.SellParked(parked) else "That can't be sold now"))
 	hud.town_focus.connect(rig.focus_on)
 	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
@@ -116,8 +136,14 @@ func _process(delta: float) -> void:
 		hud.show_towns(host.GetTowns())
 		hud.show_industries(host.GetIndustries())
 		hud.show_stations(host.GetStations())
-		hud.show_vehicles(host.GetVehicles())
-		hud.show_garage(host.GetDepots(), host.GetParked(), host.GetLines())
+		var vehicles: Array = host.GetVehicles()
+		hud.show_vehicles(vehicles)
+		var depots: Array = host.GetDepots()
+		hud.show_garage(depots, host.GetParked(), host.GetLines())
+		hud.show_depots(depots)
+		hud.show_maintenance(host.GetMaintenance(), vehicles)
+		hud.show_worn_roads(host.GetWornRoads(6))
+		hud.show_events(host.TakeEvents())
 		for warning in host.TakeRailWarnings():
 			hud.show_message(warning)
 
@@ -143,6 +169,7 @@ func _leave_to_menu() -> void:
 
 ## Replaces the world: "towns" (hills with towns), "demo" (street grid with traffic), "hills" or "empty".
 func _new_world(map: String) -> void:
+	host.StartFrequency = Session.frequency
 	match map:
 		"towns":
 			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns, Session.industries)

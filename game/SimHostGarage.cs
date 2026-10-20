@@ -11,7 +11,10 @@ namespace TransportMadness;
 /// </summary>
 public partial class SimHost
 {
-    /// <summary>The open depots, road and rail: for each {id, rail, name, x, z}.</summary>
+    /// <summary>
+    /// The open depots, road and rail: for each {id, rail, name, x, z, level, level_name, bays, jobs (for each {label, kind, working,
+    /// seconds}, oldest first), upgrades (for each {level, name, price}: the levels above this one with the price of the difference)}.
+    /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetDepots()
     {
         var list = new Godot.Collections.Array<Godot.Collections.Dictionary>();
@@ -19,15 +22,39 @@ public partial class SimHost
         {
             if (!depot.Active) continue;
             var (x, z) = Sim.Network.GetNode(depot.Node);
-            list.Add(new Godot.Collections.Dictionary { ["id"] = depot.Id, ["rail"] = false, ["name"] = $"Road depot {depot.Id + 1}", ["x"] = x, ["z"] = z });
+            list.Add(DepotDictionary(depot.Id, false, $"Road depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot)));
         }
         foreach (var depot in Sim.RailDepots)
         {
             if (!depot.Active) continue;
             var (x, z) = Sim.Rail.GetNode(depot.Node);
-            list.Add(new Godot.Collections.Dictionary { ["id"] = depot.Id, ["rail"] = true, ["name"] = $"Rail depot {depot.Id + 1}", ["x"] = x, ["z"] = z });
+            list.Add(DepotDictionary(depot.Id, true, $"Rail depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot)));
         }
         return list;
+    }
+
+    Godot.Collections.Dictionary DepotDictionary(int id, bool rail, string name, float x, float z, DepotLevel level, int bays)
+    {
+        var jobs = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var job in Sim.RepairJobs)
+        {
+            if (job.Rail != rail || job.Depot != id) continue;
+            string label = job.Subject switch
+            {
+                RepairSubject.Vehicle => $"{Sim.VehicleModels[Sim.GetFleetInfo(job.Target).Model].Name} {job.Target + 1}",
+                RepairSubject.Train => $"Train {job.Target + 1}",
+                _ => Sim.Garage[job.Target].Rail ? "Parked train" : Sim.VehicleModels[Sim.Garage[job.Target].Model].Name + " (parked)",
+            };
+            jobs.Add(new Godot.Collections.Dictionary { ["label"] = label, ["kind"] = (int)job.Kind, ["working"] = job.Working, ["seconds"] = job.TicksLeft * Simulation.StepSeconds });
+        }
+        var upgrades = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        for (int higher = (int)level + 1; higher <= (int)DepotLevel.Complex; higher++)
+            upgrades.Add(new Godot.Collections.Dictionary { ["level"] = higher, ["name"] = LevelNames[higher], ["price"] = Sim.DepotPrice(rail, (DepotLevel)higher) - Sim.DepotPrice(rail, level) });
+        return new Godot.Collections.Dictionary
+        {
+            ["id"] = id, ["rail"] = rail, ["name"] = name, ["x"] = x, ["z"] = z, ["level"] = (int)level, ["level_name"] = LevelNames[(int)level], ["bays"] = bays,
+            ["jobs"] = jobs, ["upgrades"] = upgrades,
+        };
     }
 
     /// <summary>
@@ -65,11 +92,13 @@ public partial class SimHost
                 depotName = $"Road depot {entry.Depot + 1}";
                 (x, z) = Sim.Network.GetNode(Sim.Depots[entry.Depot].Node);
             }
-            list.Add(new Godot.Collections.Dictionary
+            var item = new Godot.Collections.Dictionary
             {
                 ["id"] = entry.Id, ["rail"] = entry.Rail, ["model"] = model, ["depot"] = depotName,
                 ["price"] = Sim.PriceOf(entry), ["x"] = x, ["z"] = z,
-            });
+            };
+            AddParkedMaintenance(item, entry);
+            list.Add(item);
         }
         return list;
     }

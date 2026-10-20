@@ -23,6 +23,11 @@ public sealed class ParkedVehicle
     public int Wagons { get; internal init; }
     /// <summary>False once it has been put on a line or sold.</summary>
     public bool Active { get; internal set; } = true;
+    /// <summary>Its Condition, 0 to 100 (a vehicle that was towed in after a breakdown has little); kept while it waits.</summary>
+    public float Condition { get; internal set; } = 100f;
+    public long LastRepairTick { get; internal set; }
+    /// <summary>Patched since its last Service or Overhaul, so that it wears faster.</summary>
+    public bool Patched { get; internal set; }
 }
 
 /// <summary>
@@ -60,7 +65,7 @@ public sealed partial class Simulation
         long price = _models[model].Price;
         if (!CanAfford(price)) return -1;
         TrySpend(price, LedgerEntry.Vehicles);
-        return AddToGarage(new ParkedVehicle(_garage.Count, false, depot) { Model = model }).Id;
+        return AddToGarage(new ParkedVehicle(_garage.Count, false, depot) { Model = model, LastRepairTick = Tick }).Id;
     }
 
     /// <summary>Buys a train into a rail depot's garage. Returns the garage id, -1 when refused.</summary>
@@ -74,7 +79,7 @@ public sealed partial class Simulation
         long price = _railTuning.Locomotives[l].Price + wagons * _railTuning.Wagons[w].Price;
         if (!CanAfford(price)) return -1;
         TrySpend(price, LedgerEntry.Vehicles);
-        return AddToGarage(new ParkedVehicle(_garage.Count, true, depot) { Locomotive = l, Wagon = w, Wagons = wagons }).Id;
+        return AddToGarage(new ParkedVehicle(_garage.Count, true, depot) { Locomotive = l, Wagon = w, Wagons = wagons, LastRepairTick = Tick }).Id;
     }
 
     static int FirstOpen<T>(IReadOnlyList<T> items, Func<T, bool> open, Func<T, int> id)
@@ -90,6 +95,7 @@ public sealed partial class Simulation
         if (parked < 0 || parked >= _garage.Count || !_garage[parked].Active) return -1;
         var entry = _garage[parked];
         Earn((long)MathF.Round(PriceOf(entry) * _economy.SellRefundShare), LedgerEntry.Vehicles);
+        CancelJobsFor(RepairSubject.Parked, parked);
         entry.Active = false;
         _transitVersion++;
         return parked;
@@ -110,12 +116,16 @@ public sealed partial class Simulation
         {
             var depot = _railDepots[entry.Depot].Active ? _railDepots[entry.Depot] : RailDepotFor(entry, line)!;
             if (!DepotRoute(depot, line, entry.Locomotive, out var path)) return -1;
-            id = StartTrain(depot, entry.Locomotive, entry.Wagon, entry.Wagons, line, path).Id;
+            var train = StartTrain(depot, entry.Locomotive, entry.Wagon, entry.Wagons, line, path);
+            train.Condition = entry.Condition;
+            train.LastRepairTick = entry.LastRepairTick;
+            train.Patched = entry.Patched;
+            id = train.Id;
         }
         else
         {
             int depot = _depots[entry.Depot].Active ? entry.Depot : DepotsByDistance(line).FirstOrDefault(-1);
-            id = depot < 0 ? -1 : PlaceAtDepot(depot, entry.Model, line);
+            id = depot < 0 ? -1 : PlaceAtDepot(depot, entry.Model, line, entry.Condition, entry.LastRepairTick, entry.Patched);
         }
         if (id < 0) return -1;
         entry.Active = false;
@@ -135,6 +145,7 @@ public sealed partial class Simulation
     {
         SyncNetwork();
         if (parked < 0 || parked >= _garage.Count || !_garage[parked].Active) return "that vehicle is not in a depot";
+        if (JobFor(RepairSubject.Parked, parked) != null) return "it is being repaired";
         if (line < 0 || line >= _lines.Count || !_lines[line].Active) return "that line does not exist";
         var entry = _garage[parked];
         var mode = _lines[line].Mode;
@@ -178,6 +189,8 @@ public sealed partial class Simulation
         if (WhyNotPark(vehicle) != null) return 0;
         int depot = NearestDepotFor(vehicle);
         _returnDepot[vehicle] = depot;
+        _svcKind[vehicle] = -1;
+        _svcDepot[vehicle] = -1;
         _tripDest[vehicle] = _depots[depot].Node;
         _dwell[vehicle] = 0;
         _load[vehicle] = 0;
@@ -229,7 +242,13 @@ public sealed partial class Simulation
     /// <summary>A returning vehicle has reached its depot: it goes into the garage.</summary>
     void ParkAtDepot(int vehicle)
     {
-        var entry = new ParkedVehicle(_garage.Count, false, _returnDepot[vehicle]) { Model = _model[vehicle] };
+        var entry = new ParkedVehicle(_garage.Count, false, _returnDepot[vehicle])
+        {
+            Model = _model[vehicle],
+            Condition = _condition[vehicle],
+            LastRepairTick = _lastRepair[vehicle],
+            Patched = _patched[vehicle],
+        };
         RemoveVehicle(vehicle);
         RebuildOrder();
         AddToGarage(entry);
@@ -255,6 +274,8 @@ public sealed partial class Simulation
         int depot = NearestRailDepotFor(t);
         if (depot < 0) return 0;
         t.ReturnDepot = depot;
+        t.SvcKind = -1;
+        t.SvcDepot = -1;
         t.Dwell = 0;
         t.Load = 0;
         t.LoadCargo = -1;
@@ -275,14 +296,14 @@ public sealed partial class Simulation
         return null;
     }
 
-    int NearestRailDepotFor(Train t)
+    int NearestRailDepotFor(Train t, RepairKind? kind = null)
     {
         int best = -1;
         float bestSeconds = float.PositiveInfinity;
         int was = t.ReturnDepot;
         foreach (var depot in _railDepots)
         {
-            if (!depot.Active) continue;
+            if (!depot.Active || (kind is { } needed && !CanRepair(depot.Level, needed))) continue;
             t.ReturnDepot = depot.Id;
             if (PlanLeg(t, apply: false, out float seconds, willStop: true) && seconds < bestSeconds) { best = depot.Id; bestSeconds = seconds; }
         }
@@ -293,7 +314,15 @@ public sealed partial class Simulation
     /// <summary>A returning train has stopped at its depot: it goes into the garage.</summary>
     void ParkTrainAtDepot(Train t)
     {
-        var entry = new ParkedVehicle(_garage.Count, true, t.ReturnDepot) { Locomotive = t.Locomotive, Wagon = t.Wagon, Wagons = t.Wagons };
+        var entry = new ParkedVehicle(_garage.Count, true, t.ReturnDepot)
+        {
+            Locomotive = t.Locomotive,
+            Wagon = t.Wagon,
+            Wagons = t.Wagons,
+            Condition = t.Condition,
+            LastRepairTick = t.LastRepairTick,
+            Patched = t.Patched,
+        };
         RemoveTrain(t, refund: false);
         AddToGarage(entry);
     }
@@ -319,6 +348,8 @@ public sealed partial class Simulation
             h = h * 31 + (entry.Active ? 1UL : 0UL) + (entry.Rail ? 2UL : 0UL);
             h = h * 31 + (ulong)entry.Depot;
             h = h * 31 + (ulong)(entry.Rail ? entry.Locomotive * 97 + entry.Wagon * 13 + entry.Wagons : entry.Model);
+            h = h * 31 + BitConverter.SingleToUInt32Bits(entry.Condition);
+            h = h * 31 + (ulong)entry.LastRepairTick + (entry.Patched ? 1UL << 50 : 0UL);
         }
         return h;
     }

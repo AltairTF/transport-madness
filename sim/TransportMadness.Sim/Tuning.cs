@@ -32,6 +32,7 @@ public sealed record Tuning
     public required IndustriesTuning Industries { get; init; }
     public required TripsTuning Trips { get; init; }
     public required RailTuning Rail { get; init; }
+    public required MaintenanceTuning Maintenance { get; init; }
     public required IReadOnlyList<CargoTuning> Cargo { get; init; }
     public required IReadOnlyList<VehicleModelTuning> Vehicles { get; init; }
 
@@ -50,6 +51,7 @@ public sealed record Tuning
         tuning.Towns.Validate();
         tuning.Industries.Validate();
         tuning.Trips.Validate();
+        tuning.Maintenance.Validate();
         return tuning;
     }
 }

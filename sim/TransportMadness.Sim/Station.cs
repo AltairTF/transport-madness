@@ -95,6 +95,8 @@ public sealed class Line
     /// <summary>Units of cargo delivered.</summary>
     public long Delivered { get; internal set; }
     public long Profit => Income - Upkeep;
+    /// <summary>The maintenance policy set on this line; <see cref="PolicyMode.Inherit"/> leaves the choice to the company's.</summary>
+    public MaintenancePolicy Policy { get; internal set; }
 }
 
 /// <summary>What a company vehicle is doing, for drawing and for the vehicle window.</summary>

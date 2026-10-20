@@ -8,11 +8,11 @@ public static class WorldBuilder
     /// industries, with <c>traffic.ambientPerTown</c> ambient cars per town put on the roads by a logged command. The plan says what was
     /// placed and which processors found no supplier within reach.
     /// </summary>
-    public static (Simulation Sim, WorldPlan Plan) Towns(ulong seed, int towns, IndustryAmount industries, Tuning? tuning = null)
+    public static (Simulation Sim, WorldPlan Plan) Towns(ulong seed, int towns, IndustryAmount industries, Tuning? tuning = null, IncidentFrequency frequency = IncidentFrequency.Normal)
     {
         var net = new RoadNetwork(Terrain.Generate(seed), tuning);
         var plan = IndustryGenerator.Generate(net, seed, TownGenerator.Generate(net, seed, towns), industries);
-        var sim = new Simulation(net, seed);
+        var sim = new Simulation(net, seed, frequency);
         sim.AddTowns(plan);
         sim.Execute(new SeedTrafficCommand(net.Tuning.Traffic.AmbientPerTown * Math.Max(1, plan.Towns.Count)));
         return (sim, plan);

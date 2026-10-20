@@ -79,6 +79,10 @@ public sealed partial class Simulation
                     if (depot.Active && depot.Node == c.Node) return -1;
                 if (!TrySpend(_economy.DepotPrice.For(c.Level), LedgerEntry.Depots)) return -1;
                 return AddDepot(c.Node, c.Level);
+            case ResurfaceRoadCommand c:
+                return ResurfaceRoad(c.Road);
+            case UpgradeDepotCommand c:
+                return UpgradeDepot(c);
             case BuildStationCommand c:
                 return BuildStation(c.X, c.Z, c.Bays);
             case CreateLineCommand c:
@@ -141,6 +145,12 @@ public sealed partial class Simulation
                 return ParkVehicle(c.Vehicle);
             case ParkTrainCommand c:
                 return ParkTrain(c.Train);
+            case SetMaintenancePolicyCommand c:
+                return SetMaintenancePolicy(c);
+            case RequestRepairCommand c:
+                return RequestRepair(c);
+            case SetFrequencyCommand c:
+                return SetFrequency(c.Frequency);
             case SeedTrafficCommand c:
                 return SeedTraffic(c.Count);
             case CrashSomeoneCommand:

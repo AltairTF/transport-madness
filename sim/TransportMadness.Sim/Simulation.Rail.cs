@@ -14,18 +14,23 @@ public enum TrainStatus : byte
     NoRoute,
     /// <summary>Inside its depot, waiting for the depot's node to be free before it drives out.</summary>
     InDepot,
+    /// <summary>Inside a depot for a repair, waiting for a bay or in one.</summary>
+    Servicing,
 }
 
 /// <summary>A depot on the rail network: trains are bought here and appear here.</summary>
 public sealed class RailDepot
 {
-    internal RailDepot(int id, int node)
+    internal RailDepot(int id, int node, DepotLevel level = DepotLevel.Simple)
     {
         Id = id;
         Node = node;
+        Level = level;
     }
 
     public int Id { get; }
+    /// <summary>What the depot can repair and how many bays it has.</summary>
+    public DepotLevel Level { get; internal set; }
     public int Node { get; internal set; }
     /// <summary>False once every track at its node has been torn down.</summary>
     public bool Active { get; internal set; } = true;
@@ -95,8 +100,26 @@ public sealed class Train
     public bool Deadlocked { get; internal set; }
     /// <summary>Standing in its depot and waiting for the depot's node to be free; it holds nothing yet and the trains in a depot do not block one another.</summary>
     public bool InDepot { get; internal set; }
-    /// <summary>The rail depot it is driving back to, to be parked there; -1 when it is on its line.</summary>
+    /// <summary>The rail depot it is driving back to, to be parked there or repaired; -1 when it is on its line.</summary>
     public int ReturnDepot { get; internal set; } = -1;
+    /// <summary>Condition of the whole train, 0 to 100.</summary>
+    public float Condition { get; internal set; } = 100f;
+    public long LastRepairTick { get; internal set; }
+    /// <summary>Patched since its last Service or Overhaul, so that it wears faster.</summary>
+    public bool Patched { get; internal set; }
+    /// <summary>The maintenance policy set on this train itself.</summary>
+    public MaintenancePolicy Policy { get; internal set; }
+    /// <summary>Inside a depot for a repair.</summary>
+    public bool Servicing { get; internal set; }
+    /// <summary>Stopped by a breakdown, until the crew has cleared it.</summary>
+    public bool Broken { get; internal set; }
+    /// <summary>Being towed to a depot after a breakdown: it cannot break down again on the way.</summary>
+    public bool Towed { get; internal set; }
+    internal sbyte WantRepair = -1;  // a repair the player asked for, done at the next stop
+    internal sbyte SvcKind = -1;     // the repair it is going to a depot for
+    internal int SvcDepot = -1;
+    internal bool NoDepotWarned;
+    internal int RolledSignal = -1; // the signal this train has come up to and the failure of which was drawn for already
 
     internal List<RouteStep> Steps { get; } = new();
     internal List<Hold> Holds { get; } = new();
@@ -372,6 +395,11 @@ public sealed partial class Simulation
         }
         var signal = _rail.SetSignal(track, node, c.Kind);
         if (signal == null) return -1;
+        if (!signal.Placed)
+        {
+            signal.Placed = true;
+            signal.LastRepairTick = Tick;
+        }
         Charge(price, LedgerEntry.Construction);
         _railBoundaryDirty = true;
         SyncRail();
@@ -457,6 +485,14 @@ public sealed partial class Simulation
             if (depot.Active && _rail.TracksAt(depot.Node).Count == 0) depot.Active = false;
     }
 
+    /// <summary>What a rail depot of this level costs.</summary>
+    public long RailDepotPrice(DepotLevel level) => level switch
+    {
+        DepotLevel.Simple => _railTuning.DepotPrice,
+        DepotLevel.Workshop => _railTuning.DepotWorkshopPrice,
+        _ => _railTuning.DepotComplexPrice,
+    };
+
     int BuildRailDepot(AddRailDepotCommand c)
     {
         SyncRail();
@@ -464,8 +500,8 @@ public sealed partial class Simulation
         if (node < 0) return -1;
         foreach (var depot in _railDepots)
             if (depot.Active && depot.Node == node) return -1;
-        if (!TrySpend(_railTuning.DepotPrice, LedgerEntry.Depots)) return -1;
-        _railDepots.Add(new RailDepot(_railDepots.Count, node));
+        if (!Enum.IsDefined(c.Level) || !TrySpend(RailDepotPrice(c.Level), LedgerEntry.Depots)) return -1;
+        _railDepots.Add(new RailDepot(_railDepots.Count, node, c.Level));
         _railBoundaryDirty = true;
         SyncRail();
         return _railDepots.Count - 1;
@@ -620,7 +656,7 @@ public sealed partial class Simulation
         var wagon = _railTuning.Wagons[w];
         float length = loco.Length + wagons * wagon.Length;
         float mass = loco.Mass + wagons * wagon.Mass;
-        var train = new Train(_trains.Count, line, l, w, wagons, length, mass, wagons * wagon.Capacity);
+        var train = new Train(_trains.Count, line, l, w, wagons, length, mass, wagons * wagon.Capacity) { LastRepairTick = Tick };
         float start = 0f;
         foreach (var step in path)
         {
@@ -715,6 +751,8 @@ public sealed partial class Simulation
             var wagon = _railTuning.Wagons[train.Wagon];
             Earn((long)MathF.Round((loco.Price + train.Wagons * wagon.Price) * _economy.SellRefundShare), LedgerEntry.Vehicles);
         }
+        if (train.Servicing) CancelJobsFor(RepairSubject.Train, train.Id);
+        train.Servicing = false;
         for (int h = train.Holds.Count - 1; h >= 0; h--) ReleaseHold(train, h);
         if (train.Riders != null)
         {
@@ -748,7 +786,7 @@ public sealed partial class Simulation
     {
         ulong h = (ulong)_rail.Version;
         h = h * 31 + (ulong)_rail.TrackCount;
-        foreach (var depot in _railDepots) h = h * 31 + (ulong)depot.Node + (depot.Active ? 1UL : 0UL);
+        foreach (var depot in _railDepots) h = h * 31 + (ulong)depot.Node + (depot.Active ? 1UL : 0UL) + ((ulong)depot.Level << 8);
         foreach (var train in _trains)
         {
             h = h * 31 + (ulong)train.Id + (train.Active ? 7UL : 0UL);
@@ -763,9 +801,14 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)train.Steps.Count;
             h = h * 31 + (ulong)train.Income;
             h = h * 31 + (ulong)train.UpkeepPaid;
+            h = h * 31 + BitConverter.SingleToUInt32Bits(train.Condition);
+            h = h * 31 + (ulong)train.LastRepairTick + (train.Patched ? 1UL << 50 : 0UL) + (train.Servicing ? 1UL << 51 : 0UL);
+            h = h * 31 + train.Policy.Bits;
+            h = h * 31 + (ulong)(train.WantRepair + 1) + ((ulong)(train.SvcKind + 1) << 4);
             if (train.InDepot) h = h * 31 + 3UL;
             if (train.ReturnDepot >= 0) h = h * 31 + (ulong)(train.ReturnDepot + 5);
         }
+        if (_rail.SignalCount > 0) h = h * 31 + SignalHash();
         foreach (var o in _trackOwner) h = h * 31 + (ulong)(o + 1);
         h = h * 31 + CrossingHash();
         return h;
