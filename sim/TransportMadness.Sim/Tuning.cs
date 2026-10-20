@@ -437,6 +437,12 @@ public sealed record IndustryGenerationTuning
     public required float MinSpacing { get; init; }
     public required float MaxHeightRange { get; init; }
     public required float ChainReach { get; init; }
+    /// <summary>A deposit (mine) is placed within this of a town's middle, so that it can be reached by road.</summary>
+    public required float DepositReach { get; init; }
+    /// <summary>Two deposits of different types lie at least this far apart (so that mining both at home is a real investment) ...</summary>
+    public required float DepositMinSeparation { get; init; }
+    /// <summary>... and at most this far, so that a steel mill can still stand within <see cref="ChainReach"/> of both.</summary>
+    public required float DepositMaxSeparation { get; init; }
 }
 
 public sealed record IndustryCounts
@@ -460,6 +466,8 @@ public sealed record IndustryTypeTuning
     public required float Size { get; init; }
     public required float Height { get; init; }
     public required string Output { get; init; }
+    /// <summary>A scarce natural resource (a mine): the generator keeps it within reach of a town and apart from the other deposits.</summary>
+    public required bool Deposit { get; init; }
     public required float PerMonth { get; init; }
     public required float MaxOutput { get; init; }
     public required IReadOnlyList<CargoAmount> Inputs { get; init; }

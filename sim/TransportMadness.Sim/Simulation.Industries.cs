@@ -27,6 +27,23 @@ public sealed partial class Simulation
     public IndustriesTuning IndustryTuning => _industryTuning;
     /// <summary>The cargo (index into the cargo list) an industry type makes.</summary>
     public int OutputOf(int industryType) => _industryOutput[industryType];
+    /// <summary>Whether no industry type makes a cargo, so that it can only come from outside the region (oil, rubber): it needs a gateway.</summary>
+    public bool IsImported(int cargo) => cargo != _passengerCargo && IndustryGenerator.IsImported(_industryTuning, _cargo[cargo].Id);
+
+    /// <summary>
+    /// What an industry is doing now, for the Industries window: whether a station covers it (without one its output piles up
+    /// and nothing reaches it), whether its output is full, and which inputs it has less than a unit of.
+    /// </summary>
+    public IndustryStatus StatusOf(Industry industry)
+    {
+        if (_coverageDirty) RefreshCoverage();
+        var type = _industryTuning.Types[industry.Type];
+        var missing = new List<int>();
+        foreach (var (cargo, amount) in _industryInputs[industry.Type])
+            if (industry.Input[cargo] < amount) missing.Add(cargo);
+        return new IndustryStatus(_industryStations[industry.Id].Length > 0, industry.Output >= type.MaxOutput - 0.5f, missing);
+    }
+
     /// <summary>Changes whenever industries are added (for a renderer).</summary>
     public int IndustriesVersion { get; private set; }
 
@@ -230,4 +247,10 @@ public sealed partial class Simulation
         }
         return h;
     }
+}
+
+/// <summary>What an industry is doing: <paramref name="Covered"/> by a station, <paramref name="OutputFull"/> (it has stopped), and the cargo (indices) it has too little of to make a unit.</summary>
+public readonly record struct IndustryStatus(bool Covered, bool OutputFull, IReadOnlyList<int> MissingInputs)
+{
+    public bool Working => !OutputFull && MissingInputs.Count == 0;
 }

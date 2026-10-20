@@ -5,8 +5,8 @@ namespace TransportMadness.Sim.Tests;
 /// <summary>Wear, breakdowns and repairs are as repeatable as the rest: the same seed and commands give the same run, and the command log replays it.</summary>
 public class MaintenanceDeterminismTests
 {
-    const ulong MaintenanceGoldenMac = 0xFE19620F8B25AE46UL;
-    const ulong MaintenanceGoldenLinux = 0xFE19620F8B25AE46UL;
+    const ulong MaintenanceGoldenMac = 0x903CD2C139A9C086UL;
+    const ulong MaintenanceGoldenLinux = 0x903CD2C139A9C086UL;
 
     static Tuning Worn() =>
         Tuning.Load() with { Maintenance = Tuning.Load().Maintenance with { MetresPerPoint = 300f, Roads = Tuning.Load().Maintenance.Roads with { PassesPerPoint = 40f } } };

@@ -6,7 +6,9 @@ namespace TransportMadness.Sim.Tests;
 public class IndustryTests
 {
     const int Forest = 0, Quarry = 1, Farm = 2, Sawmill = 3, CementWorks = 4, FoodPlant = 5, Factory = 6;
+    const int CoalMine = 7, IronMine = 8, SteelMill = 9, Refinery = 10, EngineWorks = 11, BodyWorks = 12, TyreWorks = 13, TruckPlant = 14;
     const int Passengers = 0, Goods = 1, Wood = 2, Planks = 3, Stone = 4, Materials = 5, Grain = 6, Food = 7;
+    const int Coal = 8, Ore = 9, Steel = 10, Fuel = 11, Oil = 12, Rubber = 13, Engines = 14, Bodies = 15, Tyres = 16, Trucks = 17;
 
     static void RunDays(Simulation sim, double days)
     {
@@ -41,9 +43,9 @@ public class IndustryTests
     // ---- Generation ----------------------------------------------------------------------------------------------
 
     [Theory]
-    [InlineData(IndustryAmount.Few, 7)]
-    [InlineData(IndustryAmount.Normal, 9)]
-    [InlineData(IndustryAmount.Many, 16)]
+    [InlineData(IndustryAmount.Few, 11)]
+    [InlineData(IndustryAmount.Normal, 13)]
+    [InlineData(IndustryAmount.Many, 20)]
     public void TheAmountSetting_DecidesHowManyIndustriesOfEachTypeAreMade(IndustryAmount amount, int expected)
     {
         var net = new RoadNetwork(DryLevelMap());
@@ -107,21 +109,34 @@ public class IndustryTests
 
         var plan = IndustryGenerator.Generate(net, 5, new WorldPlan(0, Array.Empty<TownPlan>()), IndustryAmount.Many);
 
-        Assert.InRange(plan.Industries!.Count, 1, 13);
+        Assert.InRange(plan.Industries!.Count, 1, 20);
     }
 
-    /// <summary>Whether every processor of a plan has a producer of each of its inputs and a town within <paramref name="reach"/>.</summary>
+    /// <summary>
+    /// The industries of a plan that break a placement rule: a processor without a producer of each input that is made on the map
+    /// (oil and rubber are imported) and a town within <paramref name="reach"/>, and a deposit out of reach of a town or at the wrong distance from another deposit.
+    /// </summary>
     static List<int> BrokenChains(Tuning tuning, WorldPlan plan, float reach)
     {
         var types = tuning.Industries.Types;
+        var g = tuning.Industries.Generation;
         var broken = new List<int>();
         for (int k = 0; k < plan.Industries!.Count; k++)
         {
             var me = plan.Industries[k];
-            bool Near(float x, float z) => (x - me.X) * (x - me.X) + (z - me.Z) * (z - me.Z) <= reach * reach;
-            if (types[me.Type].Inputs.Count == 0) continue;
-            bool ok = plan.Towns.Any(t => Near(t.X, t.Z)) && types[me.Type].Inputs.All(i => plan.Industries.Any(o => types[o.Type].Output == i.Cargo && Near(o.X, o.Z)));
-            if (!ok) broken.Add(k);
+            var type = types[me.Type];
+            float Dist(float x, float z) => MathF.Sqrt((x - me.X) * (x - me.X) + (z - me.Z) * (z - me.Z));
+            bool Near(float x, float z) => Dist(x, z) <= reach;
+            if (type.Deposit)
+            {
+                bool ok = plan.Towns.Any(t => Dist(t.X, t.Z) <= g.DepositReach)
+                    && plan.Industries.Where(o => types[o.Type].Deposit && o.Type != me.Type).All(o => Dist(o.X, o.Z) >= g.DepositMinSeparation && Dist(o.X, o.Z) <= g.DepositMaxSeparation);
+                if (!ok) broken.Add(k);
+                continue;
+            }
+            if (type.Inputs.Count == 0) continue;
+            bool linked = plan.Towns.Any(t => Near(t.X, t.Z)) && type.Inputs.All(i => IndustryGenerator.IsImported(tuning.Industries, i.Cargo) || plan.Industries.Any(o => types[o.Type].Output == i.Cargo && Near(o.X, o.Z)));
+            if (!linked) broken.Add(k);
         }
         return broken;
     }
@@ -155,9 +170,12 @@ public class IndustryTests
 
         var plan = IndustryGenerator.Generate(net, 3, TownGenerator.Generate(net, 3, 4), IndustryAmount.Normal);
 
-        int processors = plan.Industries!.Count(i => tuning.Industries.Types[i.Type].Inputs.Count > 0);
-        Assert.Equal(processors, plan.Unlinked!.Count);
-        Assert.All(plan.Unlinked, k => Assert.NotEmpty(tuning.Industries.Types[plan.Industries![k].Type].Inputs));
+        // Every processor is reported (even the refinery, which needs a town within reach), and so may a deposit be.
+        var types = tuning.Industries.Types;
+        var processors = Enumerable.Range(0, plan.Industries!.Count).Where(k => types[plan.Industries[k].Type].Inputs.Count > 0).ToList();
+        Assert.NotEmpty(processors);
+        Assert.All(processors, k => Assert.Contains(k, plan.Unlinked!));
+        Assert.All(plan.Unlinked!, k => Assert.True(types[plan.Industries![k].Type].Inputs.Count > 0 || types[plan.Industries![k].Type].Deposit));
     }
 
     // ---- Production ----------------------------------------------------------------------------------------------
@@ -238,7 +256,7 @@ public class IndustryTests
         Assert.True(sim.Accepts(sawmill, Wood));
         Assert.False(sim.Accepts(sawmill, Planks));
         Assert.False(sim.Accepts(sawmill, Food));
-        Assert.Equal(new[] { false, false, false, false, false, false, false, false }, Enumerable.Range(0, 8).Select(c => sim.Accepts(forest, c)));
+        Assert.All(Enumerable.Range(0, sim.CargoTypes.Count), c => Assert.False(sim.Accepts(forest, c)));
         Assert.True(sim.Accepts(town, Food));
         Assert.True(sim.Accepts(town, Goods));
         Assert.True(sim.Accepts(town, Planks)); // a light industry building uses planks
@@ -256,7 +274,7 @@ public class IndustryTests
         sim.Execute(new BuildRoadCommand(0, 0, 600, 0, RoadType.TwoLane, 14f));
         var station = sim.Stations[sim.Execute(new BuildStationCommand(300, 0))];
 
-        Assert.All(Enumerable.Range(0, 8), c => Assert.True(sim.Accepts(station, c)));
+        Assert.All(Enumerable.Range(0, sim.CargoTypes.Count), c => Assert.True(sim.Accepts(station, c)));
     }
 
     // ---- Freight and deliveries ----------------------------------------------------------------------------------

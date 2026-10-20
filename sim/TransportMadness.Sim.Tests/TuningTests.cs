@@ -28,7 +28,7 @@ public class TuningTests
         Assert.Equal(1938, t.Economy.StartYear);
         Assert.Equal(1000000, t.Economy.StartingMoney);
         Assert.Equal(new[] { "bus", "truck" }, t.Vehicles.Select(v => v.Id));
-        Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food" }, t.Cargo.Select(c => c.Id));
+        Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food", "coal", "ore", "steel", "fuel", "oil", "rubber", "engines", "bodies", "tyres", "trucks" }, t.Cargo.Select(c => c.Id));
         Assert.All(t.Vehicles, v => Assert.True(v.Cargo == "freight" || t.Cargo.Any(c => c.Id == v.Cargo)));
         Assert.True(t.Economy.DepotPrice.For(DepotLevel.Complex) > t.Economy.DepotPrice.For(DepotLevel.Simple));
     }
@@ -74,9 +74,10 @@ public class TuningTests
     {
         var t = Tuning.Load().Industries;
 
-        Assert.Equal(new[] { "forest", "quarry", "farm", "sawmill", "cementworks", "foodplant", "factory" }, t.Types.Select(x => x.Id));
-        Assert.Equal(new[] { "wood", "stone", "grain", "planks", "materials", "food", "goods" }, t.Types.Select(x => x.Output));
-        Assert.Equal(new[] { 0, 0, 0, 1, 1, 1, 1 }, t.Types.Select(x => x.Inputs.Count));
+        Assert.Equal(new[] { "forest", "quarry", "farm", "sawmill", "cementworks", "foodplant", "factory", "coalmine", "ironmine", "steelmill", "refinery", "engineworks", "bodyworks", "tyreworks", "truckplant" }, t.Types.Select(x => x.Id));
+        Assert.Equal(new[] { "wood", "stone", "grain", "planks", "materials", "food", "goods", "coal", "ore", "steel", "fuel", "engines", "bodies", "tyres", "trucks" }, t.Types.Select(x => x.Output));
+        Assert.Equal(new[] { 0, 0, 0, 1, 1, 1, 1, 0, 0, 2, 1, 2, 2, 1, 3 }, t.Types.Select(x => x.Inputs.Count));
+        Assert.Equal(new[] { "coalmine", "ironmine" }, t.Types.Where(x => x.Deposit).Select(x => x.Id));
         Assert.All(new[] { t.Counts.Few, t.Counts.Normal, t.Counts.Many }, counts => Assert.Equal(t.Types.Count, counts.Count));
     }
 

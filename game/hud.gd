@@ -126,7 +126,7 @@ var _parked_rows: Dictionary = {} # garage id -> {"row", "separator", "label", "
 var _vehicle_rows: Dictionary = {} # vehicle id -> {"row": Control, "label": Label, "separator": Control}
 var _industries_box: VBoxContainer
 var _industries_empty: Label
-var _industry_rows: Dictionary = {} # industry id -> {"row": Control, "label": Label, "separator": Control}
+var _industry_rows: Dictionary = {} # industry id -> {"row": Control, "label": Label, "status": Label, "separator": Control}
 var _stations_box: VBoxContainer
 var _stations_empty: Label
 var _station_rows: Dictionary = {} # station id -> {"row": Control, "label": Label, "separator": Control}
@@ -747,7 +747,7 @@ func set_cargo_names(names: Array) -> void:
 	_cargo_names = names
 
 
-## One row per industry: what it makes and holds, with a button that takes the camera there.
+## One row per industry: what it makes and holds, who takes it, what it is doing, with a button that takes the camera there.
 func show_industries(industries: Array) -> void:
 	var seen := {}
 	for industry in industries:
@@ -755,11 +755,27 @@ func show_industries(industries: Array) -> void:
 		seen[id] = true
 		if not _industry_rows.has(id):
 			_add_industry_row(id, industry)
-		var text := "%s %d\nmakes %s   %d of %d waiting for a truck   %d made so far" % [
-			industry["name"], id + 1, industry["output"], industry["stock"], industry["max_output"], industry["produced"]]
+		var title: String = "%s %d" % [industry["name"], id + 1]
+		if industry.get("deposit", false):
+			title += "   (deposit)"
+		var text := "%s\nmakes %s   %d of %d waiting for a truck   %d made so far" % [
+			title, industry["output"], industry["stock"], industry["max_output"], industry["produced"]]
+		var used_by: String = industry.get("used_by", "")
+		if used_by != "":
+			text += "\nused by %s" % used_by
 		for input in industry["inputs"]:
-			text += "\nneeds %s   %d of %d in stock" % [input["cargo"], input["stock"], input["max"]]
-		_industry_rows[id]["label"].text = text
+			text += "\nneeds %s   %d of %d in stock%s" % [input["cargo"], input["stock"], input["max"], "   (imported: arrives through a gateway)" if input.get("imported", false) else ""]
+		var row: Dictionary = _industry_rows[id]
+		row["label"].text = text
+		var status: Label = row["status"]
+		status.text = industry.get("status", "")
+		match industry.get("status_kind", "ok"):
+			"ok":
+				status.add_theme_color_override("font_color", Color(0.45, 0.85, 0.5))
+			"warn":
+				status.add_theme_color_override("font_color", Color(1.0, 0.7, 0.35))
+			_:
+				status.add_theme_color_override("font_color", UiTheme.TEXT_DIM)
 	for id in _industry_rows.keys():
 		if not seen.has(id):
 			_industry_rows[id]["row"].queue_free()
@@ -772,6 +788,8 @@ func _add_industry_row(id: int, industry: Dictionary) -> void:
 	var row := VBoxContainer.new()
 	var label := Label.new()
 	row.add_child(label)
+	var status := Label.new()
+	row.add_child(status)
 	var go := Button.new()
 	go.text = "Go to"
 	go.pressed.connect(func() -> void: town_focus.emit(industry["x"], industry["z"]))
@@ -779,7 +797,7 @@ func _add_industry_row(id: int, industry: Dictionary) -> void:
 	var separator := HSeparator.new()
 	_industries_box.add_child(row)
 	_industries_box.add_child(separator)
-	_industry_rows[id] = {"row": row, "label": label, "separator": separator}
+	_industry_rows[id] = {"row": row, "label": label, "status": status, "separator": separator}
 
 
 ## One row per station: the cargo waiting there and what it accepts.

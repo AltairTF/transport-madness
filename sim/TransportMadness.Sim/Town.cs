@@ -110,7 +110,7 @@ public sealed record TownPlan(string Name, float X, float Z, float Angle, int Bl
 public readonly record struct IndustryPlan(int Type, float X, float Z, float Angle);
 
 /// <summary>What the generator made: the towns that fit, out of the number asked for, and the industries.</summary>
-/// <param name="Unlinked">Indices into <paramref name="Industries"/> of processors that could not be placed within reach of their inputs and a town.</param>
+/// <param name="Unlinked">Indices into <paramref name="Industries"/> of processors that could not be placed within reach of their inputs and a town, and of deposits that could not be placed within reach of a town and a fitting distance from the other deposits.</param>
 public sealed record WorldPlan(int Requested, IReadOnlyList<TownPlan> Towns, IReadOnlyList<IndustryPlan>? Industries = null, IReadOnlyList<int>? Unlinked = null);
 
 /// <summary>A producer or processor in a cargo chain. It stands where it was generated and exchanges cargo with the stations that cover it.</summary>

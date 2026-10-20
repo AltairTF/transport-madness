@@ -15,11 +15,17 @@ _Avoid_: City
 A home, a commerce building or a light industry building on a lot beside a street of a Town. Has a size tier that sets how many people live or work in it and what it needs. Gets Trip groups from its people. Grows by upgrading its tier, using the Construction stock it has been delivered; at the top tier it founds a new Building on a free Lot instead. Becomes inactive when it loses all road access, is marked Abandoned after 3 months and demolished a month later.
 _Avoid_: House (a Building is not always a home)
 
+**Deposit**:
+A scarce natural resource, a coal mine or an iron mine: one of each on every Region, within reach of a Town and a fitting distance from the other, so that mining both at home is an investment against importing. Marked in the tuning (`deposit`).
+
+**Imported cargo**:
+A Cargo that no Industry makes (oil, rubber): it can only arrive as an Import shipment through a Gateway, so the Industries that use it idle until there is one.
+
 **Industry**:
-A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm) produce at a fixed rate; processors (sawmill, cement works, food plant, factory) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods. Its output goes to the Stations that cover it, shared evenly; its inputs are filled by deliveries to those Stations. The generator places a processor within reach of a producer of its inputs and of a Town; one that did not fit is reported when a game starts.
+A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm, and the two Deposits) produce at a fixed rate; processors (sawmill, cement works, food plant, factory, steel mill, refinery and the military truck's works) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods, iron ore and coal → steel, imported oil → fuel, and for the military truck steel and fuel → engines, steel and planks → bodies, imported rubber → tyres, then engines, bodies and tyres → trucks. Its output goes to the Stations that cover it, shared evenly; its inputs are filled by deliveries to those Stations. The generator places a processor within reach of a producer of its inputs and of a Town; one that did not fit is reported when a game starts.
 
 **Cargo**:
-Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
+Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 
 **Satisfaction**:
 A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold (50) the Town stops growing. Has no effect on money before M5.
@@ -163,8 +169,11 @@ Off, low, normal or high: scales the random breakdowns, signal failures and, in 
 **Campaign** (planned, ADR 0006):
 The game's one mode for now: the Player chairs the development committee of a Region of a fictional country at war, from January 1938 to December 1945, managing its military and civil industrialisation.
 
+**Country**:
+Veldmar, the fictional republic that goes to war. Its neighbours are never named; the Gateways lead to "the rest of the world". The names are made up in a Central European manner and chosen not to be real places.
+
 **Region**:
-The map: a small part of the country, with Towns and Industries, joined to the rest of the world only by Gateways.
+The map: a small part of the country (the Marren Valley), with Towns and Industries, joined to the rest of the world only by Gateways.
 
 **Phase** (planned, C5):
 A stretch of the campaign (rearmament, mobilisation, total war, the end) that sets the mix of Orders and the size of the Allocation.

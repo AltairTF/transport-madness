@@ -552,7 +552,7 @@ public partial class SimHost : Node3D
     /// <summary>Sells a company vehicle. False when it is not one in working order.</summary>
     public bool SellVehicle(int vehicle) => Sim.Execute(new SellVehicleCommand(vehicle)) >= 0;
 
-    // Stations are named for the town (or industry) they stand beside and their number there: "Ashford 2". A name is made once.
+    // Stations are named for the town (or industry) they stand beside and their number there: "Aldermark 2". A name is made once.
     readonly Dictionary<int, string> _stationNames = new();
 
     /// <summary>The name of a station: the nearest town within 500 m, else the nearest industry within 300 m, followed by its number among the stations named for it.</summary>
@@ -736,8 +736,10 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>
-    /// The industries: for each {id, name, x, y, z, output (cargo name), stock (waiting to be collected), produced, inputs}
-    /// where inputs lists {cargo, stock, max} for the cargo it uses.
+    /// The industries: for each {id, name, x, y, z, output (cargo name), stock (waiting to be collected), max_output, produced,
+    /// deposit (a scarce resource), inputs, used_by, status, status_kind} where inputs lists {cargo, stock, max, imported} for the
+    /// cargo it uses (imported: no industry makes it, it comes through a gateway), used_by says who takes the output, status is a line
+    /// of text and status_kind is "ok", "warn" or "idle".
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetIndustries()
     {
@@ -749,18 +751,50 @@ public partial class SimHost : Node3D
             var inputs = new Godot.Collections.Array<Godot.Collections.Dictionary>();
             foreach (var input in type.Inputs)
             {
-                int c = -1;
-                for (int k = 0; k < Sim.CargoTypes.Count; k++) if (Sim.CargoTypes[k].Id == input.Cargo) c = k;
-                inputs.Add(new Godot.Collections.Dictionary { ["cargo"] = Sim.CargoTypes[c].Name, ["stock"] = industry.Input[c], ["max"] = type.MaxInput });
+                int c = CargoIndex(input.Cargo);
+                inputs.Add(new Godot.Collections.Dictionary { ["cargo"] = Sim.CargoTypes[c].Name, ["stock"] = industry.Input[c], ["max"] = type.MaxInput, ["imported"] = Sim.IsImported(c) });
             }
+            var (status, kind) = DescribeStatus(Sim.StatusOf(industry));
             list.Add(new Godot.Collections.Dictionary
             {
                 ["id"] = industry.Id, ["name"] = type.Name, ["x"] = industry.X, ["y"] = HeightAt(industry.X, industry.Z), ["z"] = industry.Z,
                 ["output"] = Sim.CargoTypes[Sim.OutputOf(industry.Type)].Name, ["stock"] = industry.Output, ["max_output"] = type.MaxOutput,
-                ["produced"] = industry.Produced, ["inputs"] = inputs,
+                ["produced"] = industry.Produced, ["deposit"] = type.Deposit, ["inputs"] = inputs, ["used_by"] = UsedBy(type),
+                ["status"] = status, ["status_kind"] = kind,
             });
         }
         return list;
+    }
+
+    int CargoIndex(string id)
+    {
+        for (int k = 0; k < Sim.CargoTypes.Count; k++) if (Sim.CargoTypes[k].Id == id) return k;
+        return -1;
+    }
+
+    /// <summary>Who takes an industry type's output: the industry types that list it as an input, each marked when none stands on the map yet.</summary>
+    string UsedBy(IndustryTypeTuning type)
+    {
+        var users = new List<string>();
+        foreach (var other in Sim.IndustryTuning.Types)
+        {
+            if (!other.Inputs.Any(i => i.Cargo == type.Output)) continue;
+            bool exists = Sim.Industries.Any(i => Sim.IndustryTuning.Types[i.Type].Id == other.Id);
+            users.Add(exists ? other.Name : other.Name + " (none yet)");
+        }
+        return string.Join(", ", users);
+    }
+
+    (string Text, string Kind) DescribeStatus(IndustryStatus status)
+    {
+        if (status.MissingInputs.Count > 0)
+        {
+            var names = status.MissingInputs.Select(c => Sim.CargoTypes[c].Name.ToLowerInvariant() + (Sim.IsImported(c) ? " (imported)" : ""));
+            return ($"Idle: waiting for {string.Join(", ", names)}", "idle");
+        }
+        if (status.OutputFull) return ("Stopped: its output is full, collect it", "warn");
+        if (!status.Covered) return ("No station covers it", "warn");
+        return ("Working", "ok");
     }
 
     /// <summary>

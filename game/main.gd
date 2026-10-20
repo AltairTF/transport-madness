@@ -176,7 +176,7 @@ func _new_world(map: String) -> void:
 			_world_note = "" if placed >= Session.towns else "Only %d of %d towns fit on this map" % [placed, Session.towns]
 			var unlinked: int = host.UnlinkedIndustries
 			if unlinked > 0:
-				_world_note += ("" if _world_note == "" else ". ") + "%d industries have no supplier or town within reach on this map" % unlinked
+				_world_note += ("" if _world_note == "" else ". ") + "%d industries are out of reach of their suppliers, a town or the other deposits on this map" % unlinked
 			if hud != null and _world_note != "":
 				hud.show_message(_world_note)
 			var towns: Array = host.GetTowns()

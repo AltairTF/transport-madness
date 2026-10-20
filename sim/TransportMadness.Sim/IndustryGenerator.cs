@@ -4,6 +4,13 @@ namespace TransportMadness.Sim;
 /// Places industries on a map after its towns: on level dry ground, clear of every town's grid and of each other. Like
 /// <see cref="TownGenerator"/> it draws from its own random generator, so the same seed gives the same industries and
 /// nothing else depends on it. Roads to them are the player's job.
+/// <para>
+/// Three kinds of rule keep the chains playable. A processor stands within reach of a producer of each of its inputs and of a
+/// town (an input that no industry type makes is imported and needs no producer). A deposit, a scarce natural resource such as
+/// coal or iron ore, stands within reach of a town and between a minimum and a maximum distance from the other deposits, so
+/// that mining both at home is an investment and a steel mill can still stand within reach of both. Where no place keeps a
+/// rule the industry is placed anywhere that will do and reported as unlinked.
+/// </para>
 /// </summary>
 public static class IndustryGenerator
 {
@@ -38,11 +45,13 @@ public static class IndustryGenerator
                         float angle = rng.NextFloat() * MathF.PI * 0.5f;
                         if (!Suitable(net, tuning, townTuning, towns, placed, tuning.Types[type], x, z)) continue;
                         if (pass == 0 && !Linked(tuning, towns, placed, tuning.Types[type], x, z)) continue;
-                        if (pass == 1) unlinked.Add(placed.Count);
+                        if (pass == 0 && !DepositFits(tuning, towns, placed, tuning.Types[type], x, z)) continue;
+                        // The second pass takes any place that will do, which can still happen to keep the rules.
+                        if (pass == 1 && !(Linked(tuning, towns, placed, tuning.Types[type], x, z) && DepositFits(tuning, towns, placed, tuning.Types[type], x, z))) unlinked.Add(placed.Count);
                         placed.Add(new IndustryPlan(type, x, z, angle));
                         done = true;
                     }
-                    if (done || tuning.Types[type].Inputs.Count == 0) break;
+                    if (done || (tuning.Types[type].Inputs.Count == 0 && !tuning.Types[type].Deposit)) break;
                 }
             }
         return towns with { Industries = placed, Unlinked = unlinked };
@@ -56,7 +65,26 @@ public static class IndustryGenerator
         bool Near(float ox, float oz) => (ox - x) * (ox - x) + (oz - z) * (oz - z) <= reach2;
         if (!towns.Towns.Any(t => Near(t.X, t.Z))) return false;
         foreach (var input in type.Inputs)
-            if (!placed.Any(o => tuning.Types[o.Type].Output == input.Cargo && Near(o.X, o.Z))) return false;
+            if (IsImported(tuning, input.Cargo)) continue;
+            else if (!placed.Any(o => tuning.Types[o.Type].Output == input.Cargo && Near(o.X, o.Z))) return false;
+        return true;
+    }
+
+    /// <summary>Whether no industry type makes a cargo: it comes from outside the region, through a gateway.</summary>
+    public static bool IsImported(IndustriesTuning tuning, string cargo) => !tuning.Types.Any(t => t.Output == cargo);
+
+    /// <summary>Whether a place for a deposit is within reach of a town and a fitting distance from every deposit of another type already placed. Other industries need nothing.</summary>
+    static bool DepositFits(IndustriesTuning tuning, WorldPlan towns, List<IndustryPlan> placed, IndustryTypeTuning type, float x, float z)
+    {
+        if (!type.Deposit) return true;
+        var g = tuning.Generation;
+        if (!towns.Towns.Any(t => (t.X - x) * (t.X - x) + (t.Z - z) * (t.Z - z) <= g.DepositReach * g.DepositReach)) return false;
+        foreach (var o in placed)
+        {
+            if (!tuning.Types[o.Type].Deposit || tuning.Types[o.Type].Id == type.Id) continue;
+            float d2 = (o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z);
+            if (d2 < g.DepositMinSeparation * g.DepositMinSeparation || d2 > g.DepositMaxSeparation * g.DepositMaxSeparation) return false;
+        }
         return true;
     }
 
