@@ -567,7 +567,7 @@ public class TripTests
             int blocker = sim.SpawnVehicle(east, net.GetLane(east).Length - 60f, 0f);
             sim.SetHalted(blocker, true); // a car broken down in the middle of the road that everyone drives along
             int most = 0;
-            for (long t = 0; t < 8000; t++)
+            for (long t = 0; t < 12000; t++)
             {
                 sim.Step();
                 if (sim.TripVehicleCount > most) most = sim.TripVehicleCount;

@@ -359,7 +359,7 @@ public class BalanceProbe
             for (int d = 0; d < days; d++)
             {
                 if (d == from) { inc0 = ln.Income; up0 = ln.Upkeep; del0 = ln.Delivered; }
-                Run(sim, 1);
+                RunPeriod(sim);
             }
             double nd = days - from;
             double inc = (ln.Income - inc0) / nd, up = (ln.Upkeep - up0) / nd;

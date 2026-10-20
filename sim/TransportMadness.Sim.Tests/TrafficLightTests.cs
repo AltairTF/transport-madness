@@ -116,9 +116,9 @@ public class TrafficLightTests
         sim.Execute(new BuildTrafficLightCommand(node));
         sim.Execute(new SeedTrafficCommand(20));
         long upkeep = sim.Company.Total(LedgerEntry.Upkeep);
-        RailWorlds.Run(sim, 600);
+        RailWorlds.Run(sim, sim.DayLengthSeconds);
 
-        Assert.Equal(upkeep - 120, sim.Company.Total(LedgerEntry.Upkeep));
+        Assert.Equal(upkeep - (long)sim.Network.Tuning.Roads.TrafficLight.UpkeepPerDay, sim.Company.Total(LedgerEntry.Upkeep));
 
         var (fresh, _) = Cross(5);
         fresh.Replay(sim.CommandLog, sim.Tick);

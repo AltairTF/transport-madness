@@ -22,9 +22,10 @@ public class TuningTests
     {
         var t = Tuning.Load();
 
-        Assert.Equal(600f, t.Economy.DayLength);
-        Assert.Equal(30, t.Economy.DaysPerMonth);
+        Assert.Equal(1200f, t.Economy.DayLength);
+        Assert.Equal(3, t.Economy.DaysPerMonth);
         Assert.Equal(12, t.Economy.MonthsPerYear);
+        Assert.Equal(1938, t.Economy.StartYear);
         Assert.Equal(1000000, t.Economy.StartingMoney);
         Assert.Equal(new[] { "bus", "truck" }, t.Vehicles.Select(v => v.Id));
         Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food" }, t.Cargo.Select(c => c.Id));
@@ -82,7 +83,7 @@ public class TuningTests
     [Fact]
     public void ABuildingNeed_ForAnUnknownCargo_IsRejected()
     {
-        var text = ShippedText().Replace("\"cargo\": \"food\", \"amount\": 20", "\"cargo\": \"gravy\", \"amount\": 20");
+        var text = ShippedText().Replace("\"cargo\": \"food\", \"amount\": 4", "\"cargo\": \"gravy\", \"amount\": 4");
 
         Assert.Throws<ArgumentException>(() => new Simulation(new RoadNetwork(Terrain.Flat(), Tuning.FromJson(text)), 1));
     }

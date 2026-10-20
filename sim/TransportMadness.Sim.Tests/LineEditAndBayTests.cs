@@ -149,7 +149,7 @@ public class LineEditAndBayTests
 
         Run(sim, 3.01);
 
-        Assert.Equal(3 * 400, sim.UpkeepPaidFor(bus));
+        Assert.Equal(3 * (long)sim.Network.Tuning.Vehicles.First(v => v.Id == "bus").UpkeepPerDay, sim.UpkeepPaidFor(bus));
         Assert.Equal(sim.Lines[line].Upkeep, sim.UpkeepPaidFor(bus));
     }
 

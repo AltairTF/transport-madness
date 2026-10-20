@@ -304,7 +304,7 @@ public class GrowthTests
         var start = sim.NeedsOf(0);
         Assert.Equal(2, start.Buildings);
         Assert.Equal(0, start.Covered); // no station yet
-        Assert.Equal(80f, start.Cargo.First(c => c.Cargo == materials).MissingConstruction); // 40 for each building
+        Assert.Equal(16f, start.Cargo.First(c => c.Cargo == materials).MissingConstruction); // 8 for each building
         Assert.All(start.Cargo, c => Assert.Equal(0, c.ShortBuildings)); // they start with some stock
 
         var (x, z) = sim.Network.GetNode(sim.Network.FindNodeNear(-60f, -60f, 20f, withRoadsOnly: true));

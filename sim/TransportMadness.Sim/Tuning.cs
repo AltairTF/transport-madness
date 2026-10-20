@@ -242,6 +242,8 @@ public sealed record EconomyTuning
     public required float DayLength { get; init; }
     public required int DaysPerMonth { get; init; }
     public required int MonthsPerYear { get; init; }
+    /// <summary>The year of the first day of a game (the campaign starts in January of it).</summary>
+    public required int StartYear { get; init; }
     public required float InterestPerDay { get; init; }
     public required long DebtLimit { get; init; }
     public required int BankruptcyDays { get; init; }

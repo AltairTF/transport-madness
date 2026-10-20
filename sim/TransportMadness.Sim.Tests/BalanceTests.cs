@@ -12,7 +12,7 @@ public class BalanceTests
 {
     const int Days = 8, From = 3;
 
-    /// <summary>Income and upkeep per day, from day <see cref="From"/> on, of a six-stop passenger line with four buses.</summary>
+    /// <summary>Income and upkeep per period of 600 s, from period <see cref="From"/> on, of a six-stop passenger line with four buses.</summary>
     static (double Income, double Upkeep) BusLineDaily(ulong seed)
     {
         var sc = BusScenario(seed, 3, 4)!.Value;
@@ -22,7 +22,7 @@ public class BalanceTests
         for (int d = 0; d < Days; d++)
         {
             if (d == From) { income = line.Income; upkeep = line.Upkeep; }
-            Run(sim, 1);
+            RunPeriod(sim);
         }
         double days = Days - From;
         return ((line.Income - income) / days, (line.Upkeep - upkeep) / days);
@@ -39,7 +39,7 @@ public class BalanceTests
         for (int d = 0; d < Days; d++)
         {
             if (d == From) { income = line.Income; upkeep = line.Upkeep; }
-            Run(sim, 1);
+            RunPeriod(sim);
         }
         double days = Days - From;
         return ((line.Income - income) / days, (line.Upkeep - upkeep) / days, sc.Bought);
@@ -52,7 +52,7 @@ public class BalanceTests
 
         double income = results.Average(r => r.Income), upkeep = results.Average(r => r.Upkeep);
 
-        Assert.True(income > 1.3 * upkeep, $"income {income:0} a day against upkeep {upkeep:0}");
+        Assert.True(income > 1.3 * upkeep, $"income {income:0} a period against upkeep {upkeep:0}");
         // Whatever the map, a line with fully working buses does not lose for ever: none runs at less than a third of its upkeep.
         Assert.All(results.Where(r => r.Upkeep > 0), r => Assert.True(r.Income > r.Upkeep / 3, $"income {r.Income:0} against upkeep {r.Upkeep:0}"));
     }
@@ -80,7 +80,7 @@ public class BalanceTests
             var sc = BusScenario(seed, 3, 4)!.Value;
             var sim = sc.Sim;
             double speed = 0; long n = 0; int peak = 0;
-            long dayTicks = (long)Math.Round(sim.DayLengthSeconds / Simulation.StepSeconds);
+            long dayTicks = (long)Math.Round(Period / Simulation.StepSeconds);
             for (long t = 0; t < Days * dayTicks; t++)
             {
                 sim.Step();
@@ -129,7 +129,7 @@ public class BalanceTests
     public void AServedTownWithAFewTrucksOfBuildingSupplies_StartsGrowingWithinAFewMonths_AndDoesNotExplode()
     {
         // Measured with the probe (Growth_OfAServedTown): first growth in month 2 or 3 and the population 1.5 to 2.2 times its size after a year.
-        var r = ServedTown(4, perDay: 60, needsMet: true, months: 4);
+        var r = ServedTown(4, perDay: 120, needsMet: true, months: 4);
 
         Assert.InRange(r.FirstGrowth, 1, 4);
         Assert.InRange((double)r.After / r.Before, 1.1, 2.0);
@@ -147,10 +147,10 @@ public class BalanceTests
     [Fact]
     public void LessSupplyMeansSlowerGrowth()
     {
-        var little = ServedTown(4, perDay: 30, needsMet: true, months: 4);
-        var more = ServedTown(4, perDay: 60, needsMet: true, months: 4);
+        var little = ServedTown(4, perDay: 60, needsMet: true, months: 4);
+        var more = ServedTown(4, perDay: 120, needsMet: true, months: 4);
 
-        Assert.True(more.After > little.After, $"{more.After} people with 60 a day against {little.After} with 30");
+        Assert.True(more.After > little.After, $"{more.After} people with 120 a period against {little.After} with 60");
         Assert.True(little.FirstGrowth == 0 || little.FirstGrowth >= more.FirstGrowth);
     }
 

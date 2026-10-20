@@ -510,10 +510,10 @@ func show_company(company: Dictionary) -> void:
 		_money_text(company["income"]), _money_text(-company["upkeep"]), _money_text(-company["interest"])]
 
 
-## "12 Mar, year 2   14:30": the calendar day and the time of day (a day is 10 minutes long).
+## "2 Mar 1938   14:30": the calendar day and the time of day (a day is 20 minutes long, a month three days).
 func _date_text(company: Dictionary) -> String:
 	var hour: float = company["hour"]
-	return "%d %s, year %d   %02d:%02d" % [company["day_of_month"], MONTHS[(company["month"] - 1) % 12], company["year"], int(hour), int(fmod(hour, 1.0) * 60.0)]
+	return "%d %s %d   %02d:%02d" % [company["day_of_month"], MONTHS[(company["month"] - 1) % 12], company["year"], int(hour), int(fmod(hour, 1.0) * 60.0)]
 
 
 func set_cargo_names(names: Array) -> void:

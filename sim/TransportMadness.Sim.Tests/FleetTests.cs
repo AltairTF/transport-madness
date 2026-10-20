@@ -180,7 +180,7 @@ public class FleetTests
 
         Run(sim, 3);
 
-        long perDay = 400 + 2 * 150; // the bus and the two stations
+        long perDay = (long)(sim.Network.Tuning.Vehicles.First(v => v.Id == "bus").UpkeepPerDay + 2 * sim.Network.Tuning.Stations.UpkeepPerDay); // the bus and the two stations
         Assert.Equal(upkeepBefore - 3 * perDay, sim.Company.Total(LedgerEntry.Upkeep));
         Assert.Equal(3, sim.Day);
     }
@@ -330,7 +330,7 @@ public class FleetTests
             }
         Assert.Equal(8, bought);
 
-        Run(sim, 25);
+        Run(sim, 25 * Worlds.Period / sim.DayLengthSeconds);
 
         foreach (var line in new[] { busA, busB, truckA })
             Assert.True(sim.Lines[line].Delivered > 0, $"line {line} delivered nothing");

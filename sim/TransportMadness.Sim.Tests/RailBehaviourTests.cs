@@ -246,7 +246,7 @@ public class RailBehaviourTests
         var w = RailWorlds.StraightLine();
         long before = w.Sim.Company.Total(LedgerEntry.Upkeep);
 
-        RailWorlds.Run(w.Sim, 600);   // one day
+        RailWorlds.Run(w.Sim, w.Sim.DayLengthSeconds);   // one day
 
         long upkeep = before - w.Sim.Company.Total(LedgerEntry.Upkeep);
         var loco = w.Sim.Locomotives[0];

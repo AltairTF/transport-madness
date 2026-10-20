@@ -27,7 +27,7 @@ public class RailBalanceProbe
         for (int d = 0; d < days; d++)
         {
             if (d == 3) { inc = l.Income; up = l.Upkeep; }
-            Run(sim, 1);
+            RunPeriod(sim);
         }
         return new Outcome(dist, (l.Income - inc) / (double)(days - 3), (l.Upkeep - up) / (double)(days - 3), Spent(sim), capacity);
     }

@@ -124,24 +124,27 @@
     "tunnelCostPerMetre": 520.0,
     "avenueStructureFactor": 1.6,   // an avenue on a bridge or in a tunnel costs this much more
     // Traffic lights (M4): the approaches of a junction fall in two groups by the direction they come from; the groups take turns.
-    "trafficLight": { "price": 12000, "upkeepPerDay": 120.0, "greenSeconds": 18.0, "clearSeconds": 4.0 },
+    "trafficLight": { "price": 12000, "upkeepPerDay": 240.0, "greenSeconds": 18.0, "clearSeconds": 4.0 },
     // Signs (M4): a priority road sign on an approach, and the opposite one, makes every approach without a sign give way to it; a yield sign
     // makes its own approach give way to every approach without one; a stop sign is a yield sign after a full stop of stopSeconds. Approaches
     // of the same kind take the junction by arrival, as at a junction without signs. approachRange is how far back a vehicle that gives way looks.
     "signs": { "priorityPrice": 700, "yieldPrice": 500, "stopPrice": 500, "pickRadius": 30.0, "approachRange": 90.0, "stopSeconds": 1.5, "stopSpeed": 0.4, "stopLine": 5.0 }
   },
 
-  // The company's money. One day is dayLength seconds of simulated time: upkeep and interest are charged daily. A day is long
-  // enough for a commute to fit inside it; the per-day amounts are ten times what they were for a 60 s day, so the economy is unchanged per second.
+  // The company's money. One day is dayLength seconds of simulated time: upkeep and interest are charged daily. A day (1200 s) is
+  // the cycle of people's lives, long enough for a commute to be a small part of it; a month is only daysPerMonth days, the calendar of
+  // the campaign (96 months from January 1938 are 288 days). The per-day amounts are twice what they were for a 600 s day and the
+  // per-month amounts (production, needs, construction) a fifth of what they were for a 30-day month, so every flow is unchanged per second.
   "economy": {
     "startingMoney": 1000000,
     "maxLoan": 1000000,
-    "dayLength": 600.0,
-    "daysPerMonth": 30,             // the calendar: shown on the HUD, and the pace of town growth
+    "dayLength": 1200.0,
+    "daysPerMonth": 3,              // the calendar: shown on the HUD, and the pace of town growth
+    "startYear": 1938,              // the first month of a game is January of this year
     "monthsPerYear": 12,
-    "interestPerDay": 0.004,        // share of the loan, charged every day
+    "interestPerDay": 0.008,        // share of the loan, charged every day
     "debtLimit": 100000,            // net worth (money minus loan) below minus this counts as insolvent
-    "bankruptcyDays": 73,           // consecutive insolvent days before the company goes bankrupt (the game goes on in sandbox)
+    "bankruptcyDays": 36,           // consecutive insolvent days before the company goes bankrupt (the game goes on in sandbox)
     "sellRefundShare": 0.6,         // of the price, paid when a vehicle is sold
     "parkedUpkeepShare": 0.1,       // of its daily upkeep, paid by a vehicle or train waiting in a depot on no line
     "depotPrice": { "simple": 15000, "workshop": 40000, "complex": 90000 }
@@ -150,14 +153,14 @@
   // Stations stand at a road node. On a map without towns every station simply produces each cargo at its fixed rate (supplyPerDay below); with towns passengers come from trip groups that queue there and cargo from the industries it covers.
   "stations": {
     "price": 8000,
-    "upkeepPerDay": 150.0,
+    "upkeepPerDay": 300.0,
     "coverageRadius": 150.0,        // buildings within this distance of the station are served (the walking radius of the trips)
     "minApproach": 30.0,            // a stop lane shorter than this is not used, and a road is not split closer than this to its end
     "stopMargin": 3.0,              // a vehicle halts this far before the junction edge
     "arrivalGap": 3.5,              // the vehicle counts as arrived when its gap to the stop is this small ...
     "arrivalSpeed": 0.5,            // ... and it is slower than this
     "bayPrice": 6000,               // extra for a station with bays: loading vehicles pull out of the lane, so a bus loading does not hold up the road
-    "bayUpkeepPerDay": 100.0,       // extra upkeep of the bays
+    "bayUpkeepPerDay": 200.0,       // extra upkeep of the bays
     "bayCapacity": 2,               // vehicles that can load in the bays of a station at once; the next one stops in the lane as at a station without bays
     "bayExitGap": 30.0              // a vehicle leaves its bay only when no vehicle is within this distance behind it (and none overlaps it)
   },
@@ -190,7 +193,7 @@
     "signalPrice": 1500,
     "pathSignalPrice": 2500,
     "stationPrice": 20000,
-    "stationUpkeepPerDay": 250.0,
+    "stationUpkeepPerDay": 500.0,
     "depotPrice": 30000,
     "snapRadius": 14.0,             // a click this close to a rail node or a track's centre line picks it
     "stationAlongStep": 5.0,
@@ -221,19 +224,19 @@
       "clearance": 4.0
     },
     "locomotives": [
-      { "id": "diesel", "name": "Diesel locomotive", "length": 18.0, "mass": 90000.0, "power": 1600000.0, "tractiveEffort": 220000.0, "maxSpeed": 36.0, "maxWagons": 8, "price": 120000, "upkeepPerDay": 1000.0 }
+      { "id": "diesel", "name": "Diesel locomotive", "length": 18.0, "mass": 90000.0, "power": 1600000.0, "tractiveEffort": 220000.0, "maxSpeed": 36.0, "maxWagons": 8, "price": 120000, "upkeepPerDay": 2000.0 }
     ],
     "wagons": [
-      { "id": "coach", "name": "Passenger coach", "cargo": "passengers", "capacity": 48, "length": 20.0, "mass": 26000.0, "unitMass": 80.0, "price": 36000, "upkeepPerDay": 200.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.15 },
-      { "id": "freight", "name": "Freight wagon", "cargo": "freight", "capacity": 40, "length": 16.0, "mass": 20000.0, "unitMass": 600.0, "price": 30000, "upkeepPerDay": 150.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.2 }
+      { "id": "coach", "name": "Passenger coach", "cargo": "passengers", "capacity": 48, "length": 20.0, "mass": 26000.0, "unitMass": 80.0, "price": 36000, "upkeepPerDay": 400.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.15 },
+      { "id": "freight", "name": "Freight wagon", "cargo": "freight", "capacity": 40, "length": 16.0, "mass": 20000.0, "unitMass": 600.0, "price": 30000, "upkeepPerDay": 300.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.2 }
     ]
   },
 
   // Pay is quantity times distance (straight line between the stations) times the rate, reduced when the trip took long.
   // supplyPerDay is only for maps with neither towns nor industries: there every station produces that much of the cargo.
   "cargo": [
-    { "id": "passengers", "name": "Passengers", "payPerUnitKm": 65.0, "freeSeconds": 240.0, "zeroSeconds": 1200.0, "minPayShare": 0.3, "supplyPerDay": 240.0, "maxWaiting": 120.0 },
-    { "id": "goods", "name": "Goods", "payPerUnitKm": 30.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 140.0, "maxWaiting": 80.0 },
+    { "id": "passengers", "name": "Passengers", "payPerUnitKm": 65.0, "freeSeconds": 240.0, "zeroSeconds": 1200.0, "minPayShare": 0.3, "supplyPerDay": 480.0, "maxWaiting": 120.0 },
+    { "id": "goods", "name": "Goods", "payPerUnitKm": 30.0, "freeSeconds": 600.0, "zeroSeconds": 3000.0, "minPayShare": 0.3, "supplyPerDay": 280.0, "maxWaiting": 80.0 },
     { "id": "wood", "name": "Wood", "payPerUnitKm": 16.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
     { "id": "planks", "name": "Planks", "payPerUnitKm": 22.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
     { "id": "stone", "name": "Stone", "payPerUnitKm": 14.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
@@ -304,36 +307,36 @@
     "buildingTypes": [
       { "id": "home", "tiers": [
         { "size": 8.0, "height": 6.0, "people": 8, "jobs": 0, "demolitionPrice": 3000,
-          "sustain": [{ "cargo": "food", "amount": 20 }, { "cargo": "goods", "amount": 10 }],
-          "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
+          "sustain": [{ "cargo": "food", "amount": 4 }, { "cargo": "goods", "amount": 2 }],
+          "construction": [{ "cargo": "materials", "amount": 8 }, { "cargo": "planks", "amount": 4 }] },
         { "size": 10.0, "height": 12.0, "people": 20, "jobs": 0, "demolitionPrice": 7000,
-          "sustain": [{ "cargo": "food", "amount": 50 }, { "cargo": "goods", "amount": 25 }],
-          "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
+          "sustain": [{ "cargo": "food", "amount": 10 }, { "cargo": "goods", "amount": 5 }],
+          "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
         { "size": 12.0, "height": 24.0, "people": 50, "jobs": 0, "demolitionPrice": 16000,
-          "sustain": [{ "cargo": "food", "amount": 120 }, { "cargo": "goods", "amount": 60 }],
-          "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
+          "sustain": [{ "cargo": "food", "amount": 24 }, { "cargo": "goods", "amount": 12 }],
+          "construction": [{ "cargo": "materials", "amount": 48 }, { "cargo": "planks", "amount": 24 }] }
       ] },
       { "id": "commerce", "tiers": [
         { "size": 8.0, "height": 6.0, "people": 0, "jobs": 6, "demolitionPrice": 4000,
-          "sustain": [{ "cargo": "goods", "amount": 30 }],
-          "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
+          "sustain": [{ "cargo": "goods", "amount": 6 }],
+          "construction": [{ "cargo": "materials", "amount": 8 }, { "cargo": "planks", "amount": 4 }] },
         { "size": 10.0, "height": 10.0, "people": 0, "jobs": 16, "demolitionPrice": 9000,
-          "sustain": [{ "cargo": "goods", "amount": 80 }],
-          "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
+          "sustain": [{ "cargo": "goods", "amount": 16 }],
+          "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
         { "size": 12.0, "height": 18.0, "people": 0, "jobs": 40, "demolitionPrice": 20000,
-          "sustain": [{ "cargo": "goods", "amount": 180 }],
-          "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
+          "sustain": [{ "cargo": "goods", "amount": 36 }],
+          "construction": [{ "cargo": "materials", "amount": 48 }, { "cargo": "planks", "amount": 24 }] }
       ] },
       { "id": "industry", "tiers": [
         { "size": 9.0, "height": 6.0, "people": 0, "jobs": 10, "demolitionPrice": 5000,
-          "sustain": [{ "cargo": "planks", "amount": 30 }],
-          "construction": [{ "cargo": "materials", "amount": 40 }, { "cargo": "planks", "amount": 20 }] },
+          "sustain": [{ "cargo": "planks", "amount": 6 }],
+          "construction": [{ "cargo": "materials", "amount": 8 }, { "cargo": "planks", "amount": 4 }] },
         { "size": 11.0, "height": 8.0, "people": 0, "jobs": 25, "demolitionPrice": 11000,
-          "sustain": [{ "cargo": "planks", "amount": 70 }],
-          "construction": [{ "cargo": "materials", "amount": 100 }, { "cargo": "planks", "amount": 50 }] },
+          "sustain": [{ "cargo": "planks", "amount": 14 }],
+          "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
         { "size": 12.0, "height": 10.0, "people": 0, "jobs": 60, "demolitionPrice": 25000,
-          "sustain": [{ "cargo": "planks", "amount": 150 }],
-          "construction": [{ "cargo": "materials", "amount": 240 }, { "cargo": "planks", "amount": 120 }] }
+          "sustain": [{ "cargo": "planks", "amount": 30 }],
+          "construction": [{ "cargo": "materials", "amount": 48 }, { "cargo": "planks", "amount": 24 }] }
       ] }
     ]
   },
@@ -347,7 +350,7 @@
     "carShare": 0.6,                // share of the groups that have a car
     "peoplePerCar": 5,              // people one ambient car stands for
     "walkRadius": 150.0,            // straight-line distance within which people walk
-    "walkSpeed": 2.5,               // a day is 600 s, so a pace in m/s is about five times quicker than life against a car at 14 m/s
+    "walkSpeed": 2.5,               // vehicles drive at real speed and a day is 1200 s, so people walk faster than life to keep a short walk short beside a drive
     "walkDetour": 1.3,              // path over straight-line distance when walking
     "workRadius": 1800.0,           // workplaces and leisure places are looked for this far from home
     "nearness": 300.0,              // a place this far away counts half as much as one next door (weights fall as 1 / (1 + (d / nearness)^2))
@@ -373,7 +376,7 @@
     "carSpawnAttempts": 8,          // places tried per step to put a waiting car on the road
     "carArriveRange": 30.0,         // a car is at its destination when this close to the end of the lane into the node (it is parked out of the way of the queue)
     "carTimeoutSeconds": 400.0,     // a car still on the road after this long is taken off and its people count as arrived (a jam clears itself, slowly)
-    "carStuckSeconds": 90.0,        // a car that has hardly moved for this long is taken off too: people give up on a jam and walk (a day is 600 s)
+    "carStuckSeconds": 90.0,        // a car that has hardly moved for this long is taken off too: people give up on a jam and walk (a day is 1200 s)
     "congestionSmoothing": 0.15,    // people learn how slow the roads are at each hour: every car trip that ends moves that hour's estimate this share of the way to what it took
     "maxCongestion": 6.0            // the estimate (trip time over the time on empty roads) never goes above this
   },
@@ -398,20 +401,20 @@
       "many":   [3, 2, 3, 2, 2, 2, 2]
     },
     "types": [
-      { "id": "forest", "name": "Forest", "size": 30.0, "height": 8.0, "output": "wood", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.20, 0.45, 0.22] },
-      { "id": "quarry", "name": "Quarry", "size": 28.0, "height": 6.0, "output": "stone", "perMonth": 3600.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.55, 0.52, 0.48] },
-      { "id": "farm", "name": "Farm", "size": 30.0, "height": 5.0, "output": "grain", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.82, 0.72, 0.30] },
-      { "id": "sawmill", "name": "Sawmill", "size": 22.0, "height": 12.0, "output": "planks", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [{ "cargo": "wood", "amount": 1.0 }], "maxInput": 600.0, "color": [0.62, 0.42, 0.24] },
-      { "id": "cementworks", "name": "Cement works", "size": 22.0, "height": 16.0, "output": "materials", "perMonth": 3600.0, "maxOutput": 600.0, "inputs": [{ "cargo": "stone", "amount": 1.0 }], "maxInput": 600.0, "color": [0.70, 0.70, 0.74] },
-      { "id": "foodplant", "name": "Food plant", "size": 22.0, "height": 12.0, "output": "food", "perMonth": 4500.0, "maxOutput": 600.0, "inputs": [{ "cargo": "grain", "amount": 1.0 }], "maxInput": 600.0, "color": [0.85, 0.45, 0.35] },
-      { "id": "factory", "name": "Factory", "size": 22.0, "height": 14.0, "output": "goods", "perMonth": 3600.0, "maxOutput": 600.0, "inputs": [{ "cargo": "planks", "amount": 1.0 }], "maxInput": 600.0, "color": [0.40, 0.45, 0.62] }
+      { "id": "forest", "name": "Forest", "size": 30.0, "height": 8.0, "output": "wood", "perMonth": 900.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.20, 0.45, 0.22] },
+      { "id": "quarry", "name": "Quarry", "size": 28.0, "height": 6.0, "output": "stone", "perMonth": 720.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.55, 0.52, 0.48] },
+      { "id": "farm", "name": "Farm", "size": 30.0, "height": 5.0, "output": "grain", "perMonth": 900.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "color": [0.82, 0.72, 0.30] },
+      { "id": "sawmill", "name": "Sawmill", "size": 22.0, "height": 12.0, "output": "planks", "perMonth": 900.0, "maxOutput": 600.0, "inputs": [{ "cargo": "wood", "amount": 1.0 }], "maxInput": 600.0, "color": [0.62, 0.42, 0.24] },
+      { "id": "cementworks", "name": "Cement works", "size": 22.0, "height": 16.0, "output": "materials", "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "stone", "amount": 1.0 }], "maxInput": 600.0, "color": [0.70, 0.70, 0.74] },
+      { "id": "foodplant", "name": "Food plant", "size": 22.0, "height": 12.0, "output": "food", "perMonth": 900.0, "maxOutput": 600.0, "inputs": [{ "cargo": "grain", "amount": 1.0 }], "maxInput": 600.0, "color": [0.85, 0.45, 0.35] },
+      { "id": "factory", "name": "Factory", "size": 22.0, "height": 14.0, "output": "goods", "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "planks", "amount": 1.0 }], "maxInput": 600.0, "color": [0.40, 0.45, 0.62] }
     ]
   },
 
   // The vehicles the company can buy at a depot. A model that carries 'freight' takes whichever freight cargo (anything but
   // passengers) is waiting at a stop and wanted at the next one.
   "vehicles": [
-    { "id": "bus", "name": "Bus", "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 400.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
-    { "id": "truck", "name": "Truck", "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 450.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 }
+    { "id": "bus", "name": "Bus", "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
+    { "id": "truck", "name": "Truck", "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 900.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 }
   ]
 }

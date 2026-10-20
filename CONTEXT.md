@@ -89,11 +89,11 @@ A Company vehicle leaving a Depot whose doorway is busy: it waits inside until t
 **Garage**:
 The Company vehicles and trains standing in a Depot on no Line: bought without one, or sent back from a Line. They pay a tenth of their upkeep while they wait; each can be put on a Line of its kind, or sold.
 
-**Contract**:
-A time-limited request for specific cargo or passengers, with a reward.
+**Order** (planned, campaign C5; replaces the Contract of the first plan):
+A request from the Government with a deadline: a production quota (deliver an amount of a Cargo to the state at a Gateway), a state work (a factory the state founds on the map, to be supplied and connected, with an output target) or a civil need. Offered at random times inside the Phase of the war, accepted or ignored by the Player, rewarded with Budget and Standing when met and penalised when failed.
 
-**Era**:
-A period of game time that decides which vehicles and road types are available. The world is fictional.
+**Model year** (planned, campaign C8; replaces the Era of the first plan):
+The year of the campaign from which a vehicle model can be bought. The world is fictional, the period is 1938 to 1945.
 
 **Incident**:
 Anything that goes wrong on the network: an accident, a breakdown, a blockage. Includes incidents involving ambient traffic.
@@ -143,7 +143,49 @@ An expensive, slow repair that restores nearly all Condition and clears accumula
 The road equivalent of an Overhaul, done by a road crew. Closes or narrows the road while it runs, which affects traffic.
 
 **Old vehicle**:
-A vehicle kept past its Era. It has no permanent wear limit, but it burns more fuel and its Patch, Service and Overhaul costs are higher than when new.
+A vehicle whose model is old. It has no permanent wear limit and top speed does not fall, but its Patch, Service and Overhaul costs are higher than when new (a multiplier by the age of the model, in the campaign).
+
+**Maintenance policy** (planned, M5):
+What a Company vehicle or train does about its Condition: when it is due (days since its last repair, Condition below a floor, either or both) and which repair it gets (Patch, Service or Overhaul), or nothing. Set for the whole Company, for a Line or for one vehicle; the most specific one wins and "inherit" passes the choice up. A due vehicle finishes unloading at its next stop, loads no more and goes to the nearest Depot able to do that repair, waits for a bay, and returns to its Line; with no such Depot it keeps running and the game says so.
+
+**Bay (depot)** (planned, M5):
+A place in a Depot where one repair is done at a time. A Simple Depot has one, a Workshop two, a Complex three; vehicles that wait for one queue inside as in the Garage. Not the Bay of a Station.
+
+**Breakdown** (planned, M5):
+A Wreck made by wear instead of a crash: the risk per metre driven is none while Condition is above 60 and grows as it falls. Cleared by a Rescue crew like any Wreck; the cargo is lost, and the vehicle goes to the Garage of the nearest Depot with minimal Condition. Only Company vehicles and trains wear.
+
+**Signal failure** (planned, M5):
+A Signal that shows red for some minutes whatever the track beyond it, until a Rescue crew repairs it. Trains still cannot hit each other; they wait, and a Deadlock may follow.
+
+**Frequency option** (planned, M5):
+Off, low, normal or high: scales the random breakdowns, signal failures and, in the campaign, random events and raids. It does not scale the incidents that come out of the driving (failed overtaking, junction crashes).
+
+**Campaign** (planned, ADR 0006):
+The game's one mode for now: the Player chairs the development committee of a Region of a fictional country at war, from January 1938 to December 1945, managing its military and civil industrialisation.
+
+**Region**:
+The map: a small part of the country, with Towns and Industries, joined to the rest of the world only by Gateways.
+
+**Phase** (planned, C5):
+A stretch of the campaign (rearmament, mobilisation, total war, the end) that sets the mix of Orders and the size of the Allocation.
+
+**Budget / Allocation / Advance** (planned, C4):
+The money the Player spends. Fares and cargo pay earn it, the Government adds an Allocation every month by Phase and Standing, and the Advance (the old Loan) is borrowed from the ministry. Imports are paid from it.
+
+**Standing** (planned, C4):
+A number from 0 to 100 for how the Government sees the Player. Rises with Orders met, falls with Orders failed, fines and deficit; below 20 for six months in a row the Player is dismissed and the game ends. Competes with the Satisfaction of the Towns.
+
+**Gateway** (planned, C3):
+A road or rail connection on the edge of the Region where goods come in and go out. Behaves like a Station that is also an Industry: an Import shipment arrives there as stock to be carried inland, and what the Government demands is delivered there as an export.
+
+**Import shipment** (planned, C3):
+Cargo the Player asks the Government to send from outside the Region (coal, ore, rubber, fuel), paid from the Budget at a higher price per unit than the same Cargo produced locally.
+
+**Power grid** (planned, C6):
+The Region's electricity as one capacity, not a Cargo and not a network of cables: power plants that are supplied with coal add megawatts, each Industry has a demand, a shortage lowers all outputs in proportion, and the Government sells power from outside by the month.
+
+**Staffing** (planned, C7):
+The share of the jobs of a big Industry that are filled by residents, who get there on foot, by car or by the Company's Lines. Output follows it.
 
 **Command**:
 A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, rename, close or add bays to a Station, create, edit, rename, colour or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
@@ -156,10 +198,10 @@ _Avoid_: "player vehicle" (ambiguous with the camera), "fleet car"
 Money earned for cargo or passengers delivered: quantity times straight-line distance between the stations times the cargo's rate, reduced when the trip took longer than the cargo tolerates.
 
 **Day**:
-600 seconds of simulated time (ten minutes), long enough for a commute. Upkeep and loan interest are paid at the turn of a day. Thirty days make a month and twelve months a year (shown on the HUD with the time of day).
+1200 seconds of simulated time (twenty minutes), the cycle of people's lives: a commute is a small part of it. Upkeep and loan interest are paid at the turn of a day. Three days make a **Month** (the calendar, 3600 s) and twelve months a year, counted from January 1938 and shown on the HUD with the time of day; the campaign of 96 months is 288 days. Monthly rates (production, needs, growth) are per month of 3600 s.
 
 **Loan**:
-Money borrowed, up to a limit, that costs interest every day. A Company whose net worth stays below minus the debt limit for 73 days goes bankrupt (the sandbox carries on).
+Money borrowed, up to a limit, that costs interest every day. A Company whose net worth stays below minus the debt limit for 73 days goes bankrupt (the sandbox carries on). In the campaign it becomes the Advance and bankruptcy gives way to dismissal (C4).
 
 **Bridge / Tunnel**:
 A stretch of road carried over water or a deep valley (Bridge), or through a hill (Tunnel), instead of being cut or filled into the ground. Chosen automatically when a road is planned, priced per metre, and leaves the ground as it was. Other roads can join one in the middle or pass over or under it.
@@ -177,6 +219,8 @@ The line a vehicle follows from one lane through a junction to the next. Vehicle
 
 - A **Town** is served by **Stations**; a **Station** belongs to one or more **Lines**.
 - A **Town** needs **Cargo** deliveries to grow, and its **Trip groups** need to reach work and leisure.
-- A **Contract** names an **Industry** or **Town** as source and destination.
+- An **Order** names an **Industry**, **Town** or **Gateway** as source and destination.
 - A **Line** is run by **Company vehicles**, bought at a **Depot**; they earn **Pay** and cost upkeep every **Day**.
-- An **Era** gates which vehicles and road types the **Company** may buy.
+- A **Model year** gates which vehicles the **Company** may buy.
+- A **Maintenance policy** sends a due vehicle to a **Depot** whose level can do the repair; a **Breakdown** is a **Wreck** made by low **Condition**.
+- The **Budget** is fed by **Pay** and the **Allocation**; **Orders** met raise **Standing**, which sets the **Allocation**; **Import shipments** come in at a **Gateway** and are paid from the **Budget**.

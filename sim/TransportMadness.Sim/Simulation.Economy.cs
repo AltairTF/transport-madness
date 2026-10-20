@@ -12,7 +12,7 @@ public sealed partial class Simulation
     public long Day => Tick / _ticksPerDay;
     public float DayLengthSeconds => _economy.DayLength;
 
-    /// <summary>Position in the calendar, derived from <see cref="Day"/>: years and months count from 1, the day of the month too.</summary>
+    /// <summary>Position in the calendar, derived from <see cref="Day"/>: the year counts from the tuning's start year, the month and the day of the month from 1.</summary>
     public readonly record struct Date(int Year, int Month, int DayOfMonth);
 
     public Date Today => DateOfDay(Day);
@@ -20,7 +20,7 @@ public sealed partial class Simulation
     public Date DateOfDay(long day)
     {
         long month = day / _economy.DaysPerMonth;
-        return new Date((int)(month / _economy.MonthsPerYear) + 1, (int)(month % _economy.MonthsPerYear) + 1, (int)(day % _economy.DaysPerMonth) + 1);
+        return new Date(_economy.StartYear + (int)(month / _economy.MonthsPerYear), (int)(month % _economy.MonthsPerYear) + 1, (int)(day % _economy.DaysPerMonth) + 1);
     }
 
     /// <summary>Whole months that have passed; changes on the first day of each month.</summary>

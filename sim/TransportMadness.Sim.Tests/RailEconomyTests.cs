@@ -44,7 +44,7 @@ public class RailEconomyTests
             for (int d = 0; d < Days; d++)
             {
                 if (d == From) { income = line.Income; upkeep = line.Upkeep; }
-                Run(sc.Sim, 1);
+                RunPeriod(sc.Sim);
             }
             results.Add(((line.Income - income) / (double)(Days - From), (line.Upkeep - upkeep) / (double)(Days - From)));
         }
@@ -65,7 +65,7 @@ public class RailEconomyTests
         for (int d = 0; d < Days; d++)
         {
             if (d == From) { income = l.Income; upkeep = l.Upkeep; }
-            Run(sim, 1);
+            RunPeriod(sim);
         }
         return ((l.Income - income) - (l.Upkeep - upkeep)) / (double)(Days - From);
     }
@@ -141,7 +141,7 @@ public class RailEconomyTests
             for (int day = 0; day < Days; day++)
             {
                 if (day == From) { income = l.Income; upkeep = l.Upkeep; }
-                Run(sim, 1);
+                RunPeriod(sim);
             }
             results.Add(((l.Income - income) / (double)(Days - From), (l.Upkeep - upkeep) / (double)(Days - From)));
         }

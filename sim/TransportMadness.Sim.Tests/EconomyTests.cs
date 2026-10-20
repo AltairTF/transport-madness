@@ -156,11 +156,12 @@ public class EconomyTests
     }
 
     [Theory]
-    [InlineData(0, 1, 1, 1)]
-    [InlineData(29, 1, 1, 30)]
-    [InlineData(30, 1, 2, 1)]
-    [InlineData(359, 1, 12, 30)]
-    [InlineData(360, 2, 1, 1)]
+    [InlineData(0, 1938, 1, 1)]
+    [InlineData(2, 1938, 1, 3)]
+    [InlineData(3, 1938, 2, 1)]
+    [InlineData(35, 1938, 12, 3)]
+    [InlineData(36, 1939, 1, 1)]
+    [InlineData(287, 1945, 12, 3)]
     public void TheCalendar_IsDerivedFromTheDayCount(long day, int year, int month, int dayOfMonth)
     {
         var date = NewSim().DateOfDay(day);

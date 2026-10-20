@@ -290,7 +290,7 @@ public class IndustryTests
         int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
         sim.Execute(new BuyVehicleCommand(depot, "truck", line));
 
-        RunDays(sim, 0.5);
+        RunDays(sim, 0.25);
 
         Assert.Equal(5, sim.Lines[line].Delivered);
         Assert.True(sim.Lines[line].Income > 0);
@@ -304,20 +304,20 @@ public class IndustryTests
         var tuning = With(t => t with { Towns = t.Towns with { InitialStockMonths = 0f } });
         var buildings = new[]
         {
-            new BuildingPlan(BuildingType.Home, 0, 1100, 25, 0),  // goods need 10 a month, room for 20
-            new BuildingPlan(BuildingType.Home, 1, 1100, -25, 0), // goods need 25 a month, room for 50
+            new BuildingPlan(BuildingType.Home, 0, 1100, 25, 0),  // goods need 2 a month, room for 4
+            new BuildingPlan(BuildingType.Home, 1, 1100, -25, 0), // goods need 5 a month, room for 10
         };
         var (sim, depot) = World(1400, Array.Empty<IndustryPlan>(), buildings, tuning);
         int a = Station(sim, 300), b = Station(sim, 1100);
-        sim.Stations[a].Waiting[Goods] = 20f;
+        sim.Stations[a].Waiting[Goods] = 10f;
         int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
         sim.Execute(new BuyVehicleCommand(depot, "truck", line));
 
-        RunDays(sim, 0.5);
+        RunDays(sim, 0.25);
 
         var small = sim.Buildings[0].Sustain[Goods];
         var large = sim.Buildings[1].Sustain[Goods];
-        Assert.Equal(20f, small + large, 2);
+        Assert.Equal(10f, small + large, 2);
         Assert.Equal(2.5f, large / small, 2);
         Assert.Equal(0f, sim.Buildings[0].Construction[Goods]);
     }
@@ -328,14 +328,14 @@ public class IndustryTests
         var tuning = With(t => t with { Towns = t.Towns with { InitialStockMonths = 0f } });
         var (sim, depot) = World(1400, Array.Empty<IndustryPlan>(), new[] { new BuildingPlan(BuildingType.Industry, 0, 1100, 25, 0) }, tuning);
         int a = Station(sim, 300), b = Station(sim, 1100);
-        sim.Stations[a].Waiting[Planks] = 100f; // an industry building: 30 a month (room 60) plus 20 to keep for building
+        sim.Stations[a].Waiting[Planks] = 100f; // an industry building: 6 a month (room 12) plus 4 to keep for building
         int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
         sim.Execute(new BuyVehicleCommand(depot, "truck", line));
 
-        RunDays(sim, 4);
+        RunDays(sim, 2); // less than a month, so nothing has been used up yet
 
-        Assert.Equal(60f, sim.Buildings[0].Sustain[Planks], 1);
-        Assert.Equal(20f, sim.Buildings[0].Construction[Planks], 1);
+        Assert.Equal(12f, sim.Buildings[0].Sustain[Planks], 1);
+        Assert.Equal(4f, sim.Buildings[0].Construction[Planks], 1);
     }
 
     // ---- The whole chain -----------------------------------------------------------------------------------------

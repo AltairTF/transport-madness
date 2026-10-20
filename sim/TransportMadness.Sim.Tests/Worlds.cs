@@ -11,6 +11,11 @@ internal static class Worlds
         for (long t = 0; t < ticks; t++) sim.Step();
     }
 
+    /// <summary>The 600 seconds that were a day before the campaign's 1200 s day: the balance tests measure in these periods, so their windows and thresholds keep their meaning.</summary>
+    internal const double Period = 600.0;
+
+    internal static void RunPeriod(Simulation sim) => Run(sim, Period / sim.DayLengthSeconds);
+
     internal static (Simulation Sim, WorldPlan Plan) World(ulong seed, int towns, Tuning? tuning = null, IndustryAmount? industries = null)
     {
         var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
