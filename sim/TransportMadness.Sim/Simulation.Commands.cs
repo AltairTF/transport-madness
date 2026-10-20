@@ -109,6 +109,10 @@ public sealed partial class Simulation
                 return BuildTrafficLight(c.Node);
             case RemoveTrafficLightCommand c:
                 return RemoveTrafficLight(c.Node);
+            case BuildRoadSignCommand c:
+                return BuildRoadSign(c.X, c.Z, c.Kind);
+            case RemoveRoadSignCommand c:
+                return RemoveRoadSign(c.X, c.Z);
             case BuildTrackCommand c:
                 return BuildTrack(c);
             case RemoveTrackCommand c:

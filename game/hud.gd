@@ -44,7 +44,11 @@ const TOOL_CATEGORIES := [
 		["Move", "move", "Pick a junction, then click where it goes."],
 		["Remove", "remove", "Demolish a piece of road."],
 		["Traffic light", "light", "Put traffic lights at a junction: the two crossing streets take turns."],
-		["Remove light", "light_remove", "Take traffic lights down."]]},
+		["Remove light", "light_remove", "Take traffic lights down."],
+		["Priority road", "sign_priority", "Priority sign on a road and the one across the junction: the other roads give way to them."],
+		["Yield sign", "sign_yield", "The traffic of this road gives way to the roads without a sign."],
+		["Stop sign", "sign_stop", "The traffic of this road stops, then gives way to the roads without a sign."],
+		["Remove sign", "sign_remove", "Take a sign down."]]},
 	{"name": "Rail", "tools": [
 		["Track", "track", "Lay a straight track. Click to start, click again to build; it joins tracks it meets, and crosses roads with level crossings."],
 		["Curved track", "track_curve", "Lay a curved track: start, a point on the curve, end."],

@@ -11,13 +11,17 @@ public sealed partial class Simulation
     /// of vehicles waits for each other. A vehicle that cannot stop in time goes on, and the check in
     /// <see cref="DetectJunctionCollisions"/> sees what comes of it. The box is kept clear too: a vehicle does not
     /// enter a junction whose exit lane has no room for it. Returns the IDM braking term for the most restrictive
-    /// of these, each a stopped obstacle at the edge.
+    /// of these, each a stopped obstacle at the edge. With signs (<see cref="RoadSignKind"/>) approaches have a rank: a vehicle
+    /// does not wait for one that has not entered and ranks lower, and waits for one that ranks higher however the two arrive.
     /// </summary>
     float JunctionInteraction(int i, float v)
     {
         int lane = _lane[i];
         float distance = _laneLength[lane] - _pos[i];
-        if (distance > _drive.JunctionRange) return 0f;
+        byte sign = SignOf(lane);
+        int myRank = SignRank(sign);
+        float range = myRank == 2 ? MathF.Max(_drive.JunctionRange, SignRules.ApproachRange) : _drive.JunctionRange;
+        if (distance > range) return 0f;
 
         float toEdge = _laneZoneStart[lane] - _pos[i]; // front bumper to the edge of the junction
         if (toEdge <= 0f || !CanStop(v, toEdge)) return 0f; // in it already, or too late to wait
@@ -25,6 +29,12 @@ public sealed partial class Simulation
         int myMove = MoveIndex(lane, myNext);
         float worst = ExitBlocked(myNext, _length[i]) ? Interaction(v, toEdge, 0f) : 0f;
         if (_lightCount > 0 && LaneIsRed(lane)) return MathF.Max(worst, Interaction(v, toEdge, 0f)); // a red light: nothing else matters
+        if (sign == (byte)RoadSignKind.Stop && _stopHold[i] < SignRules.StopSeconds)
+        {
+            // Stand still at the line first; the others only matter once the vehicle has.
+            if (toEdge <= SignRules.StopLine && v < SignRules.StopSpeed) _stopHold[i] += StepSeconds;
+            return MathF.Max(worst, Interaction(v, toEdge, 0f));
+        }
         float myArrival = TimeToCover(toEdge, v);
         float centre = _pos[i] - _length[i] * 0.5f - _laneZoneStart[lane]; // along the path through the junction, negative before it
 
@@ -34,18 +44,20 @@ public sealed partial class Simulation
         {
             int other = incoming[k].Value;
             if (other == lane) continue;
+            int theirRank = _signCount > 0 ? SignRank(SignOf(other)) : 1;
             // Nearest to the junction first; the rest are further away.
             for (int r = _laneStart[other + 1] - 1; r >= _laneStart[other]; r--)
             {
                 int j = _order[r];
-                if (_laneLength[other] - _pos[j] > _drive.JunctionRange) break;
+                if (_laneLength[other] - _pos[j] > range) break;
                 if (!Conflict(lane, myNext, myMove, other, _nextLane[j], Wide(i, j), out var zone)) continue;
                 float theirCentre = _pos[j] - _length[j] * 0.5f - _laneZoneStart[other];
                 if (theirCentre > zone.OutB) continue; // it has left the stretch where we meet
                 float theirToEdge = _laneZoneStart[other] - _pos[j];
                 if (theirToEdge > 0f && _halted[j]) continue; // standing still outside: it is not coming
+                if (myRank < theirRank && theirToEdge > 0f) continue; // we have priority and it has not got into the junction
                 float theirArrival = theirToEdge > 0f ? TimeToCover(theirToEdge, _speed[j]) : 0f;
-                if (myArrival < theirArrival || (myArrival == theirArrival && i < j)) continue;
+                if (myRank == theirRank && (myArrival < theirArrival || (myArrival == theirArrival && i < j))) continue;
                 // It would get there first, but it is still far from the stretch where we meet: if we are through before it arrives, we go.
                 if (theirCentre < zone.InB && TimeToCover(zone.OutA - centre, v) + _drive.CrossingSafetyTime < TimeToCover(zone.InB - theirCentre, _speed[j])) continue;
                 worst = MathF.Max(worst, Interaction(v, toEdge, 0f));

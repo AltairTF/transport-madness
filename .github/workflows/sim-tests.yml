@@ -17,3 +17,18 @@ jobs:
       - name: Test the simulation
         working-directory: sim
         run: dotnet test --configuration Release
+
+  benchmark:
+    # Step time of the simulation in a Release build. Budgets are loose (several times what a laptop measures) so a shared runner
+    # passes and a real slowdown fails; the table lands in the job summary. See StepBenchmarks.cs.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Measure step time
+        working-directory: sim
+        env:
+          BENCH: "1"
+        run: dotnet test --configuration Release --filter "FullyQualifiedName~StepBenchmarks" --logger "console;verbosity=detailed"

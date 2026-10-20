@@ -55,6 +55,45 @@ public class RailEconomyTests
         Assert.All(results, r => Assert.True(r.Income > r.Upkeep * 0.6, $"income {r.Income:0} against upkeep {r.Upkeep:0}"));
     }
 
+    static long Capital(Simulation sim) =>
+        -(sim.Company.Total(LedgerEntry.Construction) + sim.Company.Total(LedgerEntry.Stations) + sim.Company.Total(LedgerEntry.Depots) + sim.Company.Total(LedgerEntry.Vehicles));
+
+    static double NetPerDay(Simulation sim, int line)
+    {
+        var l = sim.Lines[line];
+        long income = 0, upkeep = 0;
+        for (int d = 0; d < Days; d++)
+        {
+            if (d == From) { income = l.Income; upkeep = l.Upkeep; }
+            Run(sim, 1);
+        }
+        return ((l.Income - income) - (l.Upkeep - upkeep)) / (double)(Days - From);
+    }
+
+    /// <summary>
+    /// Rail against road for the same pair of towns and about the same seats (four coaches, 192, against six buses, 180): the railway costs
+    /// roughly twice as much to build and buy (track, station, depot and a locomotive against a road and six buses), and earns more a day,
+    /// because the buses fill up and the train does not. Measured on eight maps in the balance pass of 2026-10-21.
+    /// </summary>
+    [Fact]
+    public void ARailwayCostsAboutTwiceWhatBusesCostForTheSameSeats_AndEarnsMore()
+    {
+        var capitalRatios = new List<double>();
+        double railNet = 0, busNet = 0;
+        foreach (ulong seed in new[] { 1UL, 2UL, 3UL, 4UL, 6UL, 7UL })
+        {
+            if (PassengerRail(seed) is not { } rail) continue;
+            if (BusScenario(seed, 1, 6) is not { } bus || bus.Bought < 6) continue;
+            capitalRatios.Add(Capital(rail.Sim) / (double)Capital(bus.Sim));
+            railNet += NetPerDay(rail.Sim, rail.Line);
+            busNet += NetPerDay(bus.Sim, bus.Line);
+        }
+
+        Assert.True(capitalRatios.Count >= 4, $"only {capitalRatios.Count} maps took both");
+        Assert.All(capitalRatios, r => Assert.InRange(r, 1.4, 2.8));
+        Assert.True(railNet > busNet, $"net a day over the maps: railway {railNet:0}, buses {busNet:0}");
+    }
+
     [Fact]
     public void ATrainTakesPeopleOffTheStreets_TheTownsShowTripsByTransit()
     {

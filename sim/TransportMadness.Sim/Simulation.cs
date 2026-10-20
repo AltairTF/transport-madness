@@ -92,6 +92,7 @@ public sealed partial class Simulation
     int[] _cooldown = new int[64]; // ticks before the next lane change or overtake
     float[] _stuck = new float[64]; // seconds held up by a slower leader
     float[] _stall = new float[64]; // seconds an overtaker has stood still out in the oncoming lane
+    float[] _stopHold = new float[64]; // seconds stood still at the line of a stop sign on this lane; 0 again on the next lane
     float[] _lat = new float[64]; // 0 in own lane .. 1 fully in the oncoming lane
     float[] _shift = new float[64]; // visual sideways offset left over from a lane change, metres to the right
     int[] _blockLane = new int[64]; // lane a wreck physically blocks, or -1
@@ -230,6 +231,7 @@ public sealed partial class Simulation
             MixF(_attention[i]);
             MixF(_stuck[i]);
             MixF(_stall[i]);
+            if (_roadSigns.Count > 0) MixF(_stopHold[i]);
             MixF(_accel[i]);
             MixF(_lat[i]);
             MixF(_shift[i]);
@@ -245,6 +247,7 @@ public sealed partial class Simulation
         if (_groups.Count > 0) Mix(TripHash());
         Mix(FleetHash());
         if (_lights.Count > 0) Mix(LightHash());
+        if (_roadSigns.Count > 0) Mix(SignHash());
         if (RailInUse) Mix(RailHash());
         Mix((ulong)Company.Money);
         Mix((ulong)Company.Loan);
@@ -285,6 +288,7 @@ public sealed partial class Simulation
         _cooldown[id] = 0;
         _stuck[id] = 0f;
         _stall[id] = 0f;
+        _stopHold[id] = 0f;
         _lat[id] = 0f;
         _shift[id] = 0f;
         _blockLane[id] = -1;
@@ -374,6 +378,7 @@ public sealed partial class Simulation
             UpdateCrossings();
         }
         if (_lightCount > 0) SyncLights();
+        if (_signCount > 0) SyncSigns();
         DecideManoeuvres();
         PrepareOvertakes();
         GenerateCargo();
@@ -714,6 +719,7 @@ public sealed partial class Simulation
             _prevLane[i] = _lane[i];
             _lane[i] = _nextLane[i];
             _nextLane[i] = NextLaneFor(i, _lane[i]);
+            _stopHold[i] = 0f;
             // A manoeuvre cannot span a junction; the vehicle is simply back in its lane.
             _phase[i] = 0;
             _lat[i] = 0f;
@@ -803,6 +809,7 @@ public sealed partial class Simulation
         Array.Resize(ref _cooldown, n);
         Array.Resize(ref _stuck, n);
         Array.Resize(ref _stall, n);
+        Array.Resize(ref _stopHold, n);
         Array.Resize(ref _lat, n);
         Array.Resize(ref _shift, n);
         Array.Resize(ref _blockLane, n);

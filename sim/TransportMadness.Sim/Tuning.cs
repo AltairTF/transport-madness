@@ -197,6 +197,7 @@ public sealed record RoadTuning
     public required float TunnelCostPerMetre { get; init; }
     public required float AvenueStructureFactor { get; init; }
     public required TrafficLightTuning TrafficLight { get; init; }
+    public required RoadSignTuning Signs { get; init; }
 
     /// <summary>Price per metre of a bridge or tunnel of the given road type.</summary>
     public float StructureCostPerMetre(RoadStructure structure, RoadType type) =>
@@ -214,6 +215,24 @@ public sealed record TrafficLightTuning
     public required float GreenSeconds { get; init; }
     /// <summary>Seconds with red for everybody between the two greens.</summary>
     public required float ClearSeconds { get; init; }
+}
+
+/// <summary>Priority, yield and stop signs at the approaches of road junctions.</summary>
+public sealed record RoadSignTuning
+{
+    public required long PriorityPrice { get; init; }
+    public required long YieldPrice { get; init; }
+    public required long StopPrice { get; init; }
+    /// <summary>How near a click must be to a junction node to pick it, metres.</summary>
+    public required float PickRadius { get; init; }
+    /// <summary>How far before the junction a vehicle that must give way starts to watch for traffic, and a vehicle at a stop sign starts to brake, metres. The cross traffic is looked for this far back too.</summary>
+    public required float ApproachRange { get; init; }
+    /// <summary>Seconds a vehicle stands still at the line of a stop sign before it may go on.</summary>
+    public required float StopSeconds { get; init; }
+    /// <summary>Speed below which a vehicle counts as standing still at a stop sign, m/s.</summary>
+    public required float StopSpeed { get; init; }
+    /// <summary>How close to the junction a vehicle must be for its wait to count as the stop, metres.</summary>
+    public required float StopLine { get; init; }
 }
 
 public sealed record EconomyTuning

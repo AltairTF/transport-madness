@@ -82,6 +82,12 @@ public sealed record BuildTrafficLightCommand(int Node) : SimCommand;
 /// <summary>Takes the traffic lights down. Result: 1, 0 when there are none.</summary>
 public sealed record RemoveTrafficLightCommand(int Node) : SimCommand;
 
+/// <summary>Puts a priority, yield or stop sign on the approach to the road junction near (X, Z) that is nearest the click (a node with at least three roads and no traffic lights). A priority sign also goes on the approach opposite, if it has none. Replaces a sign already on the approach. Result: the number of signs placed, 0 when refused.</summary>
+public sealed record BuildRoadSignCommand(float X, float Z, RoadSignKind Kind) : SimCommand;
+
+/// <summary>Takes down the sign on the approach nearest (X, Z), and the opposite priority sign that went with a priority sign. Result: the number of signs removed, 0 when there is none.</summary>
+public sealed record RemoveRoadSignCommand(float X, float Z) : SimCommand;
+
 /// <summary>Builds a track (straight, or bending by <paramref name="Sweep"/> radians) on the rail network, joining it where it meets other tracks. Result: number of pieces built, 0 when refused.</summary>
 public sealed record BuildTrackCommand(float X0, float Z0, float X1, float Z1, float Sweep = 0f) : SimCommand;
 

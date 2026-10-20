@@ -28,7 +28,7 @@ Status: built (2026-10-20). Done when (game-plan.md): a mixed rail and road netw
 ## Left out on purpose
 
 - Crashes between trains and derailments (reservation makes them impossible; incidents on the rail side are crossings only for now). Signal errors as a cause of incidents: M5.
-- Priority roads, stop and yield signs at road junctions.
+- Priority roads, stop and yield signs at road junctions (built later, in the follow-up of 2026-10-21: `project-status.md` 5.22).
 - Timetables (out of scope in the game plan), electrification, depots with servicing (M5), eras of locomotives (M6).
 - Double-track as a single object: two parallel tracks with crossovers do it.
 - Trains do not wear; no maintenance until M5.

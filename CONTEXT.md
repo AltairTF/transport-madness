@@ -80,6 +80,9 @@ A place where a Track and a road meet at the same height. Closes (barriers down,
 **Traffic light**:
 Signals at a road junction of three or more roads: the approaches fall in two groups by the street they come along, and the groups take turns at green with a short red for both between. A vehicle that can still stop stops at the edge of the junction on red.
 
+**Priority road, yield sign, stop sign**:
+Signs on the approach of a road to a junction (never at a junction with traffic lights). Every approach has a rank: with a priority sign (which also goes on the approach across the junction) it goes first, without a sign it comes second, with a yield or stop sign it comes last. A vehicle does not wait for one of lower rank that has not entered the junction and waits for one of higher rank however the two arrive, unless it can be through first; the same rank takes the junction by arrival. A stop sign first holds the vehicle still at the line for a moment.
+
 **Ghost**:
 A Company vehicle leaving a Depot whose doorway is busy: it waits inside until there is room, drives out without cars braking for it (never into another vehicle), and becomes an ordinary vehicle once its whole length is out and the lane has room. A train bought while the depot is in use waits inside instead.
 

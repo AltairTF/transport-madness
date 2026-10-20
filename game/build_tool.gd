@@ -22,6 +22,7 @@ var host: Node3D
 var camera: Camera3D
 var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, downgrade, faster, slower, move, remove, depot, station, line, and the rail tools
 const LIGHT_TOOLS := ["light", "light_remove"]
+const SIGN_TOOLS := {"sign_priority": 0, "sign_yield": 1, "sign_stop": 2} ## the kind each sign tool puts up, as SimHost.BuildRoadSign takes it
 const RAIL_TOOLS := ["track", "track_curve", "track_remove", "signal_block", "signal_path", "signal_remove", "rail_station", "rail_depot"]
 const RAIL_WIDTH := 4.2
 var _signal_forward := true ## signals face trains going from a track's start toward its end; R turns them round
@@ -73,6 +74,10 @@ func set_tool(tool_name: String) -> void:
 		"line": message.emit("New line: click the stations in order, Enter finishes the line, Esc cancels")
 		"light": message.emit("Traffic light: click a junction of three roads or more; the streets that cross take turns at green")
 		"light_remove": message.emit("Remove light: click a junction with traffic lights")
+		"sign_priority": message.emit("Priority road: click a road next to a junction; the road across it gets the sign too and every other road gives way to them")
+		"sign_yield": message.emit("Yield sign: click a road next to a junction; its traffic gives way to the roads without a sign")
+		"sign_stop": message.emit("Stop sign: click a road next to a junction; its traffic stops, then gives way to the roads without a sign")
+		"sign_remove": message.emit("Remove sign: click a road next to a junction with a sign")
 		"track": message.emit("Track: click to start, click again to build (Esc stops). Tracks join where they meet; a road it crosses gets a level crossing")
 		"track_curve": message.emit("Curved track: click the start, a point on the curve, then the end (Esc stops)")
 		"track_remove": message.emit("Remove track: click a piece of track (node to node); a train on it is lost")
@@ -171,6 +176,9 @@ func _click(screen: Vector2) -> void:
 		return
 	if tool in LIGHT_TOOLS:
 		_click_light(screen)
+		return
+	if tool in SIGN_TOOLS or tool == "sign_remove":
+		_click_sign(screen)
 		return
 	if tool in ["track_remove", "signal_block", "signal_path", "signal_remove", "rail_station", "rail_depot"]:
 		_click_rail(screen, target)
@@ -285,6 +293,9 @@ func _hover(screen: Vector2) -> void:
 func _update_preview(screen: Vector2) -> void:
 	if tool in LIGHT_TOOLS:
 		_hover_light(screen)
+		return
+	if tool in SIGN_TOOLS or tool == "sign_remove":
+		_hover_sign(screen)
 		return
 	if tool in ["track_remove", "signal_block", "signal_path", "signal_remove", "rail_station", "rail_depot"]:
 		_hover_rail(screen)
@@ -661,3 +672,43 @@ func _click_light(screen: Vector2) -> void:
 	else:
 		message.emit("Lights taken down" if host.RemoveTrafficLight(p.x, p.z) else "No lights there")
 	_hover_light(screen)
+
+
+## Sign tools: a marker on the post of the sign for the approach under the mouse.
+func _hover_sign(screen: Vector2) -> void:
+	_preview.visible = false
+	_arc_preview.visible = false
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	if tool in SIGN_TOOLS:
+		var site: Dictionary = host.SignPreview(p.x, p.z, SIGN_TOOLS[tool])
+		if not site["valid"]:
+			message.emit("Click a road next to a junction of three roads or more, without lights and without this sign")
+			return
+		_preview.visible = true
+		_preview.mesh.size = Vector3(1.6, 4.0, 1.6)
+		_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"], site["y"] + 2.0, site["z"]))
+		_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
+		message.emit("Sign: cost %s" % _money(site["price"]) + ("" if site["affordable"] else "   (not enough money)"))
+	else:
+		var found: Dictionary = host.SignAt(p.x, p.z)
+		if found["found"]:
+			_preview.visible = true
+			_preview.mesh.size = Vector3(1.6, 4.0, 1.6)
+			_preview.transform = Transform3D(Basis.IDENTITY, Vector3(found["x"], found["y"] + 2.0, found["z"]))
+			_material.albedo_color = ROAD_COLORS["valid"]
+			message.emit("Click to take the sign down")
+		else:
+			message.emit("Click a road next to a junction with a sign")
+
+
+func _click_sign(screen: Vector2) -> void:
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	if tool in SIGN_TOOLS:
+		message.emit("Sign put up" if host.BuildRoadSign(p.x, p.z, SIGN_TOOLS[tool]) else "Can't put a sign there: it needs a road next to a junction of three roads or more, without lights or the same sign, and enough money")
+	else:
+		message.emit("Sign taken down" if host.RemoveRoadSign(p.x, p.z) else "No sign there")
+	_hover_sign(screen)

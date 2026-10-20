@@ -124,7 +124,11 @@
     "tunnelCostPerMetre": 520.0,
     "avenueStructureFactor": 1.6,   // an avenue on a bridge or in a tunnel costs this much more
     // Traffic lights (M4): the approaches of a junction fall in two groups by the direction they come from; the groups take turns.
-    "trafficLight": { "price": 12000, "upkeepPerDay": 120.0, "greenSeconds": 18.0, "clearSeconds": 4.0 }
+    "trafficLight": { "price": 12000, "upkeepPerDay": 120.0, "greenSeconds": 18.0, "clearSeconds": 4.0 },
+    // Signs (M4): a priority road sign on an approach, and the opposite one, makes every approach without a sign give way to it; a yield sign
+    // makes its own approach give way to every approach without one; a stop sign is a yield sign after a full stop of stopSeconds. Approaches
+    // of the same kind take the junction by arrival, as at a junction without signs. approachRange is how far back a vehicle that gives way looks.
+    "signs": { "priorityPrice": 700, "yieldPrice": 500, "stopPrice": 500, "pickRadius": 30.0, "approachRange": 90.0, "stopSeconds": 1.5, "stopSpeed": 0.4, "stopLine": 5.0 }
   },
 
   // The company's money. One day is dayLength seconds of simulated time: upkeep and interest are charged daily. A day is long
@@ -161,7 +165,7 @@
   // Rail (M4). Trains are on a network of their own (tracks join road nodes only at level crossings). Tracks are single and run both
   // ways; signals and stations mark where the next stretch has to be asked for. All lengths in metres, speeds in m/s, masses in kilograms.
   "rail": {
-    "trackCostPerMetre": 160.0,
+    "trackCostPerMetre": 110.0,
     "cutCostPerCubicMetre": 8.0,
     "fillCostPerCubicMetre": 12.0,
     "earthworkSlope": 1.5,
@@ -185,9 +189,9 @@
     "minTurnoutSpeed": 6.0,         // ... down to this at the sharpest turn
     "signalPrice": 1500,
     "pathSignalPrice": 2500,
-    "stationPrice": 30000,
+    "stationPrice": 20000,
     "stationUpkeepPerDay": 250.0,
-    "depotPrice": 45000,
+    "depotPrice": 30000,
     "snapRadius": 14.0,             // a click this close to a rail node or a track's centre line picks it
     "stationAlongStep": 5.0,
     "movement": {
@@ -217,7 +221,7 @@
       "clearance": 4.0
     },
     "locomotives": [
-      { "id": "diesel", "name": "Diesel locomotive", "length": 18.0, "mass": 90000.0, "power": 1600000.0, "tractiveEffort": 220000.0, "maxSpeed": 36.0, "maxWagons": 8, "price": 140000, "upkeepPerDay": 1000.0 }
+      { "id": "diesel", "name": "Diesel locomotive", "length": 18.0, "mass": 90000.0, "power": 1600000.0, "tractiveEffort": 220000.0, "maxSpeed": 36.0, "maxWagons": 8, "price": 120000, "upkeepPerDay": 1000.0 }
     ],
     "wagons": [
       { "id": "coach", "name": "Passenger coach", "cargo": "passengers", "capacity": 48, "length": 20.0, "mass": 26000.0, "unitMass": 80.0, "price": 36000, "upkeepPerDay": 200.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.15 },

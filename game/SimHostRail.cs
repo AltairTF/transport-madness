@@ -287,6 +287,7 @@ public partial class SimHost
         UpdateCrossingsAndSignals(delta: 0.0);
         DrawTrains(stepFraction);
         DrawLights();
+        DrawSigns();
     }
 
     int StationActiveCount()
