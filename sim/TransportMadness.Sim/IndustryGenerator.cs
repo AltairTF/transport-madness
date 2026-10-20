@@ -98,6 +98,12 @@ public static class IndustryGenerator
         }
         foreach (var o in others)
             if ((o.X - x) * (o.X - x) + (o.Z - z) * (o.Z - z) < tuning.Generation.MinSpacing * tuning.Generation.MinSpacing) return false;
+        return LevelAndDry(net, townTuning, x, z, reach, tuning.Generation.MaxHeightRange);
+    }
+
+    /// <summary>Whether the square of half-side <paramref name="reach"/> around a point is on the map, clear of water and no more than <paramref name="maxHeightRange"/> from lowest to highest. Always true without terrain.</summary>
+    internal static bool LevelAndDry(RoadNetwork net, TownsTuning townTuning, float x, float z, float reach, float maxHeightRange)
+    {
         if (net.Terrain is not { } terrain) return true;
         float lowest = float.MaxValue, highest = float.MinValue;
         const int steps = 5;
@@ -111,6 +117,6 @@ public static class IndustryGenerator
                 lowest = MathF.Min(lowest, h);
                 highest = MathF.Max(highest, h);
             }
-        return highest - lowest <= tuning.Generation.MaxHeightRange;
+        return highest - lowest <= maxHeightRange;
     }
 }

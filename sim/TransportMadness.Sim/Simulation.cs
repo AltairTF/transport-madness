@@ -137,6 +137,12 @@ public sealed partial class Simulation
         _industryTuning = tuning.Industries;
         _industryOutput = tuning.Industries.Types.Select(t => CargoIndex(tuning, t.Output)).ToArray();
         _industryInputs = ResolveIndustryInputs(tuning);
+        _gatewayTuning = tuning.Gateways;
+        _importCargo = tuning.Gateways.Imports.Select(i => CargoIndex(tuning, i.Cargo)).ToArray();
+        _exportable = new bool[tuning.Cargo.Count];
+        foreach (var id in tuning.Gateways.Exports) _exportable[CargoIndex(tuning, id)] = true;
+        _shipmentTicks = (long)MathF.Ceiling(tuning.Gateways.ShipmentSeconds / StepSeconds);
+        _intervalTicks = (long)MathF.Ceiling(tuning.Gateways.IntervalSeconds / StepSeconds);
         _sustainNeed = ResolveNeeds(tuning, t => t.Sustain, 1f);
         _constructionCap = ResolveNeeds(tuning, t => t.Construction, 1f);
         _passengerCargo = FindCargo(tuning, "passengers");
@@ -248,6 +254,7 @@ public sealed partial class Simulation
         Mix(StationHash());
         if (_buildings.Count > 0) Mix(TownHash());
         if (_industries.Count > 0 || _buildings.Count > 0) Mix(IndustryHash());
+        if (_gateways.Count > 0) Mix(GatewayHash());
         if (_groups.Count > 0) Mix(TripHash());
         Mix(FleetHash());
         if (_lines.Count > 0 || _roadWorks.Count > 0 || _resurfaced > 0) Mix(RoadWearHash());
@@ -389,6 +396,7 @@ public sealed partial class Simulation
         PrepareOvertakes();
         GenerateCargo();
         UpdateIndustries();
+        UpdateGateways();
         UpdateTrips();
         UpdateFleet();
         StepRepairs();

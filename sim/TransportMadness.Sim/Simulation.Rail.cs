@@ -446,7 +446,7 @@ public sealed partial class Simulation
         float radius = _stationTuning.CoverageRadius;
         int buildings = BuildingsNear(site.X, site.Z, radius).Count(id => _buildings[id].State == BuildingState.Active);
         long price = _railTuning.StationPrice;
-        return new StationQuote(asRoad, price, CanAfford(price), radius, buildings, IndustriesNear(site.X, site.Z, radius).Count);
+        return new StationQuote(asRoad, price, CanAfford(price), radius, buildings, IndustriesNear(site.X, site.Z, radius).Count + GatewaysNear(site.X, site.Z, radius, GatewayKind.Rail).Count);
     }
 
     int BuildRailStation(BuildRailStationCommand c)

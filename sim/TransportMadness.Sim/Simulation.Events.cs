@@ -14,6 +14,8 @@ public enum SimEventKind : byte
     Crash,
     /// <summary>A town is unhappy about an incident of the company's.</summary>
     TownUnhappy,
+    /// <summary>An import shipment has arrived at a gateway.</summary>
+    ShipmentArrived,
 }
 
 public enum EventSeverity : byte { Info, Warning, Serious }

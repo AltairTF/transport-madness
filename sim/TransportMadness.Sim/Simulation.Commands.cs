@@ -105,6 +105,8 @@ public sealed partial class Simulation
                 return c.Depot == BuyVehicleCommand.NearestDepot ? BuyVehicleAtNearestDepot(c.Model, c.Line) : BuyVehicle(c.Depot, c.Model, c.Line);
             case SellVehicleCommand c:
                 return SellVehicle(c.Vehicle);
+            case RequestImportCommand c:
+                return RequestImport(c.Gateway, c.Cargo);
             case TakeLoanCommand c:
                 return TakeLoan(c.Amount);
             case RepayLoanCommand c:

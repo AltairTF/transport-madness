@@ -1,7 +1,7 @@
 namespace TransportMadness.Sim;
 
 /// <summary>Where money came from or went to; the company keeps a running total for each.</summary>
-public enum LedgerEntry { Construction, Stations, Depots, Vehicles, Income, Upkeep, Interest, Demolition, Maintenance, Compensation, Fines }
+public enum LedgerEntry { Construction, Stations, Depots, Vehicles, Income, Upkeep, Interest, Demolition, Maintenance, Compensation, Fines, Imports }
 
 /// <summary>The player's transport business: money, loan and how it has been spent.</summary>
 public sealed class Company

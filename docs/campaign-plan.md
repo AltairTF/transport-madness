@@ -1,6 +1,6 @@
 # Campaign plan: a region at war, 1938 to 1945
 
-Status: C1 and C2 done on 2026-10-21 (sections 5.23 and 5.25 of `project-status.md`); the rest is planned (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
+Status: C1, C2 and C3 done on 2026-10-21 (sections 5.23, 5.25 and 5.26 of `project-status.md`); the rest is planned (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
 
 ## What was decided
 
@@ -24,7 +24,7 @@ Status: C1 and C2 done on 2026-10-21 (sections 5.23 and 5.25 of `project-status.
 | C1 (done) | The new time scale: day 1200 s, month 3 days, calendar from January 1938, every per-day, per-month and per-year number re-derived (upkeep, interest, supply, town needs, growth budget, trip windows, pay decay), goldens set again and checked on macOS and Linux. Before M5. |
 | M5 | Maintenance (`docs/m5-plan.md`): 5a, 5b, 5c, 5f. |
 | C2 (done) | The chain: the new cargo types and industries, scarce coal and ore, generator rules, the Industries window (section 5.25 of `project-status.md`). The truck chain is founded by orders, so its works have count 0 in the tuning until C5. |
-| C3 | Gateways: placement, stock, import shipments with the price, export, the windows. |
+| C3 (done) | Gateways: placement, stock, import shipments with the price, export, the window (section 5.26 of `project-status.md`). |
 | C4 | The budget and standing: allocation, the advance, standing, dismissal, the four grades, the HUD. |
 | C5 | Orders: the three kinds, the phases, the random schedule, acceptance, reward and failure, the Orders window and the first order. |
 | C6 | Electricity: plants, demand, shortage, the monthly purchase. |
@@ -39,7 +39,7 @@ Each slice has its tests and its own pinned hashes where the world changes, and 
 
 - **Country:** the Republic of Veldmar. **Region:** the Marren Valley. The committee is the Marren Valley Development Committee. Neighbours, the enemy and the allies are never named: the world beyond the gateways is "the rest of the world", the war is "the war". This keeps ADR 0006's fictional world.
 - **Towns:** 24 names in `towns.names` of `data/tuning.json`, invented in a Central European manner (-burg, -au, -feld, -moor, -holt, -hof) and checked not to be real places: Aldermark, Brennau, Corvenholt, Dravik, Eskerfeld, Falkenmoor, Grauwald, Harlenburg, Isenhaven, Jelenfeld, Karnbruck, Lorvenau, Marrenstadt, Norvik, Ostenhal, Pellenau, Quernheim, Rothmoor, Sarnfeld, Tavenburg, Ulvenhof, Varnholt, Wessenau, Zorvenburg. They replaced the English placeholders. There are still 24, shuffled by the seed, so no world changes and no golden hash moves (names are not in the hash).
-- **Industries and gateways** are named for their town and type as now ("Aldermark Steel Mill"); the two gateways are "North Gate" and "East Gate" style names chosen in C3 from the edge they sit on.
+- **Industries and gateways** are named for their town and type as now ("Aldermark Steel Mill"); the two gateways are named from the edge they sit on and their kind ("North Road Gate", "East Rail Gate"), see C3.
 - The country and region names are not in code yet; the HUD and the Orders window will read them from a `campaign` section of the tuning when C4 and C5 need them.
 
 ## Deposits (decided in C2)
@@ -50,7 +50,7 @@ A deposit of coal or iron ore is one per map in every setting, within 2200 m of 
 
 - The phases' exact dates and what each changes in numbers.
 - The standing formula, the allocation per phase, the grades' thresholds, the size of fines.
-- How import prices rise with rationing; the size and interval of a shipment.
+- How import prices rise with rationing (the base prices, the shipment size and the interval are in the tuning since C3).
 - The numbers of electricity (megawatts of a plant, demand of each industry) and of staffing, and how the people's own commuting is measured against the jobs.
 - How conscription, requisition and raids are scheduled and how large they are; whether a raid can be hit by a defence the player builds.
 - The Orders, Budget and Gateway windows and the war's look in 3D; the model choice for vehicles.

@@ -34,6 +34,8 @@ signal frequency_selected(frequency: int)
 signal resurface_requested(road: int)
 signal menu_requested
 ## The Towns window asks the camera to go to a town.
+signal import_requested(gateway: int, cargo: String)
+
 signal town_focus(x: float, z: float)
 ## The Towns window turns the connectivity view of the map on or off.
 signal connectivity_view_toggled(on: bool)
@@ -86,6 +88,7 @@ const WINDOWS := [
 	["Stations", "stations", ""],
 	["Towns", "towns", ""],
 	["Industries", "industries", ""],
+	["Gateways", "gateways", ""],
 ]
 const MESSAGE_SECONDS := 8.0
 
@@ -126,6 +129,9 @@ var _parked_rows: Dictionary = {} # garage id -> {"row", "separator", "label", "
 var _vehicle_rows: Dictionary = {} # vehicle id -> {"row": Control, "label": Label, "separator": Control}
 var _industries_box: VBoxContainer
 var _industries_empty: Label
+var _gateways_box: VBoxContainer
+var _gateways_empty: Label
+var _gateway_rows: Dictionary = {} # gateway id -> {"row": Control, "title": Label, "offers": Dictionary cargo id -> {"label": Label, "button": Button}, "exports": Label, "separator": Control}
 var _industry_rows: Dictionary = {} # industry id -> {"row": Control, "label": Label, "status": Label, "separator": Control}
 var _stations_box: VBoxContainer
 var _stations_empty: Label
@@ -275,6 +281,8 @@ func _build_window_panel() -> void:
 				page = _build_towns_page()
 			"industries":
 				page = _build_industries_page()
+			"gateways":
+				page = _build_gateways_page()
 			"stations":
 				page = _build_stations_page()
 			"vehicles":
@@ -327,6 +335,20 @@ func _build_towns_page() -> Control:
 	_towns_empty.text = "There are no towns on this map. Start a new game on the Towns map."
 	_towns_box.add_child(_towns_empty)
 	return _towns_box
+
+
+func _build_gateways_page() -> Control:
+	_gateways_box = VBoxContainer.new()
+	var note := Label.new()
+	note.theme_type_variation = "Dim"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.text = "The Region's links with the rest of the world. Build a road to a gateway and a station beside it (a road station for a road gateway, a rail station for a rail gateway). Imported cargo arrives there to be hauled inland; what your vehicles unload there is exported."
+	_gateways_box.add_child(note)
+	_gateways_empty = Label.new()
+	_gateways_empty.theme_type_variation = "Dim"
+	_gateways_empty.text = "There are no gateways on this map."
+	_gateways_box.add_child(_gateways_empty)
+	return _gateways_box
 
 
 func _build_industries_page() -> Control:
@@ -745,6 +767,68 @@ func _date_text(company: Dictionary) -> String:
 
 func set_cargo_names(names: Array) -> void:
 	_cargo_names = names
+
+
+## One block per gateway: whether a station reaches it, one row per import with its price and a button to ask for a shipment, and what has been exported.
+func show_gateways(gateways: Array) -> void:
+	var seen := {}
+	for gateway in gateways:
+		var id: int = gateway["id"]
+		seen[id] = true
+		if not _gateway_rows.has(id):
+			_add_gateway_row(id, gateway)
+		var row: Dictionary = _gateway_rows[id]
+		row["title"].text = "%s   (%s)\n%s" % [gateway["name"], String(gateway["kind"]).to_lower(),
+			"A station reaches it." if gateway["covered"] else "No station reaches it: build a %s station beside it." % String(gateway["kind"]).to_lower()]
+		for offer in gateway["offers"]:
+			var entry: Dictionary = row["offers"][offer["cargo"]]
+			var text := "%s   %d at %s each   %d here   %d arrived so far\n%s" % [
+				offer["name"], offer["units"], _money_text(offer["price"]), offer["stock"], offer["imported"], offer["status"]]
+			if offer["seconds"] > 0.0:
+				text += "   (%d s)" % ceili(offer["seconds"])
+			entry["label"].text = text
+			entry["button"].text = "Ask for %d %s: %s" % [offer["units"], String(offer["name"]).to_lower(), _money_text(offer["units"] * offer["price"])]
+			entry["button"].disabled = not offer["can"]
+		var exported := ""
+		for item in gateway["exports"]:
+			exported += ("" if exported.is_empty() else ", ") + "%d %s" % [item["units"], String(item["name"]).to_lower()]
+		row["exports"].text = "Exported so far: " + (exported if not exported.is_empty() else "nothing")
+	for id in _gateway_rows.keys():
+		if not seen.has(id):
+			_gateway_rows[id]["row"].queue_free()
+			_gateway_rows[id]["separator"].queue_free()
+			_gateway_rows.erase(id)
+	_gateways_empty.visible = _gateway_rows.is_empty()
+
+
+func _add_gateway_row(id: int, gateway: Dictionary) -> void:
+	var row := VBoxContainer.new()
+	var title := Label.new()
+	title.theme_type_variation = "Heading"
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(title)
+	var go := Button.new()
+	go.text = "Go to"
+	go.pressed.connect(func() -> void: town_focus.emit(gateway["x"], gateway["z"]))
+	row.add_child(go)
+	var offers := {}
+	for offer in gateway["offers"]:
+		var label := Label.new()
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.add_child(label)
+		var button := Button.new()
+		var cargo: String = offer["cargo"]
+		button.pressed.connect(func() -> void: import_requested.emit(id, cargo))
+		row.add_child(button)
+		offers[cargo] = {"label": label, "button": button}
+	var exports := Label.new()
+	exports.theme_type_variation = "Dim"
+	exports.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(exports)
+	var separator := HSeparator.new()
+	_gateways_box.add_child(row)
+	_gateways_box.add_child(separator)
+	_gateway_rows[id] = {"row": row, "title": title, "offers": offers, "exports": exports, "separator": separator}
 
 
 ## One row per industry: what it makes and holds, who takes it, what it is doing, with a button that takes the camera there.

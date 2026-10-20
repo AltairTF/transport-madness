@@ -30,6 +30,7 @@ public sealed record Tuning
     public required StationTuning Stations { get; init; }
     public required TownsTuning Towns { get; init; }
     public required IndustriesTuning Industries { get; init; }
+    public required GatewaysTuning Gateways { get; init; }
     public required TripsTuning Trips { get; init; }
     public required RailTuning Rail { get; init; }
     public required MaintenanceTuning Maintenance { get; init; }
@@ -50,6 +51,7 @@ public sealed record Tuning
         var tuning = JsonSerializer.Deserialize<Tuning>(json, Options) ?? throw new JsonException("Tuning file is empty");
         tuning.Towns.Validate();
         tuning.Industries.Validate();
+        tuning.Gateways.Validate();
         tuning.Trips.Validate();
         tuning.Maintenance.Validate();
         return tuning;
@@ -414,6 +416,46 @@ public sealed record CargoAmount
 }
 
 public enum IndustryAmount { Few, Normal, Many }
+
+/// <summary>The links with the rest of the world: where the gateways go, what can be imported and at what price, what is exported.</summary>
+public sealed record GatewaysTuning
+{
+    public required float Size { get; init; }
+    public required float Height { get; init; }
+    public required GatewayGenerationTuning Generation { get; init; }
+    public required float StockLimit { get; init; }
+    public required float ShipmentSeconds { get; init; }
+    public required float IntervalSeconds { get; init; }
+    public required IReadOnlyList<ImportTuning> Imports { get; init; }
+    public required IReadOnlyList<string> Exports { get; init; }
+
+    internal void Validate()
+    {
+        if (Imports.Count == 0) throw new JsonException("gateways.imports is empty");
+        foreach (var import in Imports)
+            if (import.Units <= 0 || import.Units > StockLimit) throw new JsonException($"gateways.imports: a shipment of {import.Cargo} must be between 1 unit and the stock limit");
+    }
+}
+
+public sealed record GatewayGenerationTuning
+{
+    public required int Attempts { get; init; }
+    public required float EdgeInset { get; init; }
+    public required float EdgeMargin { get; init; }
+    public required float TownClearance { get; init; }
+    public required float MinSpacing { get; init; }
+    public required float MinSeparation { get; init; }
+    public required float MaxHeightRange { get; init; }
+    public required float TownReach { get; init; }
+}
+
+/// <summary>A cargo the government will send into the Region: the units of one shipment and the price of each.</summary>
+public sealed record ImportTuning
+{
+    public required string Cargo { get; init; }
+    public required int Units { get; init; }
+    public required int PricePerUnit { get; init; }
+}
 
 public sealed record IndustriesTuning
 {

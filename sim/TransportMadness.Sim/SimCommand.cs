@@ -167,3 +167,6 @@ public sealed record SetFrequencyCommand(IncidentFrequency Frequency) : SimComma
 
 /// <summary>A command and the tick it was applied at, i.e. the number of steps that had run before it.</summary>
 public readonly record struct LoggedCommand(long Tick, SimCommand Command);
+
+/// <summary>Asks the government for a shipment of an imported cargo (by its id) at a gateway, paying for it now; it arrives after the shipment time. Result: 1, 0 when refused (see <see cref="Simulation.WhyNotImport"/>).</summary>
+public sealed record RequestImportCommand(int Gateway, string Cargo) : SimCommand;

@@ -111,7 +111,7 @@ public readonly record struct IndustryPlan(int Type, float X, float Z, float Ang
 
 /// <summary>What the generator made: the towns that fit, out of the number asked for, and the industries.</summary>
 /// <param name="Unlinked">Indices into <paramref name="Industries"/> of processors that could not be placed within reach of their inputs and a town, and of deposits that could not be placed within reach of a town and a fitting distance from the other deposits.</param>
-public sealed record WorldPlan(int Requested, IReadOnlyList<TownPlan> Towns, IReadOnlyList<IndustryPlan>? Industries = null, IReadOnlyList<int>? Unlinked = null);
+public sealed record WorldPlan(int Requested, IReadOnlyList<TownPlan> Towns, IReadOnlyList<IndustryPlan>? Industries = null, IReadOnlyList<int>? Unlinked = null, IReadOnlyList<GatewayPlan>? Gateways = null);
 
 /// <summary>A producer or processor in a cargo chain. It stands where it was generated and exchanges cargo with the stations that cover it.</summary>
 public sealed class Industry
@@ -140,4 +140,51 @@ public sealed class Industry
     public float Output { get; internal set; }
     /// <summary>Everything it has made so far.</summary>
     public double Produced { get; internal set; }
+}
+
+/// <summary>Where a gateway stands, which network it serves and what it is called ("North Road Gate").</summary>
+public sealed record GatewayPlan(GatewayKind Kind, string Name, float X, float Z, float Angle);
+
+/// <summary>Which network a gateway is on: road vehicles reach a road gateway and trains a rail gateway.</summary>
+public enum GatewayKind : byte { Road, Rail }
+
+/// <summary>
+/// A link with the rest of the world at the edge of the map. A station of its own mode that covers it takes the cargo it has imported
+/// to haul inland, and what a vehicle unloads there is exported.
+/// </summary>
+public sealed class Gateway
+{
+    internal Gateway(int id, GatewayPlan plan, float y, int cargoCount)
+    {
+        Id = id;
+        Kind = plan.Kind;
+        Name = plan.Name;
+        X = plan.X;
+        Y = y;
+        Z = plan.Z;
+        Angle = plan.Angle;
+        Stock = new float[cargoCount];
+        Imported = new double[cargoCount];
+        Exported = new double[cargoCount];
+        ArrivesAt = new long[cargoCount];
+        AvailableAt = new long[cargoCount];
+        Array.Fill(ArrivesAt, -1L);
+    }
+
+    public int Id { get; }
+    public GatewayKind Kind { get; }
+    public string Name { get; }
+    public float X { get; }
+    public float Y { get; }
+    public float Z { get; }
+    public float Angle { get; }
+    /// <summary>Imported cargo waiting for a station to take it, by cargo.</summary>
+    public float[] Stock { get; }
+    /// <summary>Everything that has arrived and everything that has been delivered here so far, by cargo.</summary>
+    public double[] Imported { get; }
+    public double[] Exported { get; }
+    /// <summary>The tick a shipment still on its way arrives at, -1 when none is, by cargo.</summary>
+    public long[] ArrivesAt { get; }
+    /// <summary>The tick from which the cargo can be asked for again.</summary>
+    public long[] AvailableAt { get; }
 }

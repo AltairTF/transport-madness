@@ -177,6 +177,7 @@ public partial class SimHost : Node3D
         var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2), frequency: StartingFrequency);
         Sim = sim;
         UnlinkedIndustries = plan.Unlinked?.Count ?? 0;
+        GatewaysPlaced = plan.Gateways?.Count ?? 0;
         RebuildRoads();
         _accumulator = 0;
         return plan.Towns.Count;
@@ -184,6 +185,8 @@ public partial class SimHost : Node3D
 
     /// <summary>Processors of the last <see cref="NewTownsWorld"/> map that have no producer of an input, or no town, within reach.</summary>
     public int UnlinkedIndustries { get; private set; }
+    /// <summary>How many of the two gateways found a place on the map.</summary>
+    public int GatewaysPlaced { get; private set; }
 
     /// <summary>Height of what is seen at a point: the ground, or the water surface over it.</summary>
     public float HeightAt(float x, float z) => Math.Max(_terrain.HeightAt(x, z), _terrain.WaterSurfaceAt(x, z));
@@ -555,7 +558,7 @@ public partial class SimHost : Node3D
     // Stations are named for the town (or industry) they stand beside and their number there: "Aldermark 2". A name is made once.
     readonly Dictionary<int, string> _stationNames = new();
 
-    /// <summary>The name of a station: the nearest town within 500 m, else the nearest industry within 300 m, followed by its number among the stations named for it.</summary>
+    /// <summary>The name of a station: the gateway of its mode within 300 m, else the nearest town within 500 m, else the nearest industry within 300 m, followed by its number among the stations named for it.</summary>
     public string StationName(int station)
     {
         if (Sim.Stations[station].Name is { } chosen) return chosen;
@@ -565,11 +568,18 @@ public partial class SimHost : Node3D
             var (x, z) = Sim.PointOf(Sim.Stations[s]);
             string place = Sim.Stations[s].Mode == StationMode.Rail ? "Rail station" : "Station";
             float best = float.MaxValue;
-            foreach (var town in Sim.Towns)
+            var kind = Sim.Stations[s].Mode == StationMode.Rail ? GatewayKind.Rail : GatewayKind.Road;
+            foreach (var gateway in Sim.Gateways)
             {
-                float d = (town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z);
-                if (d < best && d < 500f * 500f) { best = d; place = town.Name; }
+                float d = (gateway.X - x) * (gateway.X - x) + (gateway.Z - z) * (gateway.Z - z);
+                if (gateway.Kind == kind && d < best && d < 300f * 300f) { best = d; place = gateway.Name; }
             }
+            if (best == float.MaxValue)
+                foreach (var town in Sim.Towns)
+                {
+                    float d = (town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z);
+                    if (d < best && d < 500f * 500f) { best = d; place = town.Name; }
+                }
             if (best == float.MaxValue)
                 foreach (var industry in Sim.Industries)
                 {
@@ -796,6 +806,49 @@ public partial class SimHost : Node3D
         if (!status.Covered) return ("No station covers it", "warn");
         return ("Working", "ok");
     }
+
+    /// <summary>
+    /// The gateways: for each {id, name, kind ("Road" or "Rail"), x, y, z, covered (a station of its mode reaches it), offers, exports}
+    /// where offers lists {cargo (id), name, units, price, stock (waiting at the gateway), imported (so far), status, can (a shipment can be
+    /// asked for now), seconds (until the shipment arrives, 0 when none is on its way)} for each import and exports lists {name, units}
+    /// for each cargo delivered here so far.
+    /// </summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> GetGateways()
+    {
+        var list = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var gateway in Sim.Gateways)
+        {
+            var offers = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+            foreach (var offer in Sim.ImportOffers)
+            {
+                int c = CargoIndex(offer.Cargo);
+                string? why = Sim.WhyNotImport(gateway.Id, offer.Cargo);
+                float seconds = gateway.ArrivesAt[c] >= 0 ? (gateway.ArrivesAt[c] - Sim.Tick) * Simulation.StepSeconds : 0f;
+                offers.Add(new Godot.Collections.Dictionary
+                {
+                    ["cargo"] = offer.Cargo, ["name"] = Sim.CargoTypes[c].Name, ["units"] = offer.Units, ["price"] = offer.PricePerUnit,
+                    ["stock"] = gateway.Stock[c], ["imported"] = gateway.Imported[c], ["seconds"] = seconds,
+                    ["status"] = gateway.ArrivesAt[c] >= 0 ? "On its way" : why ?? "Ready", ["can"] = why == null,
+                });
+            }
+            var exports = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+            for (int c = 0; c < Sim.CargoTypes.Count; c++)
+                if (gateway.Exported[c] > 0.0)
+                    exports.Add(new Godot.Collections.Dictionary { ["name"] = Sim.CargoTypes[c].Name, ["units"] = gateway.Exported[c] });
+            list.Add(new Godot.Collections.Dictionary
+            {
+                ["id"] = gateway.Id, ["name"] = gateway.Name, ["kind"] = gateway.Kind.ToString(), ["x"] = gateway.X, ["y"] = HeightAt(gateway.X, gateway.Z), ["z"] = gateway.Z,
+                ["covered"] = Sim.IsCovered(gateway), ["offers"] = offers, ["exports"] = exports,
+            });
+        }
+        return list;
+    }
+
+    /// <summary>Asks the government for a shipment of a cargo (its id) at a gateway; false when refused, and <see cref="WhyNotImport"/> says why.</summary>
+    public bool RequestImport(int gateway, string cargo) => Sim.Execute(new RequestImportCommand(gateway, cargo)) == 1;
+
+    /// <summary>Why a shipment cannot be asked for now, an empty string when it can.</summary>
+    public string WhyNotImport(int gateway, string cargo) => Sim.WhyNotImport(gateway, cargo) ?? "";
 
     /// <summary>
     /// The towns: for each {id, name, x, y, z, satisfaction, population, jobs, homes, commerce, industry, inactive,
@@ -1216,6 +1269,8 @@ public partial class SimHost : Node3D
 
     static readonly Color ReachedColour = new(0.25f, 0.85f, 0.35f), CutOffColour = new(0.92f, 0.22f, 0.20f), DimmedColour = new(0.30f, 0.32f, 0.36f);
 
+    static readonly Color GatewayRoadColour = new(0.30f, 0.55f, 0.85f), GatewayRailColour = new(0.80f, 0.55f, 0.25f);
+
     static readonly Color[] BuildingColors =
     {
         new(0.80f, 0.64f, 0.46f), // home
@@ -1228,7 +1283,7 @@ public partial class SimHost : Node3D
     {
         _buildingsVersion = Sim.BuildingsVersion;
         var tuning = Sim.TownTuning;
-        int n = Sim.Industries.Count;
+        int n = Sim.Industries.Count + Sim.Gateways.Count;
         foreach (var b in Sim.Buildings) if (b.State != BuildingState.Demolished) n++;
         _buildings.InstanceCount = n;
         var buf = new float[n * FloatsPerInstance];
@@ -1244,6 +1299,18 @@ public partial class SimHost : Node3D
             buf[o + 4] = 0f;         buf[o + 5] = type.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = industry.Z;
             buf[o + 12] = type.Color[0]; buf[o + 13] = type.Color[1]; buf[o + 14] = type.Color[2]; buf[o + 15] = 1f;
+        }
+        foreach (var gateway in Sim.Gateways)
+        {
+            float side = Sim.GatewayTuning.Size * 2f, height = Sim.GatewayTuning.Height;
+            float fx = MathF.Cos(gateway.Angle), fz = MathF.Sin(gateway.Angle);
+            float y = Math.Max(_terrain.HeightAt(gateway.X, gateway.Z), _terrain.WaterSurfaceAt(gateway.X, gateway.Z)) - 0.3f + height * 0.5f;
+            int o = k++ * FloatsPerInstance;
+            buf[o + 0] = fx * side;  buf[o + 1] = 0f;     buf[o + 2] = -fz * side; buf[o + 3] = gateway.X;
+            buf[o + 4] = 0f;         buf[o + 5] = height; buf[o + 6] = 0f;         buf[o + 7] = y;
+            buf[o + 8] = fz * side;  buf[o + 9] = 0f;     buf[o + 10] = fx * side; buf[o + 11] = gateway.Z;
+            var colour = gateway.Kind == GatewayKind.Road ? GatewayRoadColour : GatewayRailColour;
+            buf[o + 12] = colour.R; buf[o + 13] = colour.G; buf[o + 14] = colour.B; buf[o + 15] = 1f;
         }
         foreach (var b in Sim.Buildings)
         {
@@ -1282,6 +1349,21 @@ public partial class SimHost : Node3D
                 OutlineSize = 10,
                 NoDepthTest = true,
                 Position = new Vector3(town.X, HeightAt(town.X, town.Z) + 70f, town.Z),
+            });
+        }
+        foreach (var gateway in Sim.Gateways)
+        {
+            _townLabels.AddChild(new Label3D
+            {
+                Text = gateway.Name,
+                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+                FixedSize = true,
+                PixelSize = 0.0013f,
+                FontSize = 34,
+                OutlineSize = 9,
+                NoDepthTest = true,
+                Modulate = gateway.Kind == GatewayKind.Road ? GatewayRoadColour.Lightened(0.4f) : GatewayRailColour.Lightened(0.4f),
+                Position = new Vector3(gateway.X, HeightAt(gateway.X, gateway.Z) + 45f, gateway.Z),
             });
         }
         foreach (var industry in Sim.Industries)

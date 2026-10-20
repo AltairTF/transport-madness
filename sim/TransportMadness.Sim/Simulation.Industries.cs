@@ -48,7 +48,7 @@ public sealed partial class Simulation
     public int IndustriesVersion { get; private set; }
 
     /// <summary>Whether there is anything on the map to deliver to: towns or industries. Without, every station takes everything and produces a fixed amount.</summary>
-    bool Settled => _buildings.Count > 0 || _industries.Count > 0;
+    bool Settled => _buildings.Count > 0 || _industries.Count > 0 || _gateways.Count > 0;
 
     static (int Cargo, float Amount)[][] ResolveIndustryInputs(Tuning tuning)
     {
@@ -167,17 +167,20 @@ public sealed partial class Simulation
         float total = 0f;
         for (int k = 0; k < buildings.Length; k++) total += roomB[k] = BuildingRoom(_buildings[buildings[k]], cargo);
         for (int k = 0; k < industries.Length; k++) total += roomI[k] = IndustryRoom(_industries[industries[k]], cargo);
-        if (total <= 0f) return 0;
         // A vehicle's units are whole: when they cover all the room every taker is filled to the brim, so the last fraction of
         // a unit of room (and the float dust of splitting by room) never leaves a stock stuck just short of full.
-        float given = MathF.Min(units, MathF.Ceiling(total));
-        if (given <= 0f) return 0;
-        float share = given >= total ? 1f : given / total;
-        for (int k = 0; k < buildings.Length; k++)
-            if (roomB[k] > 0f) GiveToBuilding(_buildings[buildings[k]], cargo, roomB[k] * share);
-        for (int k = 0; k < industries.Length; k++)
-            if (roomI[k] > 0f) _industries[industries[k]].Input[cargo] += roomI[k] * share;
-        return (int)given;
+        int given = 0;
+        if (total > 0f)
+        {
+            given = (int)MathF.Min(units, MathF.Ceiling(total));
+            float share = given >= total ? 1f : given / total;
+            for (int k = 0; k < buildings.Length; k++)
+                if (roomB[k] > 0f) GiveToBuilding(_buildings[buildings[k]], cargo, roomB[k] * share);
+            for (int k = 0; k < industries.Length; k++)
+                if (roomI[k] > 0f) _industries[industries[k]].Input[cargo] += roomI[k] * share;
+        }
+        // What the buildings and industries here cannot use goes out of the Region when a gateway is covered.
+        return given + Export(station, cargo, units - given);
     }
 
     float BuildingRoom(Building b, int cargo)

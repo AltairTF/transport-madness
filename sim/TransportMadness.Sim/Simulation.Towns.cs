@@ -57,6 +57,7 @@ public sealed partial class Simulation
             InitLots(town, townPlan);
         }
         if (plan.Industries != null) AddIndustries(plan.Industries);
+        if (plan.Gateways != null) AddGateways(plan.Gateways);
         _coverageDirty = true;
         BuildingsVersion++;
         EvaluateAccess();
@@ -305,10 +306,13 @@ public sealed partial class Simulation
         {
             _stationBuildings.Add(Array.Empty<int>());
             _stationIndustries.Add(Array.Empty<int>());
+            _stationGateways.Add(Array.Empty<int>());
             _stationAccepts.Add(new bool[_cargo.Count]);
         }
         var perIndustry = new List<int>[_industries.Count];
         for (int i = 0; i < perIndustry.Length; i++) perIndustry[i] = new List<int>();
+        var perGateway = new List<int>[_gateways.Count];
+        for (int i = 0; i < perGateway.Length; i++) perGateway[i] = new List<int>();
         float radius = _stationTuning.CoverageRadius;
         for (int s = 0; s < _stations.Count; s++)
         {
@@ -316,6 +320,7 @@ public sealed partial class Simulation
             Array.Clear(accepts);
             _stationBuildings[s] = Array.Empty<int>();
             _stationIndustries[s] = Array.Empty<int>();
+            _stationGateways[s] = Array.Empty<int>();
             var station = _stations[s];
             if (!station.Active) continue;
             var (x, z) = PointOf(station);
@@ -341,9 +346,21 @@ public sealed partial class Simulation
                 perIndustry[industry.Id].Add(s);
                 foreach (var (cargo, _) in _industryInputs[industry.Type]) accepts[cargo] = true;
             }
+            var gateways = new List<int>();
+            var mode = station.Mode == StationMode.Rail ? GatewayKind.Rail : GatewayKind.Road;
+            foreach (var gateway in _gateways)
+            {
+                if (gateway.Kind != mode || (gateway.X - x) * (gateway.X - x) + (gateway.Z - z) * (gateway.Z - z) > radius * radius) continue;
+                gateways.Add(gateway.Id);
+                perGateway[gateway.Id].Add(s);
+                for (int c = 0; c < accepts.Length; c++)
+                    if (_exportable[c]) accepts[c] = true;
+            }
             _stationBuildings[s] = buildings.ToArray();
             _stationIndustries[s] = industries.ToArray();
+            _stationGateways[s] = gateways.ToArray();
         }
+        _gatewayStations = perGateway.Select(l => l.ToArray()).ToList();
         _industryStations = perIndustry.Select(l => l.ToArray()).ToList();
         _buildingStations = perBuilding.Select(l => l?.ToArray() ?? Array.Empty<int>()).ToList();
     }

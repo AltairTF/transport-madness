@@ -184,11 +184,11 @@ The money the Player spends. Fares and cargo pay earn it, the Government adds an
 **Standing** (planned, C4):
 A number from 0 to 100 for how the Government sees the Player. Rises with Orders met, falls with Orders failed, fines and deficit; below 20 for six months in a row the Player is dismissed and the game ends. Competes with the Satisfaction of the Towns.
 
-**Gateway** (planned, C3):
-A road or rail connection on the edge of the Region where goods come in and go out. Behaves like a Station that is also an Industry: an Import shipment arrives there as stock to be carried inland, and what the Government demands is delivered there as an export.
+**Gateway**:
+A road or rail connection on the edge of the Region where goods come in and go out, one of each kind per map. Behaves like an Industry that a Station of its own mode covers: an Import shipment arrives there as stock to be carried inland, and Cargo a vehicle unloads there is exported (it pays like any delivery, and counts toward Orders from C5).
 
-**Import shipment** (planned, C3):
-Cargo the Player asks the Government to send from outside the Region (coal, ore, rubber, fuel), paid from the Budget at a higher price per unit than the same Cargo produced locally.
+**Import shipment**:
+Cargo the Player asks the Government to send from outside the Region (coal, ore, oil, rubber, fuel), paid at once (from the Budget in the campaign) at a higher price per unit than the same Cargo produced locally. One at a time per Cargo and Gateway, it arrives after a delay as stock at the Gateway.
 
 **Power grid** (planned, C6):
 The Region's electricity as one capacity, not a Cargo and not a network of cables: power plants that are supplied with coal add megawatts, each Industry has a demand, a shortage lowers all outputs in proportion, and the Government sells power from outside by the month.

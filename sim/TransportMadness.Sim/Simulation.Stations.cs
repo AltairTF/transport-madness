@@ -56,7 +56,7 @@ public sealed partial class Simulation
         long price = _stationTuning.Price + (bays ? _stationTuning.BayPrice : 0);
         float radius = _stationTuning.CoverageRadius;
         int buildings = BuildingsNear(site.X, site.Z, radius).Count(id => _buildings[id].State == BuildingState.Active);
-        return new StationQuote(site, price, CanAfford(price), radius, buildings, IndustriesNear(site.X, site.Z, radius).Count);
+        return new StationQuote(site, price, CanAfford(price), radius, buildings, IndustriesNear(site.X, site.Z, radius).Count + GatewaysNear(site.X, site.Z, radius, GatewayKind.Road).Count);
     }
 
     /// <summary>The open station nearest to a point within <paramref name="radius"/>, or -1.</summary>

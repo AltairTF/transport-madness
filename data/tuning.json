@@ -486,6 +486,39 @@
     ]
   },
 
+  // Gateways (C3): the Region's only links with the rest of the world. One road gateway and one rail gateway stand at the edge
+  // of the map, placed by the seed for the player to connect. A gateway behaves like an industry that a station covers (of its own
+  // mode, road or rail): imported cargo arrives there as stock to be collected, and cargo unloaded there is exported (it pays as
+  // any delivery, and counts toward the government's orders from C5).
+  "gateways": {
+    "size": 22.0,                   // half the side of the square it stands on
+    "height": 7.0,
+    "generation": {
+      "attempts": 400,
+      "edgeInset": 140.0,           // from the edge of the map
+      "edgeMargin": 250.0,          // from the corners, along the edge
+      "townClearance": 150.0,       // from the edge of a town's grid
+      "minSpacing": 400.0,          // from industries
+      "minSeparation": 1500.0,      // between the two gateways
+      "maxHeightRange": 4.0,        // highest minus lowest ground under it
+      "townReach": 3000.0           // a gateway is placed within this of a town's middle; when no such place is found it is placed anywhere that will do
+    },
+    "stockLimit": 800.0,            // most of one cargo that waits at a gateway, shipments still on their way included
+    "shipmentSeconds": 600.0,       // from the request to the arrival of a shipment
+    "intervalSeconds": 1200.0,      // after a shipment arrives, before the same cargo can be asked for again at that gateway
+    // What can be imported, the units of one shipment and the price per unit, dearer than making it here (the pay for hauling a
+    // unit a few kilometres is 40 to 60). Oil and rubber are not made in the Region at all.
+    "imports": [
+      { "cargo": "coal",   "units": 200, "pricePerUnit": 60 },
+      { "cargo": "ore",    "units": 200, "pricePerUnit": 60 },
+      { "cargo": "oil",    "units": 100, "pricePerUnit": 80 },
+      { "cargo": "rubber", "units": 100, "pricePerUnit": 110 },
+      { "cargo": "fuel",   "units": 100, "pricePerUnit": 100 }
+    ],
+    // What a gateway takes from the Region's vehicles (cargo it accepts at a station that covers it).
+    "exports": ["wood", "planks", "stone", "materials", "grain", "food", "goods", "coal", "ore", "steel", "fuel", "engines", "bodies", "tyres", "trucks"]
+  },
+
   // The vehicles the company can buy at a depot. A model that carries 'freight' takes whichever freight cargo (anything but
   // passengers) is waiting at a stop and wanted at the next one.
   "vehicles": [

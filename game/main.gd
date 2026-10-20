@@ -89,6 +89,11 @@ func _ready() -> void:
 		hud.show_message("Resurfacing started: the road is closed until the crew is done" if why == "" else "Can't resurface it: " + why)
 	)
 	hud.garage_sell.connect(func(parked: int) -> void: hud.show_message("Sold" if host.SellParked(parked) else "That can't be sold now"))
+	hud.import_requested.connect(func(gateway: int, cargo: String) -> void:
+		if host.RequestImport(gateway, cargo):
+			hud.show_message("Shipment asked for")
+		else:
+			hud.show_message(host.WhyNotImport(gateway, cargo)))
 	hud.town_focus.connect(rig.focus_on)
 	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
 	if _world_note != "":
@@ -135,6 +140,7 @@ func _process(delta: float) -> void:
 		hud.show_lines(host.GetLines())
 		hud.show_towns(host.GetTowns())
 		hud.show_industries(host.GetIndustries())
+		hud.show_gateways(host.GetGateways())
 		hud.show_stations(host.GetStations())
 		var vehicles: Array = host.GetVehicles()
 		hud.show_vehicles(vehicles)
@@ -177,6 +183,8 @@ func _new_world(map: String) -> void:
 			var unlinked: int = host.UnlinkedIndustries
 			if unlinked > 0:
 				_world_note += ("" if _world_note == "" else ". ") + "%d industries are out of reach of their suppliers, a town or the other deposits on this map" % unlinked
+			if host.GatewaysPlaced < 2:
+				_world_note += ("" if _world_note == "" else ". ") + "Only %d of the 2 gateways fit on this map" % host.GatewaysPlaced
 			if hud != null and _world_note != "":
 				hud.show_message(_world_note)
 			var towns: Array = host.GetTowns()
