@@ -41,7 +41,7 @@ public sealed partial class Simulation
         if (offers.Count == 0) return;
         float price = PriceFactorIn(offers[0].Cargo, after.Id), units = UnitsFactorIn(offers[0].Cargo, after.Id);
         if (MathF.Abs(price - PriceFactorIn(offers[0].Cargo, before.Id)) < 0.001f && MathF.Abs(units - UnitsFactorIn(offers[0].Cargo, before.Id)) < 0.001f) return;
-        AddEvent(SimEventKind.War, EventSeverity.Warning, 0f, 0f, -1, FormattableString.Invariant(
+        AddEvent(SimEventKind.War, EventSeverity.Warning, -1, FormattableString.Invariant(
             $"{after.Name}: rationing. {string.Join(", ", offers.Select(o => _cargo[CargoIndex(_net.Tuning, o.Cargo)].Name.ToLowerInvariant()))} cost {price:0.##} times as much and shipments are {units * 100f:0}% of the size"));
     }
 }

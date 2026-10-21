@@ -32,17 +32,13 @@ public partial class SimHost
         long until = o.State == OrderState.Active ? o.Deadline : o.State == OrderState.Offered ? o.ExpiresAt : o.ClosedAt;
         float daysLeft = o.IsOpen ? Math.Max(0f, (until - Sim.Tick) / day) : 0f;
         string? why = o.State == OrderState.Offered ? Sim.WhyNotAccept(o.Id) : null;
-        var (x, z) = o.Kind switch
-        {
-            OrderKind.Quota => (Sim.Gateways[o.Gateway].X, Sim.Gateways[o.Gateway].Z),
-            OrderKind.Civil => (Sim.Towns[o.Town].X, Sim.Towns[o.Town].Z),
-            _ => o.Works.Count > 0 ? (o.Works[0].X, o.Works[0].Z) : (0f, 0f),
-        };
+        var place = Sim.PlaceOf(o);
+        var (x, z) = place ?? (0f, 0f);
         return new Godot.Collections.Dictionary
         {
             ["id"] = o.Id, ["kind"] = o.Kind.ToString(), ["title"] = char.ToUpperInvariant(o.Title[0]) + o.Title[1..], ["state"] = o.State.ToString(),
             ["units"] = o.Units, ["progress"] = o.Progress, ["days_left"] = daysLeft, ["days"] = o.Days, ["reward"] = o.Reward, ["standing"] = o.Standing,
-            ["paid"] = o.Paid, ["can"] = o.State == OrderState.Offered && why == null, ["why"] = why ?? "", ["x"] = x, ["z"] = z,
+            ["paid"] = o.Paid, ["can"] = o.State == OrderState.Offered && why == null, ["why"] = why ?? "", ["place"] = place.HasValue, ["x"] = x, ["z"] = z,
         };
     }
 

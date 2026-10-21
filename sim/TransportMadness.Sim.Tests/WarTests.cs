@@ -293,6 +293,7 @@ public class ConscriptionTests
         Assert.True(sim.Towns[0].Satisfaction < before - 1f);
         var news = Assert.Single(sim.Events, e => e.Kind == SimEventKind.War && e.Text.StartsWith("Call-up"));
         Assert.Equal(EventSeverity.Serious, news.Severity);
+        Assert.False(news.HasPlace); // the whole region, so a click on the feed does not take the camera to the middle of the map
     }
 
     [Fact]

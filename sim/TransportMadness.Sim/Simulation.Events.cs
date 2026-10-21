@@ -30,8 +30,12 @@ public enum SimEventKind : byte
 
 public enum EventSeverity : byte { Info, Warning, Serious }
 
-/// <summary>Something the player needs to see: an incident, a breakdown, a warning. <see cref="X"/> and <see cref="Z"/> are where it happened, for the camera.</summary>
-public readonly record struct SimEvent(int Id, long Tick, SimEventKind Kind, EventSeverity Severity, float X, float Z, int Subject, string Text);
+/// <summary>Something the player needs to see: an incident, a breakdown, a warning. <see cref="X"/> and <see cref="Z"/> are where it happened, for the camera; both are NaN for news without a place (a call-up, the standing, power).</summary>
+public readonly record struct SimEvent(int Id, long Tick, SimEventKind Kind, EventSeverity Severity, float X, float Z, int Subject, string Text)
+{
+    /// <summary>False for news that happened nowhere in particular, so the camera has nowhere to go.</summary>
+    public bool HasPlace => !float.IsNaN(X) && !float.IsNaN(Z);
+}
 
 /// <summary>The event feed: what the player should be told, newest last. Not part of the state hash (it is made from what the simulation does).</summary>
 public sealed partial class Simulation
@@ -56,4 +60,7 @@ public sealed partial class Simulation
             _eventBase += 50;
         }
     }
+
+    /// <summary>News without a place on the map (the origin is a real place, the middle of the map).</summary>
+    void AddEvent(SimEventKind kind, EventSeverity severity, int subject, string text) => AddEvent(kind, severity, float.NaN, float.NaN, subject, text);
 }

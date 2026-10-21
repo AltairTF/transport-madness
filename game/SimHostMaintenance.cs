@@ -113,7 +113,7 @@ public partial class SimHost
         };
     }
 
-    /// <summary>What the feed has gained since the last call: for each {id, kind, severity (0 info, 1 warning, 2 serious), x, z, text}.</summary>
+    /// <summary>What the feed has gained since the last call: for each {id, kind, severity (0 info, 1 warning, 2 serious), place (false for news without one), x, z, text}.</summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> TakeEvents()
     {
         var list = new Godot.Collections.Array<Godot.Collections.Dictionary>();
@@ -121,7 +121,7 @@ public partial class SimHost
         for (int id = first; id < Sim.EventCount; id++)
         {
             var e = Sim.Events[id - Sim.EventsDropped];
-            list.Add(new Godot.Collections.Dictionary { ["id"] = e.Id, ["kind"] = (int)e.Kind, ["severity"] = (int)e.Severity, ["x"] = e.X, ["z"] = e.Z, ["text"] = e.Text });
+            list.Add(new Godot.Collections.Dictionary { ["id"] = e.Id, ["kind"] = (int)e.Kind, ["severity"] = (int)e.Severity, ["place"] = e.HasPlace, ["x"] = e.HasPlace ? e.X : 0f, ["z"] = e.HasPlace ? e.Z : 0f, ["text"] = e.Text });
         }
         _eventsShown = Sim.EventCount;
         return list;

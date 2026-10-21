@@ -107,7 +107,6 @@ After M6:
 
 **Play-test and presentation**
 - The 3D side of everything from M5 on was played by the developer on 2026-10-21 and works. The interface is awkward and hard to reach (the number of buttons and windows); it is deferred until the features are done.
-- Event feed entries without a place (orders, call-ups, requisitions) take the camera to the origin when clicked.
 - The look of the war in general, and the presentation of raids, remain open.
 
 **Technical**

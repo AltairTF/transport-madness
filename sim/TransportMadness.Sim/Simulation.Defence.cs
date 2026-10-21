@@ -99,10 +99,10 @@ public sealed partial class Simulation
     {
         var a = _war.AntiAircraft;
         if (nextMonth == a.FromMonth)
-            AddEvent(SimEventKind.War, EventSeverity.Warning, 0f, 0f, -1, FormattableString.Invariant(
+            AddEvent(SimEventKind.War, EventSeverity.Warning, -1, FormattableString.Invariant(
                 $"Anti-aircraft guns can now be built, {a.Price} each and {a.UpkeepPerMonth} a month. A battery needs people to man it and ammunition, which the government sends through the gateways"));
         if (nextMonth == a.ExpectMonth && _frequencyScale > 0f)
-            AddEvent(SimEventKind.War, EventSeverity.Serious, 0f, 0f, -1,
+            AddEvent(SimEventKind.War, EventSeverity.Serious, -1,
                 "Enemy raids are expected: bombers will come over the Region. Batteries that are manned and have ammunition bring them down and spoil their aim; the enemy will go for what is least defended");
     }
 

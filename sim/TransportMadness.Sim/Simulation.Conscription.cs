@@ -47,7 +47,7 @@ public sealed partial class Simulation
             town.CapacityFactor *= 1f - wave.Share; // the buildings of every town have room for fewer people and jobs for good (C15c)
             Dissatisfy(town.Id, _war.Conscription.SatisfactionLoss);
         }
-        AddEvent(SimEventKind.War, EventSeverity.Serious, 0f, 0f, -1,
+        AddEvent(SimEventKind.War, EventSeverity.Serious, -1,
             $"Call-up: {wave.Share:P0} of the people are called up, about {expected} in all. The workforce is {_workforceGap:P0} short and industry makes {WorkforceFactor:P0} of its output" +
             (_towns.Count > 0 ? $"; the buildings of the towns now have room for {_towns.Min(t => t.CapacityFactor):P0} of the people and jobs they had" : ""));
     }

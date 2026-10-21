@@ -100,7 +100,10 @@ public class OrderTests
         Assert.Equal(w.Sim.OrderTuning.Tutorial.Reward, o.Reward);
         Assert.Contains("wood", o.Title);
         Assert.Contains("Test Road Gate", o.Title);
-        Assert.Single(w.Sim.Events, e => e.Kind == SimEventKind.Order && e.Text.StartsWith("New order"));
+        var news = Assert.Single(w.Sim.Events, e => e.Kind == SimEventKind.Order && e.Text.StartsWith("New order"));
+        Assert.True(news.HasPlace); // a click on the feed goes to the gateway, not to the middle of the map
+        Assert.Equal(w.Sim.Gateways[0].X, news.X);
+        Assert.Equal(w.Sim.Gateways[0].Z, news.Z);
     }
 
     [Fact]

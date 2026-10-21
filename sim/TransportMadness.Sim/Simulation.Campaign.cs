@@ -68,7 +68,7 @@ public sealed partial class Simulation
         if (Company.LowStandingMonths >= _campaign.DismissMonths)
         {
             Company.Dismissed = true;
-            AddEvent(SimEventKind.Standing, EventSeverity.Serious, 0f, 0f, -1, $"The committee has been dismissed: standing {Company.Standing:0} for {_campaign.DismissMonths} months");
+            AddEvent(SimEventKind.Standing, EventSeverity.Serious, -1, $"The committee has been dismissed: standing {Company.Standing:0} for {_campaign.DismissMonths} months");
         }
         else if (month + 1 >= _campaign.Months)
         {
@@ -92,9 +92,9 @@ public sealed partial class Simulation
     void WarnAboutStanding()
     {
         if (Company.LowStandingMonths > 0)
-            AddEvent(SimEventKind.Standing, EventSeverity.Serious, 0f, 0f, -1, $"Standing {Company.Standing:0}: {MonthsToDismissal} more months under {_campaign.DismissBelow:0} and the committee is dismissed");
+            AddEvent(SimEventKind.Standing, EventSeverity.Serious, -1, $"Standing {Company.Standing:0}: {MonthsToDismissal} more months under {_campaign.DismissBelow:0} and the committee is dismissed");
         else if (Company.Standing < _campaign.DismissBelow + 10f)
-            AddEvent(SimEventKind.Standing, EventSeverity.Warning, 0f, 0f, -1, $"Standing {Company.Standing:0}: the ministry is losing patience");
+            AddEvent(SimEventKind.Standing, EventSeverity.Warning, -1, $"Standing {Company.Standing:0}: the ministry is losing patience");
     }
 
     /// <summary>The last month is over: the grade comes from the standing, what was delivered and how the towns feel.</summary>
@@ -107,7 +107,7 @@ public sealed partial class Simulation
         while (grade < g.Thresholds.Count && Company.Score < g.Thresholds[grade]) grade++;
         Company.Grade = grade;
         Company.Finished = true;
-        AddEvent(SimEventKind.Standing, EventSeverity.Info, 0f, 0f, -1, $"The campaign is over: {g.Names[grade]} (score {Company.Score:0})");
+        AddEvent(SimEventKind.Standing, EventSeverity.Info, -1, $"The campaign is over: {g.Names[grade]} (score {Company.Score:0})");
     }
 
     ulong CampaignHash()

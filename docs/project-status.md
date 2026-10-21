@@ -815,7 +815,7 @@ Campaign (C1 to C12, 5.23 to 5.38):
 - Raids have no defence the player can build (C13), casualties lower the people of the groups (C14) and a town rebuilds from the construction stock it is delivered (C15a, 5.41), but only slowly and only from a standing building. Trains are not hit by a blast. The presentation of the flights (aircraft, bombs, flash, scar and the banner) and the numbers of C12 were not played.
 - The call-up lowers the trip groups, not the buildings: the population `StatsOf` reports comes from the buildings and is not lowered, nobody returns, and the call-up is not scaled by the frequency option.
 - The requisition cannot be refused, the army does not choose by the player's need (a line's last vehicle goes as readily as a spare), and nothing can be bought back.
-- There is no wage and no shift. A state work is offered once per game. The standing history is kept but not shown as a graph; the Orders window shows only the last five closed orders. Event feed entries without a place (orders, call-ups, requisitions) take the camera to the origin when clicked.
+- There is no wage and no shift. A state work is offered once per game. The standing history is kept but not shown as a graph; the Orders window shows only the last five closed orders. News without a place (the call-up, requisition, rationing, standing and power) carries no place and a click on it in the feed does nothing; order news goes to the gateway, the town or the state works of its order (a state work not yet founded has no place, and its row has no Go to).
 - The road signs and sign tools (5.22) were not played.
 
 Engineering:

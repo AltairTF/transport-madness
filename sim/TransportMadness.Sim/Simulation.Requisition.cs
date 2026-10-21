@@ -98,7 +98,7 @@ public sealed partial class Simulation
         while (_nextRequisition < r.Waves.Count && r.Waves[_nextRequisition].Month <= nextMonth)
             Requisition(r.Waves[_nextRequisition++]);
         if (NextRequisition is { } wave && wave.Month - r.NoticeMonths == nextMonth && r.NoticeMonths > 0)
-            AddEvent(SimEventKind.War, EventSeverity.Warning, 0f, 0f, -1,
+            AddEvent(SimEventKind.War, EventSeverity.Warning, -1,
                 $"The army will requisition {wave.Share:P0} of the fleet (about {ExpectedRequisition} vehicles, {RuleText(_requisitionRule)}) at {r.PriceShare:P0} of their price in {MonthText(wave.Month)}; you can choose the order until then");
     }
 
@@ -134,7 +134,7 @@ public sealed partial class Simulation
             Company.Requisitioned += take;
             Company.Standing = Math.Clamp(Company.Standing + _war.Requisition.Standing, 0f, 100f);
         }
-        AddEvent(SimEventKind.War, EventSeverity.Serious, 0f, 0f, -1,
+        AddEvent(SimEventKind.War, EventSeverity.Serious, -1,
             take > 0 ? $"Requisition: the army has taken {take} of {candidates.Count} vehicles and trains and paid {paid}" : "Requisition: the army found nothing to take");
     }
 

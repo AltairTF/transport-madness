@@ -974,6 +974,7 @@ func show_orders(orders: Array, open_offers: int) -> void:
 		row["status"].theme_type_variation = "" if open else "Dim"
 		row["buttons"].visible = state == "Offered"
 		row["accept"].disabled = not order["can"]
+		row["go"].visible = order["place"]
 		row["state"] = state
 	for id in _order_rows.keys():
 		if not seen.has(id):
@@ -1954,7 +1955,6 @@ func show_events(events: Array) -> void:
 		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		button.custom_minimum_size = Vector2(440, 0)
-		button.tooltip_text = "Click to go there."
 		var colour := UiTheme.TEXT
 		if event["severity"] == 2:
 			colour = Color(1.0, 0.5, 0.45)
@@ -1962,9 +1962,12 @@ func show_events(events: Array) -> void:
 			colour = Color(1.0, 0.85, 0.4)
 		button.add_theme_color_override("font_color", colour)
 		button.add_theme_color_override("font_hover_color", colour.lightened(0.3))
-		var x: float = event["x"]
-		var z: float = event["z"]
-		button.pressed.connect(func() -> void: town_focus.emit(x, z))
+		# News without a place (a call-up, the standing, power) has nowhere to take the camera.
+		if event["place"]:
+			var x: float = event["x"]
+			var z: float = event["z"]
+			button.tooltip_text = "Click to go there."
+			button.pressed.connect(func() -> void: town_focus.emit(x, z))
 		_feed.add_child(button)
 		_feed_items.append({"node": button, "age": 0.0, "lifetime": 90.0 if event["severity"] == 2 else 45.0})
 		if event["severity"] == 2:

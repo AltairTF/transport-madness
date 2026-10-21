@@ -43,7 +43,7 @@ public sealed partial class Simulation
         bool short_ = _powerFactor < 0.995f;
         if (short_ == _inShortage) return;
         _inShortage = short_;
-        AddEvent(SimEventKind.Power, short_ ? EventSeverity.Warning : EventSeverity.Info, 0f, 0f, -1,
+        AddEvent(SimEventKind.Power, short_ ? EventSeverity.Warning : EventSeverity.Info, -1,
             short_ ? $"Power shortage: the industries make {_powerFactor:P0} of their output" : "Power is back to full supply");
     }
 

@@ -23,6 +23,20 @@ public sealed partial class Simulation
     /// <summary>Orders on offer.</summary>
     public int OpenOffers => _liveOrders.Count(o => o.State == OrderState.Offered);
 
+    /// <summary>Where an order is on the map: its gateway, its town, or the first works of the state; null for state works not yet founded.</summary>
+    public (float X, float Z)? PlaceOf(Order o) => o.Kind switch
+    {
+        OrderKind.Quota => (_gateways[o.Gateway].X, _gateways[o.Gateway].Z),
+        OrderKind.Civil => (_towns[o.Town].X, _towns[o.Town].Z),
+        _ => o.Works.Count > 0 ? (o.Works[0].X, o.Works[0].Z) : null,
+    };
+
+    void OrderEvent(Order o, EventSeverity severity, string text)
+    {
+        if (PlaceOf(o) is { } place) AddEvent(SimEventKind.Order, severity, place.X, place.Z, o.Id, text);
+        else AddEvent(SimEventKind.Order, severity, o.Id, text);
+    }
+
     // ---- The orders' commands ---------------------------------------------------------------------------------
 
     /// <summary>Why an offered order cannot be accepted now, null when it can: the stations that cover its source and its destination must already stand.</summary>
@@ -56,7 +70,7 @@ public sealed partial class Simulation
         o.Deadline = Tick + (long)o.Days * _ticksPerDay;
         if (o.Kind == OrderKind.StateWork) FoundWorks(o);
         OrdersVersion++;
-        AddEvent(SimEventKind.Order, EventSeverity.Info, 0f, 0f, o.Id, $"Order accepted: {o.Title} ({o.Days} days)");
+        OrderEvent(o, EventSeverity.Info, $"Order accepted: {o.Title} ({o.Days} days)");
         return 1;
     }
 
@@ -113,7 +127,7 @@ public sealed partial class Simulation
         OrdersVersion++;
         if (!wasActive)
         {
-            if (state == OrderState.Expired) AddEvent(SimEventKind.Order, EventSeverity.Info, 0f, 0f, o.Id, $"Offer lapsed: {o.Title}");
+            if (state == OrderState.Expired) OrderEvent(o, EventSeverity.Info, $"Offer lapsed: {o.Title}");
             return;
         }
         double share = Math.Min(1.0, o.Progress / o.Units);
@@ -127,13 +141,13 @@ public sealed partial class Simulation
                 Company.Standing = Math.Clamp(Company.Standing + standing, 0f, 100f);
                 if (o.Town >= 0) Satisfy(o.Town, _orderTuning.TownGain);
                 where = $"Order met: {o.Title}. Reward {pay}, standing +{standing:0.#}";
-                AddEvent(SimEventKind.Order, EventSeverity.Info, 0f, 0f, o.Id, where);
+                OrderEvent(o, EventSeverity.Info, where);
                 break;
             case OrderState.Late:
                 Company.OrdersLate++;
                 Company.Standing = Math.Clamp(Company.Standing + standing * (float)share, 0f, 100f);
                 where = $"Order late: {o.Title}. {share:P0} delivered, reward {pay}, standing +{standing * share:0.#}";
-                AddEvent(SimEventKind.Order, EventSeverity.Warning, 0f, 0f, o.Id, where);
+                OrderEvent(o, EventSeverity.Warning, where);
                 break;
             default:
             {
@@ -145,7 +159,7 @@ public sealed partial class Simulation
                 if (fine > 0) Charge(fine, LedgerEntry.Fines);
                 pay -= fine;
                 where = $"Order failed: {o.Title}. Fine {fine}, standing -{loss:0.#}";
-                AddEvent(SimEventKind.Order, EventSeverity.Serious, 0f, 0f, o.Id, where);
+                OrderEvent(o, EventSeverity.Serious, where);
                 break;
             }
         }
@@ -237,7 +251,7 @@ public sealed partial class Simulation
         _orders.Add(o);
         _liveOrders.Add(o);
         OrdersVersion++;
-        AddEvent(SimEventKind.Order, EventSeverity.Info, 0f, 0f, o.Id, $"New order: {o.Title}");
+        OrderEvent(o, EventSeverity.Info, $"New order: {o.Title}");
     }
 
     /// <summary>Whether a template can be offered on this map now: something makes its cargo, a town needs it, or a state work has not been done.</summary>
