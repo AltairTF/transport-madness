@@ -87,7 +87,9 @@ public sealed partial class Simulation
         foreach (var plan in plans)
         {
             float y = _net.Terrain?.HeightAt(plan.X, plan.Z) ?? 0f;
-            _industries.Add(new Industry(_industries.Count, plan.Type, plan.X, y, plan.Z, plan.Angle, _cargo.Count));
+            var industry = new Industry(_industries.Count, plan.Type, plan.X, y, plan.Z, plan.Angle, _cargo.Count);
+            _industries.Add(industry);
+            SetOwnStaff(industry);
         }
         IndustriesVersion++;
         _freeGrid = _industries.Sum(i => _industryTuning.Types[i.Type].Demand) * _power.FreeGridMargin;
@@ -119,6 +121,7 @@ public sealed partial class Simulation
             var inputs = _industryInputs[industry.Type];
             foreach (var (cargo, amount) in inputs) make = MathF.Min(make, industry.Input[cargo] / amount);
             if (!plant) make *= _powerFactor;
+            if (type.Jobs > 0) make *= StaffingOf(industry);
             if (make > 0f)
             {
                 foreach (var (cargo, amount) in inputs) industry.Input[cargo] -= make * amount;
@@ -126,6 +129,7 @@ public sealed partial class Simulation
                 industry.Produced += make;
             }
             if (plant) industry.Load = make > 0f ? make / full : 0f;
+            if (type.Jobs > 0 && industry.Input[_workerCargo] > 0f) industry.Input[_workerCargo] *= _staffKeepPerTick;
             if (industry.Output > 0f) ShipOutput(industry);
         }
     }
@@ -202,6 +206,7 @@ public sealed partial class Simulation
 
     float IndustryRoom(Industry industry, int cargo)
     {
+        if (cargo == _workerCargo) return MathF.Max(0f, _industryTuning.Types[industry.Type].Jobs - industry.Input[cargo]);
         foreach (var (input, _) in _industryInputs[industry.Type])
             if (input == cargo) return MathF.Max(0f, _industryTuning.Types[industry.Type].MaxInput - industry.Input[cargo]);
         return 0f;

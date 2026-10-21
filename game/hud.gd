@@ -1047,6 +1047,9 @@ func show_industries(industries: Array) -> void:
 				title, roundi(industry["supply"]), roundi(industry["supply"] * industry["load"]), industry["produced"]]
 		elif industry.get("demand", 0.0) > 0.0:
 			text += "   uses %d MW" % roundi(industry["demand"])
+		if industry.get("jobs", 0) > 0:
+			text += "\nStaff %d%% of %d jobs   (the town's own people %d%%, %d workers brought)" % [
+				roundi(industry["staffing"] * 100.0), industry["jobs"], roundi(industry["own_staff"] * 100.0), roundi(industry["staff"])]
 		var used_by: String = industry.get("used_by", "")
 		if used_by != "":
 			text += "\nused by %s" % used_by

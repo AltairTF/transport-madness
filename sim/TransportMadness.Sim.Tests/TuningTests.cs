@@ -27,8 +27,8 @@ public class TuningTests
         Assert.Equal(12, t.Economy.MonthsPerYear);
         Assert.Equal(1938, t.Economy.StartYear);
         Assert.Equal(1000000, t.Economy.StartingMoney);
-        Assert.Equal(new[] { "bus", "truck" }, t.Vehicles.Select(v => v.Id));
-        Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food", "coal", "ore", "steel", "fuel", "oil", "rubber", "engines", "bodies", "tyres", "trucks" }, t.Cargo.Select(c => c.Id));
+        Assert.Equal(new[] { "bus", "truck", "workerbus" }, t.Vehicles.Select(v => v.Id));
+        Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food", "coal", "ore", "steel", "fuel", "oil", "rubber", "engines", "bodies", "tyres", "trucks", "workers" }, t.Cargo.Select(c => c.Id));
         Assert.All(t.Vehicles, v => Assert.True(v.Cargo == "freight" || t.Cargo.Any(c => c.Id == v.Cargo)));
         Assert.True(t.Economy.DepotPrice.For(DepotLevel.Complex) > t.Economy.DepotPrice.For(DepotLevel.Simple));
     }

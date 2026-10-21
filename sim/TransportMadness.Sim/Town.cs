@@ -138,6 +138,8 @@ public sealed class Industry
     public float[] Input { get; }
     /// <summary>For a power plant: the share of full burn it managed in the last step, 0 to 1 (0 for any other industry).</summary>
     public float Load { get; internal set; }
+    /// <summary>Staffing it has without anyone being carried, from the people's own movement (C7): 0 to 1, set when it is founded.</summary>
+    public float OwnStaff { get; internal set; }
     /// <summary>What it has made that no station has taken yet.</summary>
     public float Output { get; internal set; }
     /// <summary>Everything it has made so far.</summary>

@@ -198,6 +198,21 @@
     "purchaseStep": 5
   },
 
+  // Workers (C7). The big industries (steel mill, engine works, truck plant, power plant) have 'jobs' and make their output times their staffing
+  // (0 to 1). Staffing is the people's own movement plus the workers a vehicle has brought: an industry within ownReach of a town's middle
+  // is staffed by ownShare * (1 - distance / ownReach) without help, and every worker delivered to its station counts for 1 / jobs more; the
+  // workers present leave at a rate of staffLossPerDay of them, so they must keep coming. A station beside homes sends workers when some
+  // industry with jobs within reach of it is not fully staffed: the covered residents times homeShare wait there, refilled by refillPerDay of
+  // that number a day. They are carried by the workers' bus. On a map without towns there is nobody to work and staffing is 1.
+  "workers": {
+    "ownReach": 2500.0,
+    "ownShare": 0.5,
+    "staffLossPerDay": 1.0,
+    "homeShare": 0.35,
+    "refillPerDay": 1.0,
+    "reach": 3000.0
+  },
+
   // The government's orders (C5). Offers come at random intervals (the gap depends on the phase of the war), at most maxOpen at once; the
   // player accepts up to maxActive, and an offer nobody accepts lapses after offerExpiryDays. Kinds: 'quota' (deliver units of a cargo to
   // one gateway, whatever its source), 'civil' (deliver units of a cargo to a town's buildings) and 'statework' (the state founds the
@@ -395,7 +410,9 @@
     { "id": "engines", "name": "Engines", "payPerUnitKm": 45.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 100.0 },
     { "id": "bodies", "name": "Truck bodies", "payPerUnitKm": 38.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 100.0 },
     { "id": "tyres", "name": "Tyres", "payPerUnitKm": 40.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "trucks", "name": "Military trucks", "payPerUnitKm": 70.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 60.0 }
+    { "id": "trucks", "name": "Military trucks", "payPerUnitKm": 70.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 60.0 },
+    // Workers (C7): people on their way to a big industry's jobs. Not freight: only a vehicle that carries "workers" takes them.
+    { "id": "workers", "name": "Workers", "payPerUnitKm": 40.0, "freeSeconds": 600.0, "zeroSeconds": 2400.0, "minPayShare": 0.3, "supplyPerDay": 0.0, "maxWaiting": 120.0 }
   ],
 
 
@@ -560,25 +577,25 @@
       "many":   [3, 2, 3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 1]
     },
     "types": [
-      { "id": "forest", "name": "Forest", "size": 30.0, "height": 8.0, "output": "wood", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "demand": 0.0, "supply": 0.0, "color": [0.20, 0.45, 0.22] },
-      { "id": "quarry", "name": "Quarry", "size": 28.0, "height": 6.0, "output": "stone", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "demand": 1.0, "supply": 0.0, "color": [0.55, 0.52, 0.48] },
-      { "id": "farm", "name": "Farm", "size": 30.0, "height": 5.0, "output": "grain", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "demand": 0.0, "supply": 0.0, "color": [0.82, 0.72, 0.30] },
-      { "id": "sawmill", "name": "Sawmill", "size": 22.0, "height": 12.0, "output": "planks", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [{ "cargo": "wood", "amount": 1.0 }], "maxInput": 600.0, "demand": 1.0, "supply": 0.0, "color": [0.62, 0.42, 0.24] },
-      { "id": "cementworks", "name": "Cement works", "size": 22.0, "height": 16.0, "output": "materials", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "stone", "amount": 1.0 }], "maxInput": 600.0, "demand": 2.0, "supply": 0.0, "color": [0.70, 0.70, 0.74] },
-      { "id": "foodplant", "name": "Food plant", "size": 22.0, "height": 12.0, "output": "food", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [{ "cargo": "grain", "amount": 1.0 }], "maxInput": 600.0, "demand": 1.0, "supply": 0.0, "color": [0.85, 0.45, 0.35] },
-      { "id": "factory", "name": "Factory", "size": 22.0, "height": 14.0, "output": "goods", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "planks", "amount": 1.0 }], "maxInput": 600.0, "demand": 2.0, "supply": 0.0, "color": [0.40, 0.45, 0.62] },
+      { "id": "forest", "name": "Forest", "size": 30.0, "height": 8.0, "output": "wood", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "jobs": 0, "demand": 0.0, "supply": 0.0, "color": [0.20, 0.45, 0.22] },
+      { "id": "quarry", "name": "Quarry", "size": 28.0, "height": 6.0, "output": "stone", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "jobs": 0, "demand": 1.0, "supply": 0.0, "color": [0.55, 0.52, 0.48] },
+      { "id": "farm", "name": "Farm", "size": 30.0, "height": 5.0, "output": "grain", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "jobs": 0, "demand": 0.0, "supply": 0.0, "color": [0.82, 0.72, 0.30] },
+      { "id": "sawmill", "name": "Sawmill", "size": 22.0, "height": 12.0, "output": "planks", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [{ "cargo": "wood", "amount": 1.0 }], "maxInput": 600.0, "jobs": 0, "demand": 1.0, "supply": 0.0, "color": [0.62, 0.42, 0.24] },
+      { "id": "cementworks", "name": "Cement works", "size": 22.0, "height": 16.0, "output": "materials", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "stone", "amount": 1.0 }], "maxInput": 600.0, "jobs": 0, "demand": 2.0, "supply": 0.0, "color": [0.70, 0.70, 0.74] },
+      { "id": "foodplant", "name": "Food plant", "size": 22.0, "height": 12.0, "output": "food", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [{ "cargo": "grain", "amount": 1.0 }], "maxInput": 600.0, "jobs": 0, "demand": 1.0, "supply": 0.0, "color": [0.85, 0.45, 0.35] },
+      { "id": "factory", "name": "Factory", "size": 22.0, "height": 14.0, "output": "goods", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "planks", "amount": 1.0 }], "maxInput": 600.0, "jobs": 0, "demand": 2.0, "supply": 0.0, "color": [0.40, 0.45, 0.62] },
       // The heavy chain (C2). Coal and iron ore come from one deposit each per map; steel needs both; oil and rubber are never made here (imports).
-      { "id": "coalmine", "name": "Coal mine", "size": 30.0, "height": 8.0, "output": "coal", "deposit": true, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "demand": 2.0, "supply": 0.0, "color": [0.14, 0.14, 0.17] },
-      { "id": "ironmine", "name": "Iron mine", "size": 28.0, "height": 10.0, "output": "ore", "deposit": true, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "demand": 2.0, "supply": 0.0, "color": [0.56, 0.32, 0.22] },
-      { "id": "steelmill", "name": "Steel mill", "size": 26.0, "height": 20.0, "output": "steel", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "ore", "amount": 1.0 }, { "cargo": "coal", "amount": 0.5 }], "maxInput": 600.0, "demand": 8.0, "supply": 0.0, "color": [0.45, 0.47, 0.54] },
-      { "id": "refinery", "name": "Refinery", "size": 24.0, "height": 14.0, "output": "fuel", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "oil", "amount": 1.0 }], "maxInput": 600.0, "demand": 5.0, "supply": 0.0, "color": [0.30, 0.55, 0.60] },
+      { "id": "coalmine", "name": "Coal mine", "size": 30.0, "height": 8.0, "output": "coal", "deposit": true, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "jobs": 0, "demand": 2.0, "supply": 0.0, "color": [0.14, 0.14, 0.17] },
+      { "id": "ironmine", "name": "Iron mine", "size": 28.0, "height": 10.0, "output": "ore", "deposit": true, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "jobs": 0, "demand": 2.0, "supply": 0.0, "color": [0.56, 0.32, 0.22] },
+      { "id": "steelmill", "name": "Steel mill", "size": 26.0, "height": 20.0, "output": "steel", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "ore", "amount": 1.0 }, { "cargo": "coal", "amount": 0.5 }], "maxInput": 600.0, "jobs": 40, "demand": 8.0, "supply": 0.0, "color": [0.45, 0.47, 0.54] },
+      { "id": "refinery", "name": "Refinery", "size": 24.0, "height": 14.0, "output": "fuel", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "oil", "amount": 1.0 }], "maxInput": 600.0, "jobs": 0, "demand": 5.0, "supply": 0.0, "color": [0.30, 0.55, 0.60] },
       // The military truck's chain: founded by orders, see 'counts'.
-      { "id": "engineworks", "name": "Engine works", "size": 22.0, "height": 14.0, "output": "engines", "deposit": false, "perMonth": 360.0, "maxOutput": 400.0, "inputs": [{ "cargo": "steel", "amount": 1.0 }, { "cargo": "fuel", "amount": 0.5 }], "maxInput": 400.0, "demand": 4.0, "supply": 0.0, "color": [0.58, 0.30, 0.28] },
-      { "id": "bodyworks", "name": "Body works", "size": 22.0, "height": 12.0, "output": "bodies", "deposit": false, "perMonth": 360.0, "maxOutput": 400.0, "inputs": [{ "cargo": "steel", "amount": 1.0 }, { "cargo": "planks", "amount": 1.0 }], "maxInput": 400.0, "demand": 3.0, "supply": 0.0, "color": [0.36, 0.50, 0.30] },
-      { "id": "tyreworks", "name": "Tyre works", "size": 20.0, "height": 10.0, "output": "tyres", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "rubber", "amount": 1.0 }], "maxInput": 600.0, "demand": 3.0, "supply": 0.0, "color": [0.10, 0.10, 0.12] },
-      { "id": "truckplant", "name": "Truck plant", "size": 30.0, "height": 16.0, "output": "trucks", "deposit": false, "perMonth": 180.0, "maxOutput": 200.0, "inputs": [{ "cargo": "engines", "amount": 1.0 }, { "cargo": "bodies", "amount": 1.0 }, { "cargo": "tyres", "amount": 4.0 }], "maxInput": 800.0, "demand": 6.0, "supply": 0.0, "color": [0.30, 0.40, 0.24] },
+      { "id": "engineworks", "name": "Engine works", "size": 22.0, "height": 14.0, "output": "engines", "deposit": false, "perMonth": 360.0, "maxOutput": 400.0, "inputs": [{ "cargo": "steel", "amount": 1.0 }, { "cargo": "fuel", "amount": 0.5 }], "maxInput": 400.0, "jobs": 30, "demand": 4.0, "supply": 0.0, "color": [0.58, 0.30, 0.28] },
+      { "id": "bodyworks", "name": "Body works", "size": 22.0, "height": 12.0, "output": "bodies", "deposit": false, "perMonth": 360.0, "maxOutput": 400.0, "inputs": [{ "cargo": "steel", "amount": 1.0 }, { "cargo": "planks", "amount": 1.0 }], "maxInput": 400.0, "jobs": 0, "demand": 3.0, "supply": 0.0, "color": [0.36, 0.50, 0.30] },
+      { "id": "tyreworks", "name": "Tyre works", "size": 20.0, "height": 10.0, "output": "tyres", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "rubber", "amount": 1.0 }], "maxInput": 600.0, "jobs": 0, "demand": 3.0, "supply": 0.0, "color": [0.10, 0.10, 0.12] },
+      { "id": "truckplant", "name": "Truck plant", "size": 30.0, "height": 16.0, "output": "trucks", "deposit": false, "perMonth": 180.0, "maxOutput": 200.0, "inputs": [{ "cargo": "engines", "amount": 1.0 }, { "cargo": "bodies", "amount": 1.0 }, { "cargo": "tyres", "amount": 4.0 }], "maxInput": 800.0, "jobs": 60, "demand": 6.0, "supply": 0.0, "color": [0.30, 0.40, 0.24] },
       // Power (C6): a plant burns coal and adds megawatts to the whole region while it has it. It makes no cargo (output "").
-      { "id": "powerplant", "name": "Power plant", "size": 26.0, "height": 22.0, "output": "", "deposit": false, "perMonth": 300.0, "maxOutput": 0.0, "inputs": [{ "cargo": "coal", "amount": 1.0 }], "maxInput": 600.0, "demand": 0.0, "supply": 20.0, "color": [0.62, 0.58, 0.30] }
+      { "id": "powerplant", "name": "Power plant", "size": 26.0, "height": 22.0, "output": "", "deposit": false, "perMonth": 300.0, "maxOutput": 0.0, "inputs": [{ "cargo": "coal", "amount": 1.0 }], "maxInput": 600.0, "jobs": 20, "demand": 0.0, "supply": 20.0, "color": [0.62, 0.58, 0.30] }
     ]
   },
 
@@ -619,6 +636,8 @@
   // passengers) is waiting at a stop and wanted at the next one.
   "vehicles": [
     { "id": "bus", "name": "Bus", "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
-    { "id": "truck", "name": "Truck", "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 900.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 }
+    { "id": "truck", "name": "Truck", "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 900.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 },
+    // Takes the workers waiting at a station beside homes to a station beside an industry with jobs (C7).
+    { "id": "workerbus", "name": "Workers' bus", "cargo": "workers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 }
   ]
 }

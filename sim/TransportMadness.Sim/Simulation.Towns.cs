@@ -345,6 +345,7 @@ public sealed partial class Simulation
                 industries.Add(industry.Id);
                 perIndustry[industry.Id].Add(s);
                 foreach (var (cargo, _) in _industryInputs[industry.Type]) accepts[cargo] = true;
+                if (_workerCargo >= 0 && _industryTuning.Types[industry.Type].Jobs > 0) accepts[_workerCargo] = true;
             }
             var gateways = new List<int>();
             var mode = station.Mode == StationMode.Rail ? GatewayKind.Rail : GatewayKind.Road;

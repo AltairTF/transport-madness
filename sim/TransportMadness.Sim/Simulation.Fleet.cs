@@ -567,7 +567,7 @@ public sealed partial class Simulation
         float bestWaiting = 1f; // at least one whole unit
         for (int c = 0; c < _cargo.Count; c++)
         {
-            if (fixedCargo >= 0 ? c != fixedCargo : c == _passengerCargo) continue;
+            if (fixedCargo >= 0 ? c != fixedCargo : c == _passengerCargo || c == _workerCargo) continue;
             if (station.Waiting[c] < bestWaiting || !Accepts(next, c)) continue;
             best = c;
             bestWaiting = station.Waiting[c];

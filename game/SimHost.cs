@@ -786,7 +786,7 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// The industries: for each {id, name, x, y, z, output (cargo name), stock (waiting to be collected), max_output, produced,
-    /// deposit (a scarce resource), demand and supply (megawatts), load (a plant's share of full burn), inputs, used_by, status, status_kind} where inputs lists {cargo, stock, max, imported} for the
+    /// deposit (a scarce resource), demand and supply (megawatts), load (a plant's share of full burn), jobs, staffing (0 to 1), staff (workers delivered, still at work), own_staff (0 to 1, from the people's own movement), inputs, used_by, status, status_kind} where inputs lists {cargo, stock, max, imported} for the
     /// cargo it uses (imported: no industry makes it, it comes through a gateway), used_by says who takes the output, status is a line
     /// of text and status_kind is "ok", "warn" or "idle".
     /// </summary>
@@ -804,11 +804,14 @@ public partial class SimHost : Node3D
                 inputs.Add(new Godot.Collections.Dictionary { ["cargo"] = Sim.CargoTypes[c].Name, ["stock"] = industry.Input[c], ["max"] = type.MaxInput, ["imported"] = Sim.IsImported(c) });
             }
             var (status, kind) = DescribeStatus(Sim.StatusOf(industry));
+            float staffing = Sim.StaffingOf(industry);
+            if (type.Jobs > 0 && staffing < 0.995f && kind == "ok") (status, kind) = ($"Working at {staffing:P0}: short of workers (send them in a workers' bus)", "warn");
             list.Add(new Godot.Collections.Dictionary
             {
                 ["id"] = industry.Id, ["name"] = type.Name, ["x"] = industry.X, ["y"] = HeightAt(industry.X, industry.Z), ["z"] = industry.Z,
                 ["output"] = type.Supply > 0f ? "Electricity" : Sim.CargoTypes[Sim.OutputOf(industry.Type)].Name, ["stock"] = industry.Output,
-                ["demand"] = type.Demand, ["supply"] = type.Supply, ["load"] = industry.Load, ["max_output"] = type.MaxOutput,
+                ["demand"] = type.Demand, ["supply"] = type.Supply, ["load"] = industry.Load,
+                ["jobs"] = type.Jobs, ["staffing"] = staffing, ["staff"] = Sim.StaffOf(industry), ["own_staff"] = industry.OwnStaff, ["max_output"] = type.MaxOutput,
                 ["produced"] = industry.Produced, ["deposit"] = type.Deposit, ["inputs"] = inputs, ["used_by"] = UsedBy(type),
                 ["status"] = status, ["status_kind"] = kind,
             });

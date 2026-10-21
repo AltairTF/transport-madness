@@ -160,6 +160,8 @@ public sealed partial class Simulation
         _campaign = tuning.Campaign;
         _orderTuning = tuning.Orders;
         _power = tuning.Power;
+        _workers = tuning.Workers;
+        _workerCargo = FindCargo(tuning, "workers");
         _orderRng = new SimRandom(seed ^ OrderSeedMix);
         Company = new Company(_economy.StartingMoney) { Standing = tuning.Campaign.StartStanding };
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);

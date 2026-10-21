@@ -88,6 +88,7 @@ public sealed partial class Simulation
         if (Company.Loan > 0) Charge(Price(Company.Loan * _economy.InterestPerDay), LedgerEntry.Interest);
         CheckSignals();
         CheckGarage();
+        SendWorkers();
         CloseDayForTowns();
         CloseDayForTrips();
         if ((Day + 1) % _economy.DaysPerMonth == 0) CloseMonthForCampaign();
