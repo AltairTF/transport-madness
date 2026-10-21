@@ -164,6 +164,7 @@ public sealed partial class Simulation
         _workers = tuning.Workers;
         _workerCargo = FindCargo(tuning, "workers");
         _orderRng = new SimRandom(seed ^ OrderSeedMix);
+        _raidRng = new SimRandom(seed ^ RaidSeedMix);
         Company = new Company(_economy.StartingMoney) { Standing = tuning.Campaign.StartStanding };
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;
@@ -266,6 +267,7 @@ public sealed partial class Simulation
         if (_groups.Count > 0) Mix(TripHash());
         if (_wavesFired > 0) Mix(ConscriptionHash());
         if (_nextRequisition > 0) Mix(RequisitionHash());
+        if (_nextRaid >= 0) Mix(RaidHash());
         Mix(FleetHash());
         if (_lines.Count > 0 || _roadWorks.Count > 0 || _resurfaced > 0) Mix(RoadWearHash());
         if (_lights.Count > 0) Mix(LightHash());
@@ -408,6 +410,7 @@ public sealed partial class Simulation
         UpdateIndustries();
         UpdateGateways();
         StepOrders();
+        StepRaids();
         UpdateTrips();
         UpdateFleet();
         StepRepairs();

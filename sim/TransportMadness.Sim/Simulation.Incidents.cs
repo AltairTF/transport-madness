@@ -14,6 +14,8 @@ public enum IncidentKind
     Junction,
     /// <summary>A train ran into a vehicle on a level crossing.</summary>
     LevelCrossing,
+    /// <summary>A bomb left a crater in the road.</summary>
+    Bombing,
 }
 
 public enum IncidentState
@@ -177,6 +179,16 @@ public sealed partial class Simulation
         int id = IncidentCount;
         _incidents.Add(new Incident(id, kind, Tick, new LaneId(_lane[vehicle]), _pos[vehicle]));
         _openIncidents.Add(id);
+        return id;
+    }
+
+    /// <summary>An incident with no vehicle of its own at a place on a lane: debris is put there and a crew will clear it.</summary>
+    int NewIncidentAt(IncidentKind kind, int lane, float position)
+    {
+        int id = IncidentCount;
+        _incidents.Add(new Incident(id, kind, Tick, new LaneId(lane), position));
+        _openIncidents.Add(id);
+        _pendingDebris.Add((lane, position, id));
         return id;
     }
 

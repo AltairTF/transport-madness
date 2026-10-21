@@ -354,6 +354,7 @@ public sealed partial class Simulation
                 if (gateway.Kind != mode || (gateway.X - x) * (gateway.X - x) + (gateway.Z - z) * (gateway.Z - z) > radius * radius) continue;
                 gateways.Add(gateway.Id);
                 perGateway[gateway.Id].Add(s);
+                if (gateway.DamagedUntil > Tick) continue; // shut by a raid: it takes nothing
                 for (int c = 0; c < accepts.Length; c++)
                     if (_exportable[c]) accepts[c] = true;
             }

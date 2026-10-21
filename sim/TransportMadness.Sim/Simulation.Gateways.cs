@@ -99,7 +99,7 @@ public sealed partial class Simulation
             foreach (var offer in _gatewayTuning.Imports)
             {
                 int c = FindCargo(_net.Tuning, offer.Cargo);
-                if (g.ArrivesAt[c] < 0 || Tick < g.ArrivesAt[c]) continue;
+                if (g.ArrivesAt[c] < 0 || Tick < g.ArrivesAt[c] || g.DamagedUntil > Tick) continue;
                 int units = g.ShipmentUnits[c] > 0 ? g.ShipmentUnits[c] : offer.Units;
                 g.Stock[c] += units;
                 g.Imported[c] += units;
@@ -130,7 +130,7 @@ public sealed partial class Simulation
     int Export(Station station, int cargo, int units)
     {
         var gateways = _stationGateways[station.Id];
-        if (gateways.Length == 0 || !_exportable[cargo] || units <= 0) return 0;
+        if (gateways.Length == 0 || !_exportable[cargo] || units <= 0 || gateways.All(id => _gateways[id].DamagedUntil > Tick)) return 0;
         for (int k = 0; k < gateways.Length; k++)
         {
             _gateways[gateways[k]].Exported[cargo] += (double)units / gateways.Length;

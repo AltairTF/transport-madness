@@ -842,6 +842,8 @@ func show_company(company: Dictionary) -> void:
 	if company["called_up"] > 0 or company["next_call_month"] >= 0:
 		text += "\nCall-up   %d people called up so far   workforce %d%% short (industry at %d%%)%s" % [company["called_up"], roundi(company["workforce_gap"] * 100.0), roundi(company["workforce_factor"] * 100.0),
 			"   next call-up in %s %d" % [MONTHS[company["next_call_month"] % 12], company["year"] - floori(company["phase_month"] / 12.0) + floori(company["next_call_month"] / 12.0)] if company["next_call_month"] >= 0 else ""]
+	if company["raids"] > 0:
+		text += "\nRaids   %d so far   %d casualties" % [company["raids"], company["casualties"]]
 	if company["requisitioned"] > 0 or company["next_requisition_month"] >= 0:
 		text += "\nRequisition   the army has taken %d vehicles and trains (paid %s)" % [company["requisitioned"], _money_text(company["requisition_income"])]
 		if company["next_requisition_month"] >= 0:
@@ -966,8 +968,9 @@ func show_gateways(gateways: Array) -> void:
 		if not _gateway_rows.has(id):
 			_add_gateway_row(id, gateway)
 		var row: Dictionary = _gateway_rows[id]
-		row["title"].text = "%s   (%s)\n%s" % [gateway["name"], String(gateway["kind"]).to_lower(),
-			"A station reaches it." if gateway["covered"] else "No station reaches it: build a %s station beside it." % String(gateway["kind"]).to_lower()]
+		row["title"].text = "%s   (%s)\n%s%s" % [gateway["name"], String(gateway["kind"]).to_lower(),
+			"A station reaches it." if gateway["covered"] else "No station reaches it: build a %s station beside it." % String(gateway["kind"]).to_lower(),
+			"\nBombed: shut for %s more days, no shipment lands and nothing is taken." % str(snappedf(gateway["shut_days"], 0.1)) if gateway.get("shut_days", 0.0) > 0.0 else ""]
 		for offer in gateway["offers"]:
 			var entry: Dictionary = row["offers"][offer["cargo"]]
 			var text := "%s   %d at %s each%s   %d here   %d arrived so far\n%s" % [

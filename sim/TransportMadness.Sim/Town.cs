@@ -83,6 +83,8 @@ public sealed class Town
     public float UnmetShare { get; internal set; }
     /// <summary>People of this town called up so far (a number only).</summary>
     public int CalledUp { get; internal set; }
+    /// <summary>People of this town killed or hurt in raids so far (a number only).</summary>
+    public int Casualties { get; internal set; }
     /// <summary>Share (0 to 1) of its homes that were reached last month: a group living there made a trip to work or leisure within the time budget. 1 until the first month is over.</summary>
     public float Connectivity { get; internal set; } = 1f;
     public GrowthReport LastGrowth { get; internal set; }
@@ -138,6 +140,8 @@ public sealed class Industry
     public float Angle { get; }
     /// <summary>Delivered inputs waiting to be used, by cargo.</summary>
     public float[] Input { get; }
+    /// <summary>The tick until which a raid keeps it from working, 0 when it is not damaged (C9d).</summary>
+    public long DamagedUntil { get; internal set; }
     /// <summary>For a power plant: the share of full burn it managed in the last step, 0 to 1 (0 for any other industry).</summary>
     public float Load { get; internal set; }
     /// <summary>Staffing it has without anyone being carried, from the people's own movement (C7): 0 to 1, set when it is founded.</summary>
@@ -196,4 +200,6 @@ public sealed class Gateway
     public long[] AvailableAt { get; }
     /// <summary>The units of the shipment on its way, fixed when it was asked for (rationing can change the size between requests).</summary>
     public int[] ShipmentUnits { get; }
+    /// <summary>The tick until which a raid keeps the gateway shut, 0 when it is not (C9d).</summary>
+    public long DamagedUntil { get; internal set; }
 }

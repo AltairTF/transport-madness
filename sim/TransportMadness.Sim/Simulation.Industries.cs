@@ -41,7 +41,7 @@ public sealed partial class Simulation
         var missing = new List<int>();
         foreach (var (cargo, amount) in _industryInputs[industry.Type])
             if (industry.Input[cargo] < amount) missing.Add(cargo);
-        return new IndustryStatus(_industryStations[industry.Id].Length > 0, type.Supply <= 0f && industry.Output >= type.MaxOutput - 0.5f, missing);
+        return new IndustryStatus(_industryStations[industry.Id].Length > 0, type.Supply <= 0f && industry.Output >= type.MaxOutput - 0.5f, missing, Math.Max(0L, industry.DamagedUntil - Tick));
     }
 
     /// <summary>Changes whenever industries are added (for a renderer).</summary>
@@ -121,6 +121,7 @@ public sealed partial class Simulation
             var inputs = _industryInputs[industry.Type];
             foreach (var (cargo, amount) in inputs) make = MathF.Min(make, industry.Input[cargo] / amount);
             if (!plant) make *= _powerFactor;
+            if (industry.DamagedUntil > Tick) make = 0f; // a raid has stopped it
             if (type.Jobs > 0) make *= StaffingOf(industry);
             if (_workforceGap > 0f) make *= WorkforceFactor;
             if (make > 0f)
@@ -270,7 +271,8 @@ public sealed partial class Simulation
 }
 
 /// <summary>What an industry is doing: <paramref name="Covered"/> by a station, <paramref name="OutputFull"/> (it has stopped), and the cargo (indices) it has too little of to make a unit.</summary>
-public readonly record struct IndustryStatus(bool Covered, bool OutputFull, IReadOnlyList<int> MissingInputs)
+public readonly record struct IndustryStatus(bool Covered, bool OutputFull, IReadOnlyList<int> MissingInputs, long DamagedTicksLeft = 0)
 {
-    public bool Working => !OutputFull && MissingInputs.Count == 0;
+    public bool Damaged => DamagedTicksLeft > 0;
+    public bool Working => !OutputFull && MissingInputs.Count == 0 && !Damaged;
 }

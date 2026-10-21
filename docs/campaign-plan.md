@@ -1,6 +1,6 @@
 # Campaign plan: a region at war, 1938 to 1945
 
-Status: C1 to C8 done on 2026-10-21 (sections 5.23, 5.25 to 5.31 of `project-status.md`); the rest is planned (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
+Status: C1 to C9 done on 2026-10-21 (sections 5.23, 5.25 to 5.35 of `project-status.md`); the rest is planned (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
 
 ## What was decided
 
@@ -30,7 +30,7 @@ Status: C1 to C8 done on 2026-10-21 (sections 5.23, 5.25 to 5.31 of `project-sta
 | C6 (done) | Electricity: plants, demand, shortage, the monthly purchase (section 5.29 of `project-status.md`). |
 | C7 (done) | Workers: jobs in big industries, staffing, output by staffing, workers' bus lines to factories (section 5.30 of `project-status.md`; workers are a cargo, not trip groups). |
 | C8 (done) | The fleet by year, the new models, the old-vehicle repair multiplier (section 5.31 of `project-status.md`). |
-| C9 | The war: rationing (C9a, done: section 5.32 of `project-status.md`), conscription (C9b, done: section 5.33), requisition (C9c, done: section 5.34), bombing, in that order, each its own slice with tests. |
+| C9 | The war: rationing (C9a, done: section 5.32 of `project-status.md`), conscription (C9b, done: section 5.33), requisition (C9c, done: section 5.34), bombing (C9d, done: section 5.35), in that order, each its own slice with tests. |
 | M6 | Save and load, overlays, balancing, art, audio (the old M6 without eras). |
 
 Each slice has its tests and its own pinned hashes where the world changes, and is committed only when the user asks. The 3D side of each is compiled and its GDScript parsed here; the user plays it.

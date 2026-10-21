@@ -229,6 +229,33 @@
         { "month": 56, "share": 0.25 },
         { "month": 72, "share": 0.25 }
       ]
+    },
+    // Raids (C9d): from month 'fromMonth' (January 1942) enemy aircraft bomb the Region at random moments, every minDays to maxDays of the phase
+    // (all scaled by the frequency option: off none, low half as often, high twice as often). Each raid picks a kind of target by weight and one target
+    // of it: an industry stops for industryDownDays and loses inputLoss of what it holds; a gateway is shut for gatewayDownDays (no import lands, no
+    // export is taken); a railway signal fails, which stops the trains until a crew has repaired it; buildingsHit buildings of a town are destroyed and
+    // casualtyShare of the people who were in them are counted as casualties (a number only) and the town loses townLoss satisfaction. A raid on an
+    // industry, a gateway or a town also leaves 'craters' craters on the nearest roads within craterRadius, wrecks that block a lane until a crew clears them.
+    "bombing": {
+      "fromMonth": 48,
+      "industryDownDays": 3,
+      "gatewayDownDays": 2,
+      "inputLoss": 0.5,
+      "craters": 2,
+      "craterRadius": 250.0,
+      "buildingsHit": 2,
+      "casualtyShare": 0.35,
+      "townLoss": 2.0,
+      "gaps": [
+        { "phase": "totalwar", "minDays": 6, "maxDays": 12 },
+        { "phase": "end", "minDays": 8, "maxDays": 14 }
+      ],
+      "targets": [
+        { "kind": "industry", "weight": 4 },
+        { "kind": "gateway", "weight": 2 },
+        { "kind": "rail", "weight": 2 },
+        { "kind": "town", "weight": 2 }
+      ]
     }
   },
 

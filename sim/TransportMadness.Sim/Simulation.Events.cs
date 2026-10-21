@@ -24,6 +24,8 @@ public enum SimEventKind : byte
     Power,
     /// <summary>A development of the war: rationing, a call-up, a requisition, a raid.</summary>
     War,
+    /// <summary>A raid: where the bombs fell and what they did.</summary>
+    Raid,
 }
 
 public enum EventSeverity : byte { Info, Warning, Serious }

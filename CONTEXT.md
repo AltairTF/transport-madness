@@ -36,6 +36,9 @@ A wave of the war in which a share of the people of every Town leave for good, a
 **Requisition**:
 At fixed months the army buys a share of the Company's vehicles and trains (freight first, the biggest first, the garage too) at a table price, whatever their Condition. The Player is told a month ahead and cannot refuse.
 
+**Raid**:
+From 1942 enemy aircraft bomb the Region at random moments: they stop an Industry for a few days, shut a Gateway, fail a rail Signal, destroy buildings of a Town and leave craters in the roads, which the crews clear like wrecks. Casualties are a number only. The frequency option scales how often.
+
 **Cargo**:
 Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 

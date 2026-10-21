@@ -457,7 +457,7 @@ public partial class SimHost : Node3D
     /// (total so far), imports (total spent), standing, phase, phase_month (months into the campaign), months, country, region, next_allocation,
     /// allocation_factor, months_to_dismissal, dismiss_below, dismiss_months, export_value (this month), expected_value (the phase's), delivered_value, average_satisfaction,
     /// campaign_over, dismissed, finished, grade_name, score, last} where last is the report of the month that ended, {month, export_value,
-    /// export_term, deficit_term, fine_term, standing_before, standing_after, allocation}, empty before the first. Also requisitioned (vehicles and trains the army has taken), requisition_income, next_requisition_month (-1 when none), next_requisition_share, expected_requisition (how many it would take now), called_up (people, all towns), workforce_gap and workforce_factor (0 to 1), next_call_month (-1 when no more), orders_met, orders_late, orders_failed,
+    /// export_term, deficit_term, fine_term, standing_before, standing_after, allocation}, empty before the first. Also raids and casualties (a number of people), requisitioned (vehicles and trains the army has taken), requisition_income, next_requisition_month (-1 when none), next_requisition_share, expected_requisition (how many it would take now), called_up (people, all towns), workforce_gap and workforce_factor (0 to 1), next_call_month (-1 when no more), orders_met, orders_late, orders_failed,
     /// orders_active, orders_open (offers) and orders_income (rewards so far).
     /// </summary>
     public Godot.Collections.Dictionary GetCompany()
@@ -507,6 +507,7 @@ public partial class SimHost : Node3D
             ["finished"] = c.Finished,
             ["grade_name"] = c.Grade >= 0 ? campaign.Grade.Names[c.Grade] : "",
             ["score"] = c.Score,
+            ["raids"] = Sim.Raids, ["casualties"] = Sim.Casualties,
             ["called_up"] = Sim.CalledUp, ["workforce_gap"] = Sim.WorkforceGap, ["workforce_factor"] = Sim.WorkforceFactor,
             ["next_call_month"] = Sim.NextWave is { } wave ? wave.Month : -1,
             ["requisitioned"] = c.Requisitioned, ["requisition_income"] = c.Total(LedgerEntry.Requisition),
@@ -853,6 +854,7 @@ public partial class SimHost : Node3D
 
     (string Text, string Kind) DescribeStatus(IndustryStatus status)
     {
+        if (status.Damaged) return ($"Bombed: out of work for {status.DamagedTicksLeft * Simulation.StepSeconds / Sim.DayLengthSeconds:0.#} more days", "warn");
         if (status.MissingInputs.Count > 0)
         {
             var names = status.MissingInputs.Select(c => Sim.CargoTypes[c].Name.ToLowerInvariant() + (Sim.IsImported(c) ? " (imported)" : ""));
@@ -864,7 +866,7 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>
-    /// The gateways: for each {id, name, kind ("Road" or "Rail"), x, y, z, covered (a station of its mode reaches it), offers, exports}
+    /// The gateways: for each {id, name, kind ("Road" or "Rail"), x, y, z, covered (a station of its mode reaches it), shut_days (days a raid keeps it shut, 0 when open), offers, exports}
     /// where offers lists {cargo (id), name, units, price, rationed (it costs more or comes in smaller shipments in this phase of the war), stock (waiting at the gateway), imported (so far), status, can (a shipment can be
     /// asked for now), seconds (until the shipment arrives, 0 when none is on its way)} for each import and exports lists {name, units}
     /// for each cargo delivered here so far.
@@ -896,6 +898,7 @@ public partial class SimHost : Node3D
             {
                 ["id"] = gateway.Id, ["name"] = gateway.Name, ["kind"] = gateway.Kind.ToString(), ["x"] = gateway.X, ["y"] = HeightAt(gateway.X, gateway.Z), ["z"] = gateway.Z,
                 ["covered"] = Sim.IsCovered(gateway), ["offers"] = offers, ["exports"] = exports,
+                ["shut_days"] = Math.Max(0f, (gateway.DamagedUntil - Sim.Tick) * Simulation.StepSeconds / Sim.DayLengthSeconds),
             });
         }
         return list;
@@ -1060,6 +1063,7 @@ public partial class SimHost : Node3D
         else if (Sim.BuildingsVersion != _buildingsVersion) RebuildBuildings();
         float fraction = _speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f;
         DrawVehicles(fraction);
+        UpdateRaidEffects(delta);
         DrawCrews(fraction);
         DrawRail(fraction);
     }
@@ -1355,7 +1359,8 @@ public partial class SimHost : Node3D
             buf[o + 0] = fx * side;  buf[o + 1] = 0f;          buf[o + 2] = -fz * side; buf[o + 3] = industry.X;
             buf[o + 4] = 0f;         buf[o + 5] = type.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = industry.Z;
-            buf[o + 12] = type.Color[0]; buf[o + 13] = type.Color[1]; buf[o + 14] = type.Color[2]; buf[o + 15] = 1f;
+            float shade = industry.DamagedUntil > Sim.Tick ? 0.3f : 1f; // bombed: dark until it works again
+            buf[o + 12] = type.Color[0] * shade; buf[o + 13] = type.Color[1] * shade; buf[o + 14] = type.Color[2] * shade; buf[o + 15] = 1f;
         }
         foreach (var gateway in Sim.Gateways)
         {
@@ -1367,6 +1372,7 @@ public partial class SimHost : Node3D
             buf[o + 4] = 0f;         buf[o + 5] = height; buf[o + 6] = 0f;         buf[o + 7] = y;
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;     buf[o + 10] = fx * side; buf[o + 11] = gateway.Z;
             var colour = gateway.Kind == GatewayKind.Road ? GatewayRoadColour : GatewayRailColour;
+            if (gateway.DamagedUntil > Sim.Tick) colour = colour.Darkened(0.7f);
             buf[o + 12] = colour.R; buf[o + 13] = colour.G; buf[o + 14] = colour.B; buf[o + 15] = 1f;
         }
         foreach (var b in Sim.Buildings)
