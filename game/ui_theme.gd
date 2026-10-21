@@ -10,13 +10,15 @@ const BUTTON_HOVER := Color(0.23, 0.26, 0.31)
 const ACCENT := Color(0.20, 0.46, 0.76)
 const TEXT := Color(0.90, 0.92, 0.95)
 const TEXT_DIM := Color(0.55, 0.58, 0.63)
+const PANEL_MARGIN := 16
 
 
 static func build() -> Theme:
 	var theme := Theme.new()
 	theme.default_font_size = FONT_SIZE
 
-	theme.set_stylebox("panel", "PanelContainer", _box(PANEL, BORDER, 10, 8))
+	# Panels and windows keep their content well inside the border (M6d: the developer asked for more room).
+	theme.set_stylebox("panel", "PanelContainer", _box(PANEL, BORDER, 10, PANEL_MARGIN))
 	theme.set_stylebox("panel", "TooltipPanel", _box(PANEL, BORDER, 6, 6))
 	theme.set_stylebox("panel", "TabContainer", _box(Color(0, 0, 0, 0), BORDER, 12, 0))
 	theme.set_stylebox("tab_selected", "TabContainer", _box(BUTTON_HOVER, ACCENT, 8, 4))
@@ -47,8 +49,11 @@ static func build() -> Theme:
 	line.color = BORDER
 	line.thickness = 1
 	theme.set_stylebox("separator", "HSeparator", line)
-	theme.set_constant("separation", "VBoxContainer", 8)
-	theme.set_constant("separation", "HBoxContainer", 8)
+	theme.set_constant("separation", "VBoxContainer", 10)
+	theme.set_constant("separation", "HBoxContainer", 10)
+	theme.set_constant("h_separation", "HFlowContainer", 10)
+	theme.set_constant("v_separation", "HFlowContainer", 8)
+	theme.set_constant("separation", "HSeparator", 18)
 
 	theme.set_type_variation("Title", "Label")
 	theme.set_font_size("font_size", "Title", 34)

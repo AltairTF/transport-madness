@@ -21,6 +21,8 @@ signal tool_changed(tool_name: String)
 
 var host: Node3D
 var camera: Camera3D
+const Keys := preload("res://game/keys.gd")
+
 var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, downgrade, faster, slower, move, remove, depot, station, line, battery, and the rail tools
 const LIGHT_TOOLS := ["light", "light_remove"]
 const SIGN_TOOLS := {"sign_priority": 0, "sign_yield": 1, "sign_stop": 2} ## the kind each sign tool puts up, as SimHost.BuildRoadSign takes it
@@ -123,10 +125,10 @@ func _reset() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if tool == "pointer":
 		return
-	if event is InputEventKey and event.pressed and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
+	if event is InputEventKey and event.pressed and (Keys.pressed(event, "finish_line") or event.keycode == KEY_KP_ENTER):
 		if tool == "line":
 			_finish_line()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R and tool.begins_with("signal_"):
+	elif event is InputEventKey and event.pressed and not event.echo and Keys.pressed(event, "rotate_signal") and tool.begins_with("signal_"):
 		_signal_forward = not _signal_forward
 		_update_preview(get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:

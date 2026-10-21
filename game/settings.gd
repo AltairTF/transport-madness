@@ -24,10 +24,13 @@ var msaa := Viewport.MSAA_4X
 var master_volume := 1.0
 var music_volume := 0.8
 var effects_volume := 0.8
+var window_rects: Dictionary = {} ## where each kind of window of the HUD was left: kind -> Rect2 (M6d)
+var key_bindings: Dictionary = {} ## keys the player bound: action -> {"key", "shift"}; the rest keep their defaults (keys.gd)
 
 
 func _ready() -> void:
 	_load()
+	preload("res://game/keys.gd").apply(key_bindings)
 	if resolution == Vector2i.ZERO:
 		resolution = default_resolution()
 	# A command line run (self-tests, benchmark) keeps the project's own window so its numbers stay comparable.
@@ -86,6 +89,8 @@ func save() -> void:
 	file.set_value("audio", "master", master_volume)
 	file.set_value("audio", "music", music_volume)
 	file.set_value("audio", "effects", effects_volume)
+	file.set_value("interface", "windows", window_rects)
+	file.set_value("interface", "keys", key_bindings)
 	file.save(PATH)
 
 
@@ -101,6 +106,8 @@ func _load() -> void:
 	master_volume = file.get_value("audio", "master", master_volume)
 	music_volume = file.get_value("audio", "music", music_volume)
 	effects_volume = file.get_value("audio", "effects", effects_volume)
+	window_rects = file.get_value("interface", "windows", window_rects)
+	key_bindings = file.get_value("interface", "keys", key_bindings)
 	if resolution.x < MIN_WINDOW.x or resolution.y < MIN_WINDOW.y:
 		resolution = Vector2i.ZERO
 

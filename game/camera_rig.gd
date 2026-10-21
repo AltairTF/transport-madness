@@ -4,6 +4,7 @@ extends Node3D
 
 const FOLLOW_RATE := 6.0 # per second: how quickly the focus settles on a new ground height
 
+const TURN_RATE := 90.0 # degrees a second that Q and E turn the camera
 const MIN_DISTANCE := 20.0
 const MAX_DISTANCE := 5000.0
 
@@ -36,11 +37,17 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	_follow_ground(delta)
+	if get_viewport().gui_get_focus_owner() is LineEdit:
+		return # typing a name, not moving
 	var move := Vector2(
-		Input.get_axis("ui_left", "ui_right") + _key_axis(KEY_A, KEY_D),
-		Input.get_axis("ui_up", "ui_down") + _key_axis(KEY_W, KEY_S))
+		Input.get_axis("ui_left", "ui_right") + _action_axis("camera_left", "camera_right"),
+		Input.get_axis("ui_up", "ui_down") + _action_axis("camera_forward", "camera_back"))
 	if move != Vector2.ZERO:
 		_pan(move.normalized() * distance * 0.8 * delta)
+		_apply()
+	var turn := _action_axis("camera_turn_left", "camera_turn_right")
+	if turn != 0.0:
+		yaw -= turn * TURN_RATE * delta
 		_apply()
 
 
@@ -74,3 +81,10 @@ func _pan(offset: Vector2) -> void:
 func _apply() -> void:
 	rotation_degrees = Vector3(pitch, yaw, 0.0)
 	camera.position = Vector3(0.0, 0.0, distance)
+
+
+## -1, 0 or 1 from two of the actions of keys.gd (0 before they are registered).
+func _action_axis(negative: String, positive: String) -> float:
+	if not InputMap.has_action(negative) or not InputMap.has_action(positive):
+		return 0.0
+	return Input.get_action_strength(positive) - Input.get_action_strength(negative)

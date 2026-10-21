@@ -30,6 +30,8 @@ var _slots: RefCounted ## the save files (SaveSlots.cs)
 var _saved_mark := [-1, -1] ## the tick and the command count at the last save or load: progress since is unsaved
 var _last_month := -1 ## for the autosave at the start of each month
 var _loaded := false ## the game came from a save
+var picking: Node ## what a click with no tool opens (picking.gd)
+const Keys := preload("res://game/keys.gd")
 
 
 func _ready() -> void:
@@ -140,6 +142,10 @@ func _ready() -> void:
 	if _args.has("--selftest-build"):
 		build_tool.message.connect(func(text: String) -> void: print("SELFTEST message: ", text))
 	hud.tool_selected.connect(build_tool.set_tool)
+	picking = load("res://game/picking.gd").new()
+	add_child(picking)
+	picking.setup(host, rig.get_node("Camera3D"), hud, build_tool, rig)
+	picking.picked.connect(hud.open_object)
 	build_tool.tool_changed.connect(hud.select_tool)
 	hud.action_requested.connect(_on_action)
 
@@ -245,22 +251,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if pause_menu == null:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			KEY_ESCAPE:
-				get_viewport().set_input_as_handled()
+		if event.keycode == KEY_ESCAPE:
+			# Esc closes the topmost window first; with none open it is the menu. (A tool in hand takes Esc before this.)
+			get_viewport().set_input_as_handled()
+			if not hud.close_top_window():
 				pause_menu.open()
-			KEY_F5:
-				get_viewport().set_input_as_handled()
-				_save(_slots.QuickPath(), "Quick save", false)
-			KEY_F9:
-				get_viewport().set_input_as_handled()
-				if not _slots.Exists(_slots.QuickPath()):
-					hud.show_message("No quick save yet: F5 makes one")
-				elif _has_unsaved_progress():
-					pause_menu.open()
-					pause_menu._ask("Load the quick save? Progress since your last save will be lost.", _load_save.bind(_slots.QuickPath()))
-				else:
-					_load_save(_slots.QuickPath())
+		elif Keys.pressed(event, "quick_save"):
+			get_viewport().set_input_as_handled()
+			_save(_slots.QuickPath(), "Quick save", false)
+		elif Keys.pressed(event, "quick_load"):
+			get_viewport().set_input_as_handled()
+			if not _slots.Exists(_slots.QuickPath()):
+				hud.show_message("No quick save yet: %s makes one" % Keys.text("quick_save", Settings.key_bindings))
+			elif _has_unsaved_progress():
+				pause_menu.open()
+				pause_menu._ask("Load the quick save? Progress since your last save will be lost.", _load_save.bind(_slots.QuickPath()))
+			else:
+				_load_save(_slots.QuickPath())
 
 
 func _notification(what: int) -> void:

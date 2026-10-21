@@ -4,19 +4,22 @@ extends PanelContainer
 
 signal closed
 
-const CONTROLS := [
+const Keys := preload("res://game/keys.gd")
+## What the mouse and Esc do: these are not rebound.
+const FIXED_CONTROLS := [
 	["Orbit the camera", "Right mouse button + drag"],
-	["Pan", "W A S D, arrow keys or middle mouse + drag"],
+	["Pan", "Middle mouse + drag, or the arrow keys"],
 	["Zoom", "Mouse wheel"],
-	["Place or pick", "Left mouse button"],
-	["Finish a line", "Enter"],
-	["Cancel the tool, open the menu", "Esc"],
-	["Debug panel", "F3"],
+	["Place, pick, open what is clicked", "Left mouse button"],
+	["Cancel the tool, close a window, the menu", "Esc"],
 ]
 const MSAA_NAMES := ["Off", "2x", "4x", "8x"]
 
 var _resolution: OptionButton
 var _resolutions: Array[Vector2i] = []
+var _key_buttons: Dictionary = {} ## action -> its Button in the Controls tab
+var _listening := "" ## the action waiting for its new key
+var _key_note: Label
 
 
 func _ready() -> void:
@@ -111,16 +114,70 @@ func _audio_tab() -> Control:
 	return page
 
 
+## Every key of the game can be bound again: click its button, then press the new key (with Shift if wanted; Esc leaves it as it was).
 func _controls_tab() -> Control:
 	var page := _page("Controls")
-	var grid := _grid(page)
-	for entry in CONTROLS:
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	page.add_child(scroll)
+	var inner := VBoxContainer.new()
+	inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(inner)
+	var grid := _grid(inner)
+	for entry in Keys.ACTIONS:
+		var action: String = entry[0]
+		var button := Button.new()
+		button.pressed.connect(func() -> void: _listen(action))
+		_key_buttons[action] = button
+		_row(grid, entry[1], button)
+	for entry in FIXED_CONTROLS:
 		_row(grid, entry[0], _dim_label(entry[1]))
-	var note := Label.new()
-	note.theme_type_variation = "Dim"
-	note.text = "Rebinding keys comes later."
-	page.add_child(note)
+	_key_note = _dim_label("Click a key to change it, then press the new one. Esc keeps the old key.")
+	_key_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inner.add_child(_key_note)
+	var reset := Button.new()
+	reset.text = "All keys back to their defaults"
+	reset.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	reset.pressed.connect(func() -> void:
+		Settings.key_bindings = {}
+		_keys_changed())
+	inner.add_child(reset)
+	_show_keys()
 	return page
+
+
+func _show_keys() -> void:
+	for action in _key_buttons:
+		_key_buttons[action].text = "Press a key..." if action == _listening else Keys.text(action, Settings.key_bindings)
+
+
+func _listen(action: String) -> void:
+	_listening = action
+	_show_keys()
+
+
+func _input(event: InputEvent) -> void:
+	if _listening == "" or not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	get_viewport().set_input_as_handled()
+	var key: int = event.keycode
+	if key == KEY_SHIFT:
+		return # wait for the key that goes with it
+	var action := _listening
+	_listening = ""
+	if key != KEY_ESCAPE:
+		var clash := Keys.action_on(key, event.shift_pressed, Settings.key_bindings, action)
+		Settings.key_bindings[action] = {"key": key, "shift": event.shift_pressed}
+		_key_note.text = "%s now on %s.%s" % [Keys.label(action), Keys.text(action, Settings.key_bindings),
+			"  It was on %s too: bind that one again." % Keys.label(clash) if clash != "" else ""]
+	_keys_changed()
+
+
+func _keys_changed() -> void:
+	Keys.apply(Settings.key_bindings)
+	Settings.save()
+	_show_keys()
 
 
 func _gameplay_tab() -> Control:
@@ -128,7 +185,9 @@ func _gameplay_tab() -> Control:
 	var grid := _grid(page)
 	var autosave := CheckBox.new()
 	autosave.text = "Autosave"
+	autosave.button_pressed = true
 	autosave.disabled = true
+	autosave.tooltip_text = "Always on: one of three autosaves is written at the start of each month."
 	_row(grid, "Saving", autosave)
 	var edge := CheckBox.new()
 	edge.text = "Scroll at the screen edge"
@@ -136,7 +195,7 @@ func _gameplay_tab() -> Control:
 	_row(grid, "Camera", edge)
 	var note := Label.new()
 	note.theme_type_variation = "Dim"
-	note.text = "Placeholders: saving arrives with save and load, a later milestone."
+	note.text = "Scrolling at the screen edge comes later."
 	page.add_child(note)
 	return page
 
