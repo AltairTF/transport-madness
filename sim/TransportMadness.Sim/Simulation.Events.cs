@@ -22,6 +22,8 @@ public enum SimEventKind : byte
     Order,
     /// <summary>The region's industries are short of power, or the shortage is over.</summary>
     Power,
+    /// <summary>A development of the war: rationing, a call-up, a requisition, a raid.</summary>
+    War,
 }
 
 public enum EventSeverity : byte { Info, Warning, Serious }

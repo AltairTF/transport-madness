@@ -77,6 +77,7 @@ public sealed partial class Simulation
         {
             allocation = (long)MathF.Round(_campaign.PhaseOf(month + 1).Allocation * _campaign.AllocationFactor(Company.Standing));
             Earn(allocation, LedgerEntry.Allocation);
+            WarNewsForMonth(month + 1);
             WarnAboutStanding();
         }
         LastMonth = new MonthReport(month, _monthExportValue, exportTerm, deficitTerm, fineTerm, before, Company.Standing, allocation);

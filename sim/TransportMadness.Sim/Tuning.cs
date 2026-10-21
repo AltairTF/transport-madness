@@ -34,6 +34,7 @@ public sealed record Tuning
     public required CampaignTuning Campaign { get; init; }
     public required OrderTuning Orders { get; init; }
     public required PowerTuning Power { get; init; }
+    public required WarTuning War { get; init; }
     public required WorkersTuning Workers { get; init; }
     public required TripsTuning Trips { get; init; }
     public required RailTuning Rail { get; init; }
@@ -58,6 +59,7 @@ public sealed record Tuning
         tuning.Gateways.Validate();
         tuning.Campaign.Validate();
         tuning.Orders.Validate(tuning);
+        tuning.War.Validate(tuning);
         tuning.Trips.Validate();
         tuning.Maintenance.Validate();
         return tuning;

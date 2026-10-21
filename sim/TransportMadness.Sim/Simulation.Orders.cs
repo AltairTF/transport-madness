@@ -252,7 +252,7 @@ public sealed partial class Simulation
             case "civil":
                 return TownsNeeding(cargo).Count > 0 && Produced(cargo);
             default:
-                if (!_exportable[cargo]) return false;
+                if (!_exportable[cargo] || _towns.Count == 0) return false; // the first work is founded near a town
                 if (t.Once && _orders.Any(o => o.Template == t.Id && o.State is OrderState.Offered or OrderState.Active or OrderState.Met or OrderState.Late or OrderState.Failed)) return false;
                 return _orders.All(o => o.Template != t.Id || !o.IsOpen);
         }

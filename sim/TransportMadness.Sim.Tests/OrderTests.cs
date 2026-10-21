@@ -436,6 +436,17 @@ public class OrderTests
         Assert.Single(sim.Orders, o => o.Kind == OrderKind.StateWork);
     }
 
+    [Fact]
+    public void OnAMapWithGatewaysButNoTowns_NoStateWorkIsOffered_AndNothingThrows()
+    {
+        var sim = new Simulation(new RoadNetwork(DryLevelMap(), OnlyWorks()), 5, IncidentFrequency.Off);
+        sim.AddTowns(new WorldPlan(0, Array.Empty<TownPlan>(), Array.Empty<IndustryPlan>(), null, new[] { RoadGate(1200) }));
+
+        RunDays(sim, 40);
+
+        Assert.DoesNotContain(sim.Orders, o => o.Kind == OrderKind.StateWork);
+    }
+
     // ---- The data --------------------------------------------------------------------------------------------------
 
     [Fact]

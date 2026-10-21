@@ -962,8 +962,8 @@ func show_gateways(gateways: Array) -> void:
 			"A station reaches it." if gateway["covered"] else "No station reaches it: build a %s station beside it." % String(gateway["kind"]).to_lower()]
 		for offer in gateway["offers"]:
 			var entry: Dictionary = row["offers"][offer["cargo"]]
-			var text := "%s   %d at %s each   %d here   %d arrived so far\n%s" % [
-				offer["name"], offer["units"], _money_text(offer["price"]), offer["stock"], offer["imported"], offer["status"]]
+			var text := "%s   %d at %s each%s   %d here   %d arrived so far\n%s" % [
+				offer["name"], offer["units"], _money_text(offer["price"]), "   (rationed)" if offer.get("rationed", false) else "", offer["stock"], offer["imported"], offer["status"]]
 			if offer["seconds"] > 0.0:
 				text += "   (%d s)" % ceili(offer["seconds"])
 			entry["label"].text = text

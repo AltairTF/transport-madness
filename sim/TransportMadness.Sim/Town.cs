@@ -172,6 +172,7 @@ public sealed class Gateway
         Exported = new double[cargoCount];
         ArrivesAt = new long[cargoCount];
         AvailableAt = new long[cargoCount];
+        ShipmentUnits = new int[cargoCount];
         Array.Fill(ArrivesAt, -1L);
     }
 
@@ -191,4 +192,6 @@ public sealed class Gateway
     public long[] ArrivesAt { get; }
     /// <summary>The tick from which the cargo can be asked for again.</summary>
     public long[] AvailableAt { get; }
+    /// <summary>The units of the shipment on its way, fixed when it was asked for (rationing can change the size between requests).</summary>
+    public int[] ShipmentUnits { get; }
 }

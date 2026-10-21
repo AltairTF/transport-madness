@@ -186,6 +186,22 @@
     }
   },
 
+  // The war (C9). Rationing: in the phases of the war the goods the Region needs from outside get dearer and scarcer. For the cargo listed, the
+  // price of an import is the offer's price times priceFactor and a shipment is the offer's units times unitsFactor (at least 1 unit) in the
+  // phase it is asked for. How much of that applies is set by the frequency option (off: none; low: half the change; normal: all of it; high:
+  // twice the change).
+  "war": {
+    "rationing": {
+      "cargo": ["oil", "fuel", "rubber"],
+      "phases": [
+        { "phase": "rearmament", "priceFactor": 1.0, "unitsFactor": 1.0 },
+        { "phase": "mobilisation", "priceFactor": 1.25, "unitsFactor": 0.85 },
+        { "phase": "totalwar", "priceFactor": 1.7, "unitsFactor": 0.65 },
+        { "phase": "end", "priceFactor": 2.0, "unitsFactor": 0.5 }
+      ]
+    }
+  },
+
   // Electricity (C6): a regional capacity, not a cargo and not a network. Every industry type has a demand in megawatts (always, working or
   // not) and a power plant a supply; a plant gives its megawatts while it has coal to burn (perMonth of its type). The grid the map started with
   // supplies the demand of the industries that stood at the start times freeGridMargin, so the first game runs at full power; what the state

@@ -860,7 +860,7 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// The gateways: for each {id, name, kind ("Road" or "Rail"), x, y, z, covered (a station of its mode reaches it), offers, exports}
-    /// where offers lists {cargo (id), name, units, price, stock (waiting at the gateway), imported (so far), status, can (a shipment can be
+    /// where offers lists {cargo (id), name, units, price, rationed (it costs more or comes in smaller shipments in this phase of the war), stock (waiting at the gateway), imported (so far), status, can (a shipment can be
     /// asked for now), seconds (until the shipment arrives, 0 when none is on its way)} for each import and exports lists {name, units}
     /// for each cargo delivered here so far.
     /// </summary>
@@ -877,7 +877,8 @@ public partial class SimHost : Node3D
                 float seconds = gateway.ArrivesAt[c] >= 0 ? (gateway.ArrivesAt[c] - Sim.Tick) * Simulation.StepSeconds : 0f;
                 offers.Add(new Godot.Collections.Dictionary
                 {
-                    ["cargo"] = offer.Cargo, ["name"] = Sim.CargoTypes[c].Name, ["units"] = offer.Units, ["price"] = offer.PricePerUnit,
+                    ["cargo"] = offer.Cargo, ["name"] = Sim.CargoTypes[c].Name, ["units"] = Sim.ImportUnits(offer), ["price"] = Sim.ImportPrice(offer),
+                    ["rationed"] = Sim.RationingPriceFactor(offer.Cargo) > 1.001f || Sim.RationingUnitsFactor(offer.Cargo) < 0.999f,
                     ["stock"] = gateway.Stock[c], ["imported"] = gateway.Imported[c], ["seconds"] = seconds,
                     ["status"] = gateway.ArrivesAt[c] >= 0 ? "On its way" : why ?? "Ready", ["can"] = why == null,
                 });

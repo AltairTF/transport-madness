@@ -160,6 +160,7 @@ public sealed partial class Simulation
         _campaign = tuning.Campaign;
         _orderTuning = tuning.Orders;
         _power = tuning.Power;
+        _war = tuning.War;
         _workers = tuning.Workers;
         _workerCargo = FindCargo(tuning, "workers");
         _orderRng = new SimRandom(seed ^ OrderSeedMix);

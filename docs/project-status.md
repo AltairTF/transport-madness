@@ -1,6 +1,6 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: 2026-10-21, after C8 (the fleet by year; section 5.31), C7 (workers; section 5.30), C6 (electricity; section 5.29), C5 (the government's orders; section 5.28), C4 (budget, standing, dismissal and the grade; section 5.27), C3 (gateways, import shipments and exports; section 5.26), C2 (the heavy chain: coal, iron ore, steel, fuel, the military truck's parts; section 5.25), M5 (condition, maintenance, depot capability, full incidents, road condition; section 5.24), C1 (the campaign time scale, section 5.23) and M4 (rail, signals, level crossings, deadlock detection, traffic lights; sections 5.19 and 5.20) and its follow-ups (garage, 5.21; rail prices, road signs and the benchmark job, 5.22). M0 to M5 are done. Open work is in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: 2026-10-21, after C9a (rationing; section 5.32), C8 (the fleet by year; section 5.31), C7 (workers; section 5.30), C6 (electricity; section 5.29), C5 (the government's orders; section 5.28), C4 (budget, standing, dismissal and the grade; section 5.27), C3 (gateways, import shipments and exports; section 5.26), C2 (the heavy chain: coal, iron ore, steel, fuel, the military truck's parts; section 5.25), M5 (condition, maintenance, depot capability, full incidents, road condition; section 5.24), C1 (the campaign time scale, section 5.23) and M4 (rail, signals, level crossings, deadlock detection, traffic lights; sections 5.19 and 5.20) and its follow-ups (garage, 5.21; rail prices, road signs and the benchmark job, 5.22). M0 to M5 are done. Open work is in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
@@ -20,7 +20,8 @@ Last updated: 2026-10-21, after C8 (the fleet by year; section 5.31), C7 (worker
 | C6 Electricity | Done (sim, tests and the power panel of the Industries window; the 3D side was not played): demand per industry, a free grid sized at the start, power plants that burn coal, power bought by the month, a shortage that slows every industry (section 5.29) |
 | C7 Workers | Done (sim, tests and the staffing line of the Industries window; the 3D side was not played): jobs in the four big industries, staffing from the town's own people and from workers delivered by a workers' bus (section 5.30) |
 | C8 Fleet by year | Done (sim, tests and the buy buttons; the 3D side was not played): a year on every road model and locomotive, a heavy truck (1940), a large bus (1941), a steam locomotive (1938) and the diesel from 1942, repairs dearer for old models, news of new models (section 5.31) |
-| C9 The war | Planned: rationing, conscription, requisition, bombing |
+| C9a Rationing | Done (sim, tests and the Gateways window; the 3D side was not played): fuel, oil and rubber imports dearer and in smaller shipments in the phases of the war, scaled by the frequency option (section 5.32) |
+| C9b to C9d The war | Planned: conscription, requisition, bombing |
 | M6 Save/load, overlays, balancing, art, audio | Not started |
 
 ## 2. M0 exit criteria
@@ -76,7 +77,7 @@ Tooling: Godot 4.7.2 .NET editor build, .NET 8 SDK (installed per user in `~/.do
 
 ### Current status (2026-10-19)
 
-M0, M1 and M2 are done (M2 without tier 1 and 2 ambient traffic, section 11), M3 (a to d) is built and so is M4 (rail, 5.19; traffic lights, 5.20). 624 tests pass (macOS). The game layer of M3, of the M2 follow-ups (5.15), of M4 and of M5 compiles (the HUD and menu scripts were run in a headless Godot, the HUD with made-up rail data) but the 3D side has not been played (section 10). The design changed on 2026-10-21: the game becomes a campaign about a region at war, 1938 to 1945 (ADR 0006). C1 (the new time scale, 5.23), M5 (5.24) C2 (the chain, 5.25) and C3 (gateways, 5.26), C4 (budget and standing, 5.27) C5 (orders, 5.28) C6 (electricity, 5.29) and C7 (workers, 5.30) and C8 (the fleet by year, 5.31) are done. Next is the last campaign slice, C9 (`docs/campaign-plan.md`); follow-ups are in section 11.
+M0, M1 and M2 are done (M2 without tier 1 and 2 ambient traffic, section 11), M3 (a to d) is built and so is M4 (rail, 5.19; traffic lights, 5.20). 634 tests pass (macOS). The game layer of M3, of the M2 follow-ups (5.15), of M4 and of M5 compiles (the HUD and menu scripts were run in a headless Godot, the HUD with made-up rail data) but the 3D side has not been played (section 10). The design changed on 2026-10-21: the game becomes a campaign about a region at war, 1938 to 1945 (ADR 0006). C1 (the new time scale, 5.23), M5 (5.24) C2 (the chain, 5.25) and C3 (gateways, 5.26), C4 (budget and standing, 5.27) C5 (orders, 5.28) C6 (electricity, 5.29) and C7 (workers, 5.30) and C8 (the fleet by year, 5.31) are done. C9a (rationing, 5.32) is done. Next are the rest of C9 (conscription, requisition, bombing) (`docs/campaign-plan.md`); follow-ups are in section 11.
 
 ## 4. Architecture
 
@@ -314,6 +315,16 @@ Files: `data/tuning.json` (`economy`, `towns`, `industries`, `cargo`, upkeep fie
 - **What moves because of it.** People still make four trips a day, so passenger traffic per second is half what it was; measured on eight maps the bus line's income per hour fell by about 10 percent on average (the buses fill more evenly over a longer rush), so passenger fares were not touched. Freight is unchanged per second. The campaign's budget (C4) is set against these figures.
 - **Calendar.** `economy.startYear` is 1938: day 0 is 1 January 1938, day 35 is 3 December 1938, day 287 is 3 December 1945 (the last day of the campaign). The HUD shows "2 Mar 1938   14:30".
 - **Tests.** 445 (a calendar theorem grew to six cases). Tests that carried a literal number of the old scale now read it from the tuning (upkeep, building needs); the balance and rail economy tests measure in periods of 600 s (`Worlds.Period`) so their windows and thresholds keep their meaning; a few runs that waited for a half day wait a quarter. Pinned hashes: the rail scenario hash moved to `0x6B1D2292DC4DE3EF` and is the same on macOS and Linux; the road golden hashes did not move.
+
+### 5.32 Rationing (C9a, 2026-10-21)
+
+Files: `data/tuning.json` (`war.rationing`), `WarTuning.cs`, `Simulation.War.cs`, `Simulation.Gateways.cs` (`RequestImport`, `WhyNotImport`, the landing of a shipment), `Town.cs` (`Gateway.ShipmentUnits`), `SimEventKind.War`; the game layer is `SimHost.GetGateways` and `hud.gd`. Tests in `WarTests.cs`.
+
+- **The rule.** For the cargo listed in `war.rationing.cargo` (oil, fuel, rubber; coal and iron ore are not rationed) the price of an import is the offer's price times the phase's `priceFactor` (1, 1.25, 1.7, 2.0 for Rearmament, Mobilisation, Total war, The end) and a shipment is the offer's units times `unitsFactor` (1, 0.85, 0.65, 0.5), both fixed when the shipment is asked for: `Gateway.ShipmentUnits` keeps the size, so a shipment that lands after the phase has changed still has the size it was paid for.
+- **The frequency option scales the change**, not the factor: with the option off nothing is rationed, at low half of the change (a price factor of 1.35 in Total war), at normal all of it, at high twice (2.4).
+- **News.** At the turn of the month that begins a new phase the feed says what rationing now does ("Total war: rationing. oil, fuel, rubber cost 1.7 times as much and shipments are 65 % of the size"). The Gateways window shows the price and size in force and "(rationed)" on the offers affected.
+- **Found on the way.** A state work could not be drawn on a map with gateways and no towns (the first work is founded near a town, and there was none): it is not offered then, with a test.
+- **Tests.** 634 (10 more).
 
 ### 5.31 The fleet by year (C8, 2026-10-21)
 

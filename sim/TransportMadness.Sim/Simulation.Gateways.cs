@@ -71,8 +71,8 @@ public sealed partial class Simulation
         var g = _gateways[gateway];
         if (g.ArrivesAt[c] >= 0) return "A shipment is already on its way";
         if (Tick < g.AvailableAt[c]) return "Asked for too recently";
-        if (g.Stock[c] + offer.Units > _gatewayTuning.StockLimit) return "The gateway has no room for it";
-        if (!CanAfford((long)offer.Units * offer.PricePerUnit)) return "Not enough money";
+        if (g.Stock[c] + ImportUnits(offer) > _gatewayTuning.StockLimit) return "The gateway has no room for it";
+        if (!CanAfford((long)ImportUnits(offer) * ImportPrice(offer))) return "Not enough money";
         return null;
     }
 
@@ -81,8 +81,9 @@ public sealed partial class Simulation
         if (WhyNotImport(gateway, cargo) != null) return 0;
         var offer = _gatewayTuning.Imports.First(i => i.Cargo == cargo);
         int c = FindCargo(_net.Tuning, cargo);
-        Charge((long)offer.Units * offer.PricePerUnit, LedgerEntry.Imports);
+        Charge((long)ImportUnits(offer) * ImportPrice(offer), LedgerEntry.Imports);
         _gateways[gateway].ArrivesAt[c] = Tick + _shipmentTicks;
+        _gateways[gateway].ShipmentUnits[c] = ImportUnits(offer);
         return 1;
     }
 
@@ -99,11 +100,13 @@ public sealed partial class Simulation
             {
                 int c = FindCargo(_net.Tuning, offer.Cargo);
                 if (g.ArrivesAt[c] < 0 || Tick < g.ArrivesAt[c]) continue;
-                g.Stock[c] += offer.Units;
-                g.Imported[c] += offer.Units;
+                int units = g.ShipmentUnits[c] > 0 ? g.ShipmentUnits[c] : offer.Units;
+                g.Stock[c] += units;
+                g.Imported[c] += units;
                 g.ArrivesAt[c] = -1;
+                g.ShipmentUnits[c] = 0;
                 g.AvailableAt[c] = Tick + _intervalTicks;
-                AddEvent(SimEventKind.ShipmentArrived, EventSeverity.Info, g.X, g.Z, g.Id, $"{offer.Units} {_cargo[c].Name.ToLowerInvariant()} arrived at the {g.Name}");
+                AddEvent(SimEventKind.ShipmentArrived, EventSeverity.Info, g.X, g.Z, g.Id, $"{units} {_cargo[c].Name.ToLowerInvariant()} arrived at the {g.Name}");
             }
             var stations = _gatewayStations[g.Id];
             if (stations.Length == 0) continue;
@@ -147,6 +150,7 @@ public sealed partial class Simulation
             foreach (double d in g.Exported) h = h * 31 + BitConverter.DoubleToUInt64Bits(d);
             foreach (long t in g.ArrivesAt) h = h * 31 + (ulong)(t + 1);
             foreach (long t in g.AvailableAt) h = h * 31 + (ulong)t;
+            foreach (int u in g.ShipmentUnits) if (u > 0) h = h * 31 + (ulong)u;
         }
         return h;
     }
