@@ -1,18 +1,26 @@
 extends CanvasLayer
-## The menu opened with Esc (or the HUD's Menu button): resume, settings, back to the main menu, quit.
-## Opening it pauses the scene tree, which stops the simulation, the camera and the tools. Save and Load are
-## placeholders until saving exists (M6).
+## The menu opened with Esc (or the HUD's Menu button): resume, save, load, settings, back to the main menu, quit.
+## Opening it pauses the scene tree, which stops the simulation, the camera and the tools. Leaving or loading with
+## progress made since the last save asks first.
 
 signal main_menu_requested
 signal quit_requested
+signal save_requested(save_name: String)
+signal load_requested(path: String)
 
 const UiTheme := preload("res://game/ui_theme.gd")
 const SettingsMenu := preload("res://game/settings_menu.gd")
+const SaveMenu := preload("res://game/save_menu.gd")
+
+## Set by main.gd: whether there is progress since the last save, and the name a new save is offered.
+var unsaved: Callable = func() -> bool: return false
+var name_for_save: Callable = func() -> String: return "My game"
 
 var _root: Control
 var _main_page: Control
 var _settings_page: Control
 var _confirm_page: Control
+var _save_page: Control
 var _confirm_text: Label
 var _confirmed: Callable
 
@@ -37,7 +45,15 @@ func _ready() -> void:
 	_settings_page = SettingsMenu.new()
 	_settings_page.closed.connect(func() -> void: _show(_main_page))
 	_confirm_page = _build_confirm_page()
-	for page in [_main_page, _settings_page, _confirm_page]:
+	_save_page = SaveMenu.new()
+	_save_page.closed.connect(func() -> void: _show(_main_page))
+	_save_page.save_requested.connect(func(save_name: String) -> void: save_requested.emit(save_name))
+	_save_page.load_requested.connect(func(path: String) -> void:
+		if unsaved.call():
+			_ask("Load this save? Progress since your last save will be lost.", load_requested.emit.bind(path))
+		else:
+			load_requested.emit(path))
+	for page in [_main_page, _settings_page, _confirm_page, _save_page]:
 		center.add_child(page)
 	visible = false
 
@@ -77,16 +93,30 @@ func _build_main_page() -> Control:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(title)
 	_button(column, "Resume", close)
-	var save := _button(column, "Save game", Callable())
-	save.disabled = true
-	save.tooltip_text = "Saving and loading are not in the game yet."
-	var load_button := _button(column, "Load game", Callable())
-	load_button.disabled = true
-	load_button.tooltip_text = "Saving and loading are not in the game yet."
+	_button(column, "Save game", func() -> void:
+		_save_page.show_save(name_for_save.call())
+		_show(_save_page))
+	_button(column, "Load game", func() -> void:
+		_save_page.show_load()
+		_show(_save_page))
 	_button(column, "Settings", func() -> void: _show(_settings_page))
-	_button(column, "Main menu", _ask.bind("Leave this game? It cannot be saved yet, so it will be lost.", main_menu_requested.emit))
-	_button(column, "Quit to desktop", _ask.bind("Quit? This game cannot be saved yet, so it will be lost.", quit_requested.emit))
+	_button(column, "Main menu", func() -> void: _leave("Leave this game? Progress since your last save will be lost.", main_menu_requested.emit))
+	_button(column, "Quit to desktop", ask_quit)
 	return panel
+
+
+## Quit, asking first when there is progress since the last save (also what closing the window does).
+func ask_quit() -> void:
+	if not visible:
+		open()
+	_leave("Quit? Progress since your last save will be lost.", quit_requested.emit)
+
+
+func _leave(question: String, action: Callable) -> void:
+	if unsaved.call():
+		_ask(question, action)
+	else:
+		action.call()
 
 
 func _build_confirm_page() -> Control:
@@ -113,7 +143,7 @@ func _ask(text: String, action: Callable) -> void:
 
 
 func _show(page: Control) -> void:
-	for candidate in [_main_page, _settings_page, _confirm_page]:
+	for candidate in [_main_page, _settings_page, _confirm_page, _save_page]:
 		candidate.visible = candidate == page
 
 

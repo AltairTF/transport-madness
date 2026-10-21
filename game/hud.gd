@@ -176,7 +176,7 @@ var _depots_empty: Label
 var _depot_rows: Dictionary = {} # "r3" / "d1" -> {"row", "label", "jobs", "upgrades", "upgrade_key", "go", "go_call"}
 var _feed: VBoxContainer
 var _raid_banner: Label ## the warning of the bomber flights in the air, hidden when there are none
-var _feed_items: Array = [] ## the entries of the event feed: {"node": Button, "age": float, "lifetime": float}
+var _feed_items: Array = [] ## the entries of the event feed: {"node": Button, "age": float, "lifetime": float, "event": Dictionary}
 const FEED_MAX := 6
 const REPAIR_NAMES := ["Patch", "Service", "Overhaul"]
 const FREQUENCY_NAMES := ["Off", "Low", "Normal", "High"]
@@ -1948,7 +1948,22 @@ func _add_depot_row(key: String) -> void:
 
 
 ## New entries of the event feed (from the host): serious ones also show as a message; a click on one moves the camera to the place.
-func show_events(events: Array) -> void:
+## The entries of the feed as they are now, for a save: [{"event": the event's dictionary, "age": seconds shown so far}].
+func feed_snapshot() -> Array:
+	var out: Array = []
+	for item in _feed_items:
+		out.append({"event": item["event"], "age": item["age"]})
+	return out
+
+
+## Puts back the feed of a loaded save, each entry as old as it was (no message pops up again).
+func restore_feed(entries: Array) -> void:
+	for entry in entries:
+		show_events([entry["event"]], true)
+		_feed_items[-1]["age"] = float(entry["age"])
+
+
+func show_events(events: Array, quiet := false) -> void:
 	for event in events:
 		var button := Button.new()
 		button.text = event["text"]
@@ -1969,8 +1984,8 @@ func show_events(events: Array) -> void:
 			button.tooltip_text = "Click to go there."
 			button.pressed.connect(func() -> void: town_focus.emit(x, z))
 		_feed.add_child(button)
-		_feed_items.append({"node": button, "age": 0.0, "lifetime": 90.0 if event["severity"] == 2 else 45.0})
-		if event["severity"] == 2:
+		_feed_items.append({"node": button, "age": 0.0, "lifetime": 90.0 if event["severity"] == 2 else 45.0, "event": event})
+		if event["severity"] == 2 and not quiet:
 			show_message(event["text"])
 	while _feed_items.size() > FEED_MAX:
 		_feed_items[0]["node"].queue_free()

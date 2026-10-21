@@ -26,6 +26,10 @@ var _bench_index := 0
 var _bench_phase_time := 0.0
 var _frame_ms: Array = []
 var _world_note := "" ## said once the HUD exists, e.g. that fewer towns fit than were asked for
+var _slots: RefCounted ## the save files (SaveSlots.cs)
+var _saved_mark := [-1, -1] ## the tick and the command count at the last save or load: progress since is unsaved
+var _last_month := -1 ## for the autosave at the start of each month
+var _loaded := false ## the game came from a save
 
 
 func _ready() -> void:
@@ -43,6 +47,16 @@ func _ready() -> void:
 		var focus: PackedStringArray = _args["--focus"].split(",")
 		rig.position = Vector3(float(focus[0]), 0.0, float(focus[1]))
 	rig._apply()
+	_slots = load("res://game/SaveSlots.cs").new()
+	if Session.load_path != "":
+		var path := Session.load_path
+		Session.load_path = ""
+		var why: String = host.LoadGameFrom(path)
+		if why != "":
+			Session.menu_message = why
+			get_tree().change_scene_to_file.call_deferred("res://game/main_menu.tscn")
+			return
+		_loaded = true
 	var map: String = Session.map
 	if _args.has("--hills") or _args.has("--selftest-hills"):
 		map = "hills"
@@ -50,7 +64,8 @@ func _ready() -> void:
 		map = "towns"
 		if _args["--towns"] is String:
 			Session.towns = int(_args["--towns"])
-	_new_world(map)
+	if not _loaded:
+		_new_world(map)
 	if _args.has("--focus"):
 		rig.focus_on(rig.position.x, rig.position.z) # now that the terrain exists, stand on it
 
@@ -125,8 +140,22 @@ func _ready() -> void:
 	pause_menu = load("res://game/pause_menu.gd").new()
 	add_child(pause_menu)
 	pause_menu.main_menu_requested.connect(_leave_to_menu)
-	pause_menu.quit_requested.connect(get_tree().quit)
+	pause_menu.quit_requested.connect(_quit)
+	pause_menu.save_requested.connect(func(save_name: String) -> void:
+		await _save(_slots.SlotPath(save_name), save_name, true)
+		pause_menu.close())
+	pause_menu.load_requested.connect(_load_save)
+	pause_menu.unsaved = _has_unsaved_progress
+	pause_menu.name_for_save = _default_save_name
 	hud.menu_requested.connect(pause_menu.open)
+	get_tree().auto_accept_quit = false # closing the window asks first when there is progress to lose
+	if _loaded:
+		_restore_host_state(host.LoadedHostBlob)
+		host.SetSpeed(0.0)
+		hud.highlight_speed(0.0)
+		hud.show_message("Game loaded. It is paused: pick a speed to go on.")
+	_mark_saved()
+	_last_month = host.MonthIndex
 
 	if _args.has("--selftest-build"):
 		_selftest_build()
@@ -148,10 +177,16 @@ var _model_year := 0
 
 
 func _process(delta: float) -> void:
+	if hud == null:
+		return # a save that could not be loaded: on the way back to the menu
 	_elapsed += delta
 	_stats_timer += delta
 	if _stats_timer > 0.25:
 		_stats_timer = 0.0
+		_autosave_if_new_month()
+		var save_error: String = host.TakeSaveError()
+		if save_error != "":
+			hud.show_message(save_error)
 		hud.show_stats(host.GetStats())
 		var company: Dictionary = host.GetCompany()
 		hud.show_company(company)
@@ -199,14 +234,123 @@ func _process(delta: float) -> void:
 
 ## Esc with no tool in hand opens the pause menu. (A tool takes Esc itself, and marks it handled.)
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		get_viewport().set_input_as_handled()
-		pause_menu.open()
+	if pause_menu == null:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_ESCAPE:
+				get_viewport().set_input_as_handled()
+				pause_menu.open()
+			KEY_F5:
+				get_viewport().set_input_as_handled()
+				_save(_slots.QuickPath(), "Quick save", false)
+			KEY_F9:
+				get_viewport().set_input_as_handled()
+				if not _slots.Exists(_slots.QuickPath()):
+					hud.show_message("No quick save yet: F5 makes one")
+				elif _has_unsaved_progress():
+					pause_menu.open()
+					pause_menu._ask("Load the quick save? Progress since your last save will be lost.", _load_save.bind(_slots.QuickPath()))
+				else:
+					_load_save(_slots.QuickPath())
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and pause_menu != null:
+		pause_menu.ask_quit()
 
 
 func _leave_to_menu() -> void:
 	pause_menu.close()
+	host.FinishSaving()
+	get_tree().auto_accept_quit = true
 	get_tree().change_scene_to_file("res://game/main_menu.tscn")
+
+
+func _quit() -> void:
+	host.FinishSaving()
+	get_tree().quit()
+
+
+# --- save and load (M6a) ---
+
+func _has_unsaved_progress() -> bool:
+	return _saved_mark != [host.CurrentTick, host.CommandCount]
+
+
+func _mark_saved() -> void:
+	_saved_mark = [host.CurrentTick, host.CommandCount]
+
+
+func _default_save_name() -> String:
+	var company: Dictionary = host.GetCompany()
+	const MONTHS := ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+	return "%s %d" % [MONTHS[clampi(int(company["month"]) - 1, 0, 11)], int(company["year"])]
+
+
+## Saves the game: the screenshot first (without the menus when <hide_ui>), then the snapshot; the file is written in the background.
+func _save(path: String, save_name: String, hide_ui: bool) -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://saves"))
+	if hide_ui:
+		pause_menu.visible = false
+		hud.visible = false
+		await get_tree().process_frame
+		await get_tree().process_frame
+	var image := get_viewport().get_texture().get_image()
+	if hide_ui:
+		hud.visible = true
+		pause_menu.visible = true
+	if image != null and not image.is_empty():
+		image.resize(320, maxi(1, roundi(320.0 * image.get_height() / image.get_width())), Image.INTERPOLATE_BILINEAR)
+		image.save_png(ProjectSettings.globalize_path(_slots.ShotPath(path)))
+	var why: String = host.SaveGameTo(path, save_name, var_to_bytes(_host_state()))
+	if why != "":
+		hud.show_message(why)
+		return
+	_mark_saved()
+	hud.show_message("Saved: %s" % save_name)
+
+
+## At the start of each month, one of the three autosaves (the oldest) is written over.
+func _autosave_if_new_month() -> void:
+	var month: int = host.MonthIndex
+	if month == _last_month:
+		return
+	_last_month = month
+	if not _args.is_empty() or host.GetCompany()["campaign_over"]:
+		return
+	_save(_slots.NextAutosavePath(), "Autosave", false)
+
+
+func _load_save(path: String) -> void:
+	host.FinishSaving()
+	pause_menu.close()
+	Session.load_path = path
+	get_tree().change_scene_to_file("res://game/main.tscn")
+
+
+## What the game layer keeps in a save besides the simulation: the camera and the news feed.
+func _host_state() -> Dictionary:
+	return {
+		"camera": {"x": rig.position.x, "y": rig.position.y, "z": rig.position.z, "distance": rig.distance, "yaw": rig.yaw, "pitch": rig.pitch},
+		"feed": hud.feed_snapshot(),
+	}
+
+
+func _restore_host_state(blob: PackedByteArray) -> void:
+	if blob.is_empty():
+		return
+	var state = bytes_to_var(blob)
+	if not state is Dictionary:
+		return
+	var camera: Dictionary = state.get("camera", {})
+	if not camera.is_empty():
+		rig.position = Vector3(camera["x"], camera["y"], camera["z"])
+		rig.distance = camera["distance"]
+		rig.yaw = camera["yaw"]
+		rig.pitch = camera["pitch"]
+		rig._apply()
+	hud.restore_feed(state.get("feed", []))
 
 
 ## Replaces the world: "towns" (hills with towns), "demo" (street grid with traffic), "hills" or "empty".

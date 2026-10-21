@@ -1,14 +1,17 @@
 extends Control
-## The first screen: new game, settings, quit. Continue and Load are placeholders until saving exists (M6).
+## The first screen: continue the newest save, new game, load a save, settings, quit.
 ## A run with command line arguments (the self-tests, the benchmark) skips it and goes straight to the game.
 
 const GAME := "res://game/main.tscn"
 const UiTheme := preload("res://game/ui_theme.gd")
 const SettingsMenu := preload("res://game/settings_menu.gd")
+const SaveMenu := preload("res://game/save_menu.gd")
 
 var _main_page: Control
 var _new_game_page: Control
 var _settings_page: Control
+var _load_page: Control
+var _notice: Label
 var _map_buttons: Dictionary = {}
 var _map_text: Label
 var _seed: SpinBox
@@ -55,8 +58,20 @@ func _ready() -> void:
 	_new_game_page = _build_new_game_page()
 	_settings_page = SettingsMenu.new()
 	_settings_page.closed.connect(func() -> void: _show(_main_page))
-	for page in [_main_page, _new_game_page, _settings_page]:
+	_load_page = SaveMenu.new()
+	_load_page.closed.connect(func() -> void: _show(_main_page))
+	_load_page.load_requested.connect(_load)
+	for page in [_main_page, _new_game_page, _settings_page, _load_page]:
 		stack.add_child(page)
+	_notice = Label.new()
+	_notice.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
+	_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_notice.custom_minimum_size = Vector2(620, 0)
+	_notice.text = Session.menu_message # why the last load failed, if it did
+	_notice.visible = Session.menu_message != ""
+	Session.menu_message = ""
+	stack.add_child(_notice)
 
 	var footer := Label.new()
 	footer.text = "Prototype build"
@@ -77,13 +92,16 @@ func _build_main_page() -> Control:
 	var column := VBoxContainer.new()
 	column.custom_minimum_size = Vector2(380, 0)
 	column.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var continue_button := _button(column, "Continue", Callable())
-	continue_button.disabled = true
-	continue_button.tooltip_text = "Saving and loading are not in the game yet."
+	var slots: RefCounted = load("res://game/SaveSlots.cs").new()
+	var latest: String = slots.Latest()
+	var continue_button := _button(column, "Continue", func() -> void: _load(latest))
+	continue_button.disabled = latest == ""
+	continue_button.tooltip_text = "Load the newest save." if latest != "" else "No save yet."
 	_button(column, "New game", func() -> void: _show(_new_game_page))
-	var load_button := _button(column, "Load game", Callable())
-	load_button.disabled = true
-	load_button.tooltip_text = "Saving and loading are not in the game yet."
+	var load_button := _button(column, "Load game", func() -> void:
+		_load_page.show_load()
+		_show(_load_page))
+	load_button.disabled = slots.List().is_empty()
 	_button(column, "Settings", func() -> void: _show(_settings_page))
 	_button(column, "Quit", get_tree().quit)
 	return column
@@ -233,11 +251,20 @@ func _on_towns_changed(value: float) -> void:
 
 func _start() -> void:
 	Session.world_seed = int(_seed.value)
+	Session.load_path = ""
+	get_tree().change_scene_to_file(GAME)
+
+
+## Starts the game scene on a save; main.gd loads it (and comes back here with Session.menu_message when it cannot).
+func _load(path: String) -> void:
+	Session.load_path = path
 	get_tree().change_scene_to_file(GAME)
 
 
 func _show(page: Control) -> void:
-	for candidate in [_main_page, _new_game_page, _settings_page]:
+	if _notice != null and page != _main_page:
+		_notice.visible = false
+	for candidate in [_main_page, _new_game_page, _settings_page, _load_page]:
 		candidate.visible = candidate == page
 
 

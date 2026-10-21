@@ -5,7 +5,7 @@ public sealed partial class Simulation
 {
     const float CrashSpeedThreshold = 4f; // CrashSomeone only picks cars moving faster than this
 
-    readonly List<LoggedCommand> _commandLog = new();
+    [NotSaved] readonly List<LoggedCommand> _commandLog = new(); // a loaded game starts its log again (M6a)
 
     /// <summary>Every command executed so far, in order, each with the tick it ran at.</summary>
     public IReadOnlyList<LoggedCommand> CommandLog => _commandLog;

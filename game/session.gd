@@ -13,3 +13,5 @@ var towns := 5
 var industries := 1 ## 0 few, 1 normal, 2 many
 var frequency := 2 ## how often random events happen: 0 off, 1 low, 2 normal, 3 high
 var world_seed := 1
+var load_path := "" ## a save the game scene loads instead of making a new world; "" for a new game
+var menu_message := "" ## said by the main menu when it opens (why a save could not be loaded)
