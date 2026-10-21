@@ -162,6 +162,7 @@ public sealed partial class Simulation
         _orderTuning = tuning.Orders;
         _power = tuning.Power;
         _war = tuning.War;
+        _civilians = tuning.War.Civilians;
         _orderRng = new SimRandom(seed ^ OrderSeedMix);
         _raidRng = new SimRandom(seed ^ RaidSeedMix);
         _raidDirection = new SimRandom(seed ^ RaidSideMix).NextInt(8);

@@ -10,6 +10,7 @@ public sealed record WarTuning
     public required RequisitionTuning Requisition { get; init; }
     public required BombingTuning Bombing { get; init; }
     public required AntiAircraftTuning AntiAircraft { get; init; }
+    public required CiviliansTuning Civilians { get; init; }
 
     internal void Validate(Tuning tuning)
     {
@@ -75,7 +76,18 @@ public sealed record WarTuning
             throw new JsonException("war.antiAircraft: chances and shares must be 0 to 1");
         if (aa.ScatterGrowth < 0f || aa.ScatterCap < 1f || aa.EarlyRelease < 0f || aa.CoverSaturation <= 0f)
             throw new JsonException("war.antiAircraft: scatterGrowth and earlyRelease must not be negative, scatterCap at least 1, coverSaturation positive");
+        if (Civilians.ReactionSeconds < 0f || Civilians.RecheckSeconds <= 0f)
+            throw new JsonException("war.civilians: reactionSeconds must not be negative and recheckSeconds positive");
     }
+}
+
+/// <summary>Civilians in a raid (C14): how people on foot and at stations take cover when the siren sounds.</summary>
+public sealed record CiviliansTuning
+{
+    /// <summary>Seconds after the siren before people start to run: they have this much less than the flight's lead time to reach a building.</summary>
+    public required float ReactionSeconds { get; init; }
+    /// <summary>A group that is to leave on foot or for a station while the siren is on stays in and looks again this many seconds later.</summary>
+    public required float RecheckSeconds { get; init; }
 }
 
 /// <summary>The anti-aircraft batteries (C13): what one costs and where it may stand, how it fires, and what its fire does to the raids.</summary>

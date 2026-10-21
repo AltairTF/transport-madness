@@ -202,7 +202,7 @@ public sealed partial class Simulation
             var (x, z) = PointOf(here);
             var (tx, tz) = PlacePoint(g.Destination);
             float d = MathF.Sqrt((tx - x) * (tx - x) + (tz - z) * (tz - z));
-            Schedule(Tick + WalkTicks(d), new TripEvent(TripEventKind.Arrive, g.Id, lot.Count, -1, -1));
+            ScheduleWalk(g, TripEventKind.Arrive, lot.Count, -1, -1, (x, z), (tx, tz), WalkTicks(d));
         }
         return unloaded;
     }

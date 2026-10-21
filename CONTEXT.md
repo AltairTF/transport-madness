@@ -40,7 +40,7 @@ A wave of the war in which a share of the people of every Town leave for good, a
 At fixed months the army buys a share of the Company's vehicles and trains (freight first, the biggest first, the garage too) at a table price, whatever their Condition. The Player is told a month ahead and cannot refuse.
 
 **Raid**:
-From 1942 the enemy bombs the Region at random moments. Each raid is a Flight of bombers that comes in from one side of the map, picks a target by value and drops Bombs on it; what a Bomb does is decided where it lands. Industries stop for days, Gateways, Stations and Depots are shut for a time, Vehicles become wrecks, a rail Signal fails, buildings fall and the road gets craters, which the crews clear like wrecks. Casualties are a number only. The frequency option scales how often.
+From 1942 the enemy bombs the Region at random moments. Each raid is a Flight of bombers that comes in from one side of the map, picks a target by value and drops Bombs on it; what a Bomb does is decided where it lands. Industries stop for days, Gateways, Stations and Depots are shut for a time, Vehicles become wrecks, a rail Signal fails, buildings fall and the road gets craters, which the crews clear like wrecks. People are hurt too: see Casualty, Siren and Cover. The frequency option scales how often.
 
 **Flight**:
 A group of 1 to 6 bomber aircraft of a Raid. It enters the map from the side drawn for the game, flies straight at a fixed speed and height over its target (chosen by the value the enemy gives it, less when it is down, idle or defended by Batteries) and out of the map. Each aircraft drops a stick of Bombs on the way unless a Battery has brought it down. A flight is a simulated thing: it is stepped, kept in the state hash and drawn from the simulation.
@@ -62,6 +62,15 @@ The Staffing of the Batteries that are firing at a point of the sky, added up. A
 
 **Air raid warning**:
 The notice that a Flight has entered the map: how many aircraft, from which side, and how many seconds until they arrive. The target is told only in the last ten seconds.
+
+**Siren**:
+Sounds on the whole map when a Flight is launched, and stays on until the last Flight in the air is over (the all-clear). People do not know where the Bombs will fall, so everybody outdoors reacts. A Group that is to leave on foot while it is on stays in.
+
+**Cover** (also **Shelter**):
+Where the people on foot and the people waiting in a Station queue go when the Siren sounds: the nearest standing building they can walk to before the first Bomb could land (the Flight's lead time less five seconds to start running). They stay inside until the all-clear and then go on, so their walk is late by the time they spent there. People in cars and buses keep driving, people already in a building stay in it, and people who find no building in reach are caught in the open.
+
+**Casualty**:
+A person killed or hurt in a raid, and gone for good from the Group they belonged to (until C14 only a number). A destroyed building takes 35 % of the people really inside it (those at home, at work or at leisure there, and those who took Cover in it), a Bomb takes the same share of the people on foot and of a Station queue within its Blast radius, a wrecked car takes two of its people and a wrecked bus all its riders. People in Cover outside the blast lose nothing. The people of a destroyed home who were elsewhere are not casualties; they are homeless and leave the Region.
 
 **Cargo**:
 Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, the Imported oil and rubber, and ammunition. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
@@ -147,7 +156,7 @@ Anything that goes wrong on the network: an accident, a breakdown, a blockage. I
 Vehicles not owned by the Company (private cars, etc.) that share the roads and affect congestion and Incidents. In towns most of it is Trip cars: a car stands for five people of a Trip group, drives from the road node by its home to the node by its destination, and is taken off the road near it.
 
 **Trip group**:
-A bundle of at most ten people of one Building who travel together from home to a workplace (a Building with Jobs or an Industry with Jobs) and a leisure place and back, four trips a day at times drawn once from the seed inside the windows of the tuning file. Chooses how to travel by time and money: on foot when the place is close, otherwise by ambient car (if the group has one) or by the Company's Lines. Has no individual identity. Ends (is retired) when its home is demolished, and the jobs it held go back to its workplace. The groups that reach an Industry are what give it its Staffing.
+A bundle of at most ten people of one Building who travel together from home to a workplace (a Building with Jobs or an Industry with Jobs) and a leisure place and back, four trips a day at times drawn once from the seed inside the windows of the tuning file. Chooses how to travel by time and money: on foot when the place is close, otherwise by ambient car (if the group has one) or by the Company's Lines. Has no individual identity, but its people can be fewer than ten (or than its home's share): Casualties and the call-up take them from the Group for good. Ends (is retired) when its home is demolished or nobody is left, and the jobs it held go back to its workplace. The groups that reach an Industry are what give it its Staffing.
 
 **Congestion estimate**:
 How many times longer than on empty roads people expect a car trip to take, kept for each hour of the day and moved toward what each finished car trip really took. The car's cost in the choice of Mode uses it, so a jammed rush hour sends people to the Lines, or nowhere.
@@ -267,6 +276,7 @@ The line a vehicle follows from one lane through a junction to the next. Vehicle
 - An **Order** names an **Industry**, **Town** or **Gateway** as source and destination.
 - A **Line** is run by **Company vehicles**, bought at a **Depot**; they earn **Pay** and cost upkeep every **Day**.
 - A **Battery** is staffed by **Trip groups**, supplied with **Ammunition** from a **Gateway** through a **Station** that covers it, and lowers the weight the enemy gives the targets it covers.
+- A **Siren** sends the **Trip groups** on foot and the people in **Station** queues to **Cover**; **Casualties** of a raid are taken from the **Trip groups** inside the destroyed building, in the blast or aboard the wrecked vehicle.
 - A **Model year** gates which vehicles the **Company** may buy.
 - A **Maintenance policy** sends a due vehicle to a **Depot** whose level can do the repair; a **Breakdown** is a **Wreck** made by low **Condition**.
 - The **Budget** is fed by **Pay** and the **Allocation**; **Orders** met raise **Standing**, which sets the **Allocation**; **Import shipments** come in at a **Gateway** and are paid from the **Budget**.

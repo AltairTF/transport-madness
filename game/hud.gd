@@ -692,6 +692,8 @@ func show_raid_warnings(flights: Array) -> void:
 			line += ", arriving in %d s" % ceili(flight["seconds"])
 		if flight["revealed"]:
 			line += "   Target: %s" % String(flight["target"]).to_lower()
+		if flight.get("sheltered", 0) > 0:
+			line += "   %d people are taking cover" % flight["sheltered"]
 		text += ("" if text.is_empty() else "\n") + line
 	_raid_banner.text = text
 	_raid_banner.visible = text != ""
@@ -1260,7 +1262,11 @@ func show_towns(towns: Array) -> void:
 		var entry: Dictionary = _town_rows[id]
 		var label: Label = entry["label"]
 		label.text = "%s\n%d people   %d jobs\n%d homes   %d shops and offices   %d industries" % [
-			town["name"], town["population"], town["jobs"], town["homes"], town["commerce"], town["industry"]]
+			town["name"], town["residents"], town["jobs"], town["homes"], town["commerce"], town["industry"]]
+		if town["residents"] < town["population"]:
+			label.text += "\nThe homes have room for %d" % town["population"]
+		if town["casualties"] > 0:
+			label.text += "\n%d killed in raids" % town["casualties"]
 		if town["inactive"] > 0 or town["abandoned"] > 0:
 			label.text += "\n%d cut off from the roads   %d abandoned" % [town["inactive"], town["abandoned"]]
 		label.text += "\nNeeds met last month   %d%%" % roundi(100.0 * (1.0 - town["unmet"]))

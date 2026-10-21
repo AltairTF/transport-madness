@@ -12,6 +12,7 @@ public sealed partial class Simulation
 
     readonly TripsTuning _trips;
     readonly SimRandom _tripRng;
+    readonly CiviliansTuning _civilians;
     readonly List<TripGroup> _groups = new();
     readonly Dictionary<int, int> _jobsTaken = new(); // workplace (see IndustryPlace) -> people assigned to it
     readonly PriorityQueue<TripEvent, (long Tick, long Order)> _tripEvents = new();
@@ -35,8 +36,11 @@ public sealed partial class Simulation
 
     enum TripEventKind : byte { Arrive, JoinQueue }
 
-    /// <summary>Something that happens to a group at a given tick: people reach the other end, or reach their station and join its queue.</summary>
-    readonly record struct TripEvent(TripEventKind Kind, int Group, int People, int StationA, int StationB);
+    /// <summary>
+    /// Something that happens to a group at a given tick: people reach the other end, or reach their station and join its queue. Both are people on foot,
+    /// who walk in a straight line from where they set out (at <paramref name="Start"/>) to where they are bound, so that a bomb or a siren can find them.
+    /// </summary>
+    readonly record struct TripEvent(TripEventKind Kind, int Group, int People, int StationA, int StationB, long Start = 0, float FromX = 0f, float FromZ = 0f, float ToX = 0f, float ToZ = 0f);
 
     /// <summary>How a pair of buildings is travelled between, cached until the roads or the lines change.</summary>
     readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version, float FreeRide = 0f);
@@ -53,6 +57,8 @@ public sealed partial class Simulation
     public TripsTuning TripTuning => _trips;
     /// <summary>Ambient cars on the road that carry a trip group.</summary>
     public int TripVehicleCount => _tripVehicles;
+    /// <summary>The trip group a car carries, -1 when it is other traffic or a company vehicle.</summary>
+    internal int TripGroupOf(int vehicle) => _tripGroup[vehicle];
 
     void GrowTripArrays(int n)
     {
@@ -274,6 +280,18 @@ public sealed partial class Simulation
 
     void Schedule(long tick, TripEvent e) => _tripEvents.Enqueue(e, (tick, _eventOrder++));
 
+    /// <summary>
+    /// People of a group set out on foot from one point to another and will be there <paramref name="ticks"/> from now (they arrive, or join the queue of a
+    /// station). With the siren on they may take cover on the way (see <see cref="TakeCover"/>), and then the walk is resumed at the all-clear.
+    /// </summary>
+    void ScheduleWalk(TripGroup g, TripEventKind kind, int people, int stationA, int stationB, (float X, float Z) from, (float X, float Z) to, long ticks)
+    {
+        var e = new TripEvent(kind, g.Id, people, stationA, stationB, Tick, from.X, from.Z, to.X, to.Z);
+        long at = Tick + ticks;
+        if (_flights.Count > 0 && TakeCover(e, at) == Cover.Sheltered) return;
+        Schedule(at, e);
+    }
+
     void Handle(TripEvent e)
     {
         var g = _groups[e.Group];
@@ -305,6 +323,11 @@ public sealed partial class Simulation
         var choice = ChooseMode(from, to, g.HasCar);
         if (choice.Mode == TripMode.None && !outbound)
             choice = new ModeChoice(TripMode.Walk, 0f, -1, -1, -1, -1, 0f, 0); // people always get home, however far and slowly
+        if (_flights.Count > 0 && choice.Mode is TripMode.Walk or TripMode.Transit)
+        {
+            g.NextTick = Tick + Math.Max(1, Ticks(_civilians.RecheckSeconds)); // the siren is on: nobody sets out on foot
+            return;
+        }
         town.TripsToday[(int)choice.Mode] += g.People;
         if (choice.Mode == TripMode.None) { Skip(g); return; }
 
@@ -319,7 +342,7 @@ public sealed partial class Simulation
         switch (choice.Mode)
         {
             case TripMode.Walk:
-                Schedule(Tick + WalkTicks(PlaceDistance(from, to)), new TripEvent(TripEventKind.Arrive, g.Id, g.People, -1, -1));
+                ScheduleWalk(g, TripEventKind.Arrive, g.People, -1, -1, PlacePoint(from), PlacePoint(to), WalkTicks(PlaceDistance(from, to)));
                 break;
             case TripMode.Car:
                 g.OriginNode = choice.OriginNode;
@@ -330,7 +353,8 @@ public sealed partial class Simulation
                 _carQueue.Add(g.Id);
                 break;
             default:
-                Schedule(Tick + Math.Max(1, Ticks(choice.WalkToStation)), new TripEvent(TripEventKind.JoinQueue, g.Id, g.People, choice.StationA, choice.StationB));
+                ScheduleWalk(g, TripEventKind.JoinQueue, g.People, choice.StationA, choice.StationB, PlacePoint(from), PointOf(_stations[choice.StationA]),
+                    Math.Max(1, Ticks(choice.WalkToStation)));
                 break;
         }
     }
@@ -382,7 +406,7 @@ public sealed partial class Simulation
         var (x, z) = PointOf(_stations[station]);
         var home = _buildings[g.Destination];
         float d = MathF.Sqrt((home.X - x) * (home.X - x) + (home.Z - z) * (home.Z - z));
-        Schedule(Tick + WalkTicks(d), new TripEvent(TripEventKind.Arrive, g.Id, people, -1, -1));
+        ScheduleWalk(g, TripEventKind.Arrive, people, -1, -1, (x, z), (home.X, home.Z), WalkTicks(d));
     }
 
     /// <summary>Daily upkeep of the groups: yesterday's trip counts, new places for groups whose workplace is gone, and a new look for groups with nothing to do.</summary>
@@ -626,11 +650,12 @@ public sealed partial class Simulation
         Arrive(_groups[group], people);
     }
 
-    ulong TripHash()
+    internal ulong TripHash()
     {
         ulong h = (ulong)_groups.Count;
         foreach (var g in _groups)
         {
+            if (_raids > 0 || _casualties > 0) h = h * 31 + (ulong)g.People; // lowered by casualties, hashed from the first siren or bomb so that nothing before it moves
             h = h * 31 + (ulong)g.NextTick;
             h = h * 31 + (ulong)g.NextLeg;
             h = h * 31 + (ulong)g.PlanDay;
@@ -659,6 +684,7 @@ public sealed partial class Simulation
                     h = h * 31 + (ulong)lot.Count;
                     h = h * 31 + (ulong)lot.Dest;
                 }
+        if (_shelters.Count > 0) h = h * 31 + ShelterHash();
         h = h * 31 + (ulong)_tripVehicles;
         foreach (float level in _congestion) h = h * 31 + BitConverter.SingleToUInt32Bits(level);
         h = h * 31 + (ulong)_tripEvents.Count;

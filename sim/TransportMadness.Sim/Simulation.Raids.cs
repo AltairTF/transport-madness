@@ -65,6 +65,8 @@ public sealed class Flight
     public string TargetName { get; internal set; } = "";
     public float TargetX { get; internal set; }
     public float TargetZ { get; internal set; }
+    /// <summary>The tick the first bomb of the flight could land at the earliest, which is how long people have after the siren to reach cover (C14).</summary>
+    public long FirstImpactTick { get; internal set; }
     /// <summary>Whether the player has been told what it is going for (in the last <c>revealSeconds</c> before it arrives).</summary>
     public bool TargetRevealed { get; internal set; }
     /// <summary>Seconds of simulation time left until the leading aircraft is over the target (0 once it has passed).</summary>
@@ -180,7 +182,7 @@ public sealed partial class Simulation
     public int Raids => _raids;
     /// <summary>Bombs dropped so far.</summary>
     public int Bombs => _bombsDropped;
-    /// <summary>People killed or hurt in raids so far, in all the towns (a number only until C14).</summary>
+    /// <summary>People killed or hurt in raids so far, in all the towns; since C14 they are also gone from the trip groups.</summary>
     public long Casualties => _casualties;
     /// <summary>The tick the next flight comes at, -1 before the raids have begun or with the frequency option off.</summary>
     public long NextRaidTick => _nextRaid;
@@ -405,6 +407,11 @@ public sealed partial class Simulation
             Lead = b.Speed * FallTicks() * StepSeconds,
             Rng = rng,
         };
+        // The first bomb is let go when the leader is a stick's half and the early release short of the target less the lead, and lands a fall later: the
+        // leader is then over the first place of its stick, unless the flight is already past it when it enters the map.
+        float early = Batteries().Count > 0 ? _war.AntiAircraft.EarlyRelease : 0f;
+        float firstAlong = distance - (b.BombsPerAircraft - 1) * 0.5f * b.BombSpacing - early;
+        flight.FirstImpactTick = Tick - 1 + Math.Max(FallTicks(), Ticks(firstAlong / b.Speed)); // a flight launched in a step has already flown that step
         for (int a = 0; a < aircraft; a++) flight.Aim[a] = (rng.NextFloat() * 2f - 1f) * b.AimError;
         _flights.Add(flight);
 
@@ -412,6 +419,7 @@ public sealed partial class Simulation
         float seconds = distance / b.Speed;
         AddEvent(SimEventKind.Raid, EventSeverity.Serious, Math.Clamp(ex, -edge, edge), Math.Clamp(ez, -edge, edge), flight.Id,
             $"Air raid warning: {aircraft} aircraft from the {DirectionName(_raidDirection)}, arriving in {seconds:0} s");
+        SoundSirens(Math.Clamp(ex, -edge, edge), Math.Clamp(ez, -edge, edge));
     }
 
     /// <summary>One step of the bombing: the bombs that land now do what they do, then the aircraft fly on and let go of the bombs whose time it is.</summary>
@@ -446,6 +454,7 @@ public sealed partial class Simulation
             {
                 EndFlight(flight);
                 _flights.RemoveAt(f--);
+                if (_flights.Count == 0) AllClear(flight.TargetX, flight.TargetZ);
             }
         }
     }
@@ -505,6 +514,7 @@ public sealed partial class Simulation
         float radius = _war.Bombing.BlastRadius;
         AddImpact(x, z, flight.Id);
         BlastBuildings(flight, x, z, radius);
+        BlastOutdoors(flight, x, z, radius);
         BlastIndustries(flight, x, z, radius);
         BlastGateways(flight, x, z, radius);
         BlastStations(flight, x, z, radius);
@@ -512,6 +522,7 @@ public sealed partial class Simulation
         BlastSignal(flight, x, z, radius);
         BlastVehicles(flight, x, z, radius);
         if (Crater(flight.Rng, x, z, _war.Bombing.CraterChance)) flight.Craters++;
+        FinishHurt();
     }
 
     void AddImpact(float x, float z, int flight)
@@ -545,7 +556,7 @@ public sealed partial class Simulation
         if (town >= 0) _towns[town].Casualties += (int)dead;
     }
 
-    /// <summary>Buildings are destroyed with a chance that falls with the distance from the centre of the blast; the share of their people counted as casualties is that of a raid before flights.</summary>
+    /// <summary>Buildings are destroyed with a chance that falls with the distance from the centre of the blast; a share of the people inside them dies (see <see cref="KillInside"/>).</summary>
     void BlastBuildings(Flight flight, float x, float z, float radius)
     {
         var b = _war.Bombing;
@@ -554,15 +565,9 @@ public sealed partial class Simulation
             var building = _buildings[id];
             float d = MathF.Sqrt((building.X - x) * (building.X - x) + (building.Z - z) * (building.Z - z));
             if (flight.Rng.NextFloat() >= b.BuildingChance * (1f - d / radius)) continue;
-            long dead = 0;
-            if (building.State == BuildingState.Active)
-            {
-                var tier = _townTuning.Of(building.Type, building.Tier);
-                dead = (long)Math.Round((building.Type == BuildingType.Home ? tier.People : tier.Jobs) * b.CasualtyShare);
-            }
+            if (building.State == BuildingState.Active) KillInside(flight, building);
             Demolish(building);
             flight.Buildings++;
-            AddCasualties(flight, building.Town, dead);
             Dissatisfy(building.Town, b.TownLossPerBuilding);
         }
     }
@@ -691,16 +696,33 @@ public sealed partial class Simulation
             var (vx, vz, _) = _net.LanePoint(new LaneId(_lane[i]), along);
             if ((vx - x) * (vx - x) + (vz - z) * (vz - z) > radius * radius) continue;
             if (incident < 0) incident = NewIncident(IncidentKind.Bombing, i);
-            int people = _war.Bombing.CarPeople;
+            int people = _war.Bombing.CarPeople, counted = 0;
             if (_line[i] >= 0)
             {
                 people = _load[i] > 0 && _loadCargo[i] == _passengerCargo ? _load[i] : 0;
                 AddEvent(SimEventKind.Raid, EventSeverity.Serious, vx, vz, i,
                     $"{_models[_model[i]].Name} on {_lines[_line[i]].Name} was destroyed in the raid" + (people > 0 ? $": {people} casualties" : ""));
+                // The riders are people of trip groups and die with the bus (what is aboard on a map without queues is only a number).
+                if (_riders[i] is { } riders)
+                {
+                    foreach (var lot in riders)
+                    {
+                        KillOnTrip(flight, _groups[lot.Group], lot.Count);
+                        counted += lot.Count;
+                    }
+                    _riders[i] = null;
+                }
+            }
+            else if (_tripGroup[i] >= 0)
+            {
+                // A trip car carries people of a group: as many as an ambient car does die, and the rest of them arrive when it is cleared.
+                counted = people = Math.Min(people, _tripPeople[i]);
+                KillOnTrip(flight, _groups[_tripGroup[i]], people);
+                _tripPeople[i] -= people;
             }
             MakeWreck(i, incident);
             flight.Wrecks++;
-            AddCasualties(flight, TownAt(vx, vz), people);
+            AddCasualties(flight, TownAt(vx, vz), people - counted);
         }
     }
 

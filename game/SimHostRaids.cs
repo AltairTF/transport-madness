@@ -37,7 +37,8 @@ public partial class SimHost
 
     /// <summary>
     /// The flights in the air, for the HUD's warning: for each {id, aircraft, direction ("north-east"), seconds (until the first is over the target, 0 once
-    /// it has passed), revealed (the target is told), target (its name, "" until revealed), x, z (the target's place), dropping (bombs are falling)}.
+    /// it has passed), revealed (the target is told), target (its name, "" until revealed), x, z (the target's place), dropping (bombs are falling),
+    /// sheltered (people in cover now, in all the towns, the same in every entry)}.
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetRaidWarnings()
     {
@@ -47,7 +48,7 @@ public partial class SimHost
             {
                 ["id"] = flight.Id, ["aircraft"] = flight.Aircraft, ["direction"] = Simulation.DirectionName(Sim.RaidDirection),
                 ["seconds"] = flight.SecondsToTarget, ["revealed"] = flight.TargetRevealed, ["target"] = flight.TargetRevealed ? flight.TargetName : "",
-                ["x"] = flight.TargetX, ["z"] = flight.TargetZ, ["dropping"] = flight.Phase != FlightPhase.Approaching,
+                ["x"] = flight.TargetX, ["z"] = flight.TargetZ, ["dropping"] = flight.Phase != FlightPhase.Approaching, ["sheltered"] = Sim.PeopleSheltered,
             });
         return list;
     }

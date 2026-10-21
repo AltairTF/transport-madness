@@ -332,6 +332,14 @@
       "earlyRelease": 150.0,
       "coverSaturation": 2.0,
       "strongCover": 0.5
+    },
+    // Civilians (C14): when a flight is launched the siren sounds; people on foot, and people waiting in a station queue, run to the nearest standing
+    // building they can reach before the first bomb could land (the flight's lead time less reactionSeconds, at the walking speed of 'trips'), stay
+    // there until the all-clear (the flight is over) and then go on. A group that is to leave on foot or for a station while the siren is on stays
+    // in and looks again every recheckSeconds. People in cars and buses keep driving; people already in a building stay in it.
+    "civilians": {
+      "reactionSeconds": 5.0,
+      "recheckSeconds": 3.0
     }
   },
 

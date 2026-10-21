@@ -423,7 +423,7 @@ public class RaidTests
     // ---- What a bomb does ------------------------------------------------------------------------------------------
 
     [Fact]
-    public void ABombDestroysTheBuildingsInItsBlastRadius_AndNoOthers_AndCountsTheirPeopleAsCasualties()
+    public void ABombDestroysTheBuildingsInItsBlastRadius_AndNoOthers_AndTakesAShareOfThePeopleInsideThem()
     {
         var sim = Bombed();
         var town = sim.Towns[0];
@@ -433,6 +433,7 @@ public class RaidTests
         var outside = sim.Buildings.Where(x => Distance(x.X, x.Z, home.X, home.Z) > b.BlastRadius).ToList();
         Assert.NotEmpty(outside);
         float satisfaction = town.Satisfaction;
+        var before = sim.TripGroups.ToDictionary(g => g.Id, g => g.People);
 
         var flight = sim.BombForTest(home.X, home.Z);
 
@@ -441,10 +442,16 @@ public class RaidTests
         Assert.All(destroyed, x => Assert.True(Distance(x.X, x.Z, home.X, home.Z) <= b.BlastRadius));
         Assert.All(outside, x => Assert.NotEqual(BuildingState.Demolished, x.State));
         Assert.Equal(destroyed.Count, flight.Buildings);
-        long dead = destroyed.Sum(x => (long)Math.Round((x.Type == BuildingType.Home ? sim.TownTuning.Of(x.Type, x.Tier).People : sim.TownTuning.Of(x.Type, x.Tier).Jobs) * b.CasualtyShare));
-        Assert.True(dead > 0);
+        // At the start of the game everybody is at home: the people who die are those of the groups that live in the destroyed homes (the shops have nobody in them yet).
+        var lost = sim.TripGroups.Where(g => g.People < before[g.Id]).ToList();
+        Assert.NotEmpty(lost);
+        Assert.All(lost, g => Assert.Contains(sim.Buildings[g.Home], destroyed));
+        long dead = lost.Sum(g => (long)(before[g.Id] - g.People));
+        long capacity = destroyed.Where(x => x.Type == BuildingType.Home).Sum(x => sim.TownTuning.Of(x.Type, x.Tier).People);
+        Assert.InRange(dead, (long)(capacity * b.CasualtyShare) - lost.Count, (long)(capacity * b.CasualtyShare) + lost.Count); // the share of each group, rounded by a draw
         Assert.Equal(dead, sim.Casualties);
         Assert.Equal(dead, town.Casualties);
+        Assert.Equal(dead, flight.Casualties);
         Assert.Equal(satisfaction - destroyed.Count * b.TownLossPerBuilding, town.Satisfaction, 0.001f);
     }
 
