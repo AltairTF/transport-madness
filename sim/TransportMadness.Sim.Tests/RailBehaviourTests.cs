@@ -60,7 +60,7 @@ public class RailBehaviourTests
     {
         float Top(Func<float, float> ground)
         {
-            var sim = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (x, _) => ground(x))), 1);
+            var sim = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (x, _) => ground(x)), Worlds.Late()), 1);
             sim.Execute(new BuildTrackCommand(-1200, 0, -900, 0));
             Assert.True(sim.Execute(new BuildTrackCommand(-900, 0, 1200, 0)) > 0);
             int a = sim.Execute(new BuildRailStationCommand(-850, 0)), b = sim.Execute(new BuildRailStationCommand(1100, 0));

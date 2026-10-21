@@ -111,7 +111,7 @@ public sealed partial class Simulation
                 if (v >= _count || !_servicing[v]) return;
                 if (repaired)
                 {
-                    long price = RepairPrice(job.Kind, _models[_model[v]].Price);
+                    long price = RepairPrice(job.Kind, _models[_model[v]].Price, _models[_model[v]].FromYear);
                     (_condition[v], _patched[v]) = ApplyRepair(job.Kind, _condition[v], _patched[v]);
                     _lastRepair[v] = Tick;
                     PayRepair(price, _line[v]);
@@ -134,7 +134,7 @@ public sealed partial class Simulation
                 if (!t.Active || !t.Servicing) return;
                 if (repaired)
                 {
-                    long price = RepairPrice(job.Kind, _railTuning.Locomotives[t.Locomotive].Price + t.Wagons * _railTuning.Wagons[t.Wagon].Price);
+                    long price = RepairPrice(job.Kind, _railTuning.Locomotives[t.Locomotive].Price + t.Wagons * _railTuning.Wagons[t.Wagon].Price, _railTuning.Locomotives[t.Locomotive].FromYear);
                     (t.Condition, t.Patched) = ApplyRepair(job.Kind, t.Condition, t.Patched);
                     t.LastRepairTick = Tick;
                     PayRepair(price, t.Line);
@@ -149,7 +149,7 @@ public sealed partial class Simulation
             {
                 var entry = _garage[job.Target];
                 if (!entry.Active || !repaired) return;
-                long price = RepairPrice(job.Kind, PriceOf(entry));
+                long price = RepairPrice(job.Kind, PriceOf(entry), FromYearOf(entry));
                 (entry.Condition, entry.Patched) = ApplyRepair(job.Kind, entry.Condition, entry.Patched);
                 entry.LastRepairTick = Tick;
                 Charge(price, LedgerEntry.Maintenance);

@@ -306,6 +306,8 @@ public sealed record VehicleModelTuning
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
+    /// <summary>The year of the campaign from which the model can be bought.</summary>
+    public required int FromYear { get; init; }
     public required string Cargo { get; init; }
     public required int Capacity { get; init; }
     public required float Length { get; init; }

@@ -454,7 +454,10 @@ public sealed partial class Simulation
     }
 
     /// <summary>What a repair costs for a vehicle or train that cost <paramref name="price"/> new.</summary>
-    public long RepairPrice(RepairKind kind, long price) => Price(price * _maint.Of(kind).PriceShare * _maint.OldVehicleRepairFactor);
+    public long RepairPrice(RepairKind kind, long price) => Price(price * _maint.Of(kind).PriceShare);
+
+    /// <summary>What a repair costs for a vehicle or train of a model first sold in <paramref name="fromYear"/>: dearer the older the model (C8).</summary>
+    public long RepairPrice(RepairKind kind, long price, int fromYear) => Price(price * _maint.Of(kind).PriceShare * _maint.OldVehicle.Factor(fromYear, Today.Year));
 
     /// <summary>Seconds a repair takes in a bay.</summary>
     public float RepairSeconds(RepairKind kind) => _maint.Of(kind).Seconds;

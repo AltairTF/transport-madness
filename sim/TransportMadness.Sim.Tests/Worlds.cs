@@ -14,11 +14,22 @@ internal static class Worlds
     /// <summary>The 600 seconds that were a day before the campaign's 1200 s day: the balance tests measure in these periods, so their windows and thresholds keep their meaning.</summary>
     internal const double Period = 600.0;
 
+    /// <summary>The tuning with every model of the roster on offer from the start (year 1938), so that the tests of rail and of the fleet that are not about model years can buy any, and old models cost nothing extra to repair.</summary>
+    internal static Tuning Late(Tuning? tuning = null)
+    {
+        tuning ??= Tuning.Load();
+        return tuning with
+        {
+            Vehicles = tuning.Vehicles.Select(v => v with { FromYear = 1938 }).ToList(),
+            Rail = tuning.Rail with { Locomotives = tuning.Rail.Locomotives.Select(l => l with { FromYear = 1938 }).ToList() },
+        };
+    }
+
     internal static void RunPeriod(Simulation sim) => Run(sim, Period / sim.DayLengthSeconds);
 
     internal static (Simulation Sim, WorldPlan Plan) World(ulong seed, int towns, Tuning? tuning = null, IndustryAmount? industries = null)
     {
-        var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
+        var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Late(tuning));
         var plan = TownGenerator.Generate(net, seed, towns);
         if (industries != null) plan = IndustryGenerator.Generate(net, seed, plan, industries.Value);
         var sim = new Simulation(net, seed);

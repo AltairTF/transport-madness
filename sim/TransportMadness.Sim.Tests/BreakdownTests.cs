@@ -84,7 +84,7 @@ public class BreakdownTests
             int count = 0;
             for (ulong seed = 1; seed <= 12; seed++)
             {
-                var net = new RoadNetwork(Terrain.Flat());
+                var net = new RoadNetwork(Terrain.Flat(), Worlds.Late());
                 var sim = new Simulation(net, seed, frequency);
                 sim.Execute(new BuildRoadCommand(0, 0, 1200, 0, RoadType.TwoLane, 14f));
                 int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(0, 0, 1f), DepotLevel.Workshop));

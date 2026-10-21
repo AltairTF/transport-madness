@@ -104,8 +104,8 @@ The Company vehicles and trains standing in a Depot on no Line: bought without o
 **Order** (replaces the Contract of the first plan):
 A request from the Government with a deadline: a production quota (deliver an amount of a Cargo to the state at a Gateway), a state work (a factory the state founds on the map, to be supplied and connected, with an output target) or a civil need. Offered at random times inside the Phase of the war, accepted or ignored by the Player, rewarded with Budget and Standing when met and penalised when failed.
 
-**Model year** (planned, campaign C8; replaces the Era of the first plan):
-The year of the campaign from which a vehicle model can be bought. The world is fictional, the period is 1938 to 1945.
+**Model year** (replaces the Era of the first plan):
+The year of the campaign from which a vehicle model or locomotive can be bought. The world is fictional, the period is 1938 to 1945. A model that has been on sale for more than three years is old: its repairs cost more, up to 60 % more, and it never wears for good.
 
 **Incident**:
 Anything that goes wrong on the network: an accident, a breakdown, a blockage. Includes incidents involving ambient traffic.

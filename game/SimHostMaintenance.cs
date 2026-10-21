@@ -136,7 +136,7 @@ public partial class SimHost
         foreach (RepairKind kind in Enum.GetValues<RepairKind>())
         {
             can.Add(Simulation.CanRepair(level, kind));
-            price.Add(Sim.RepairPrice(kind, Sim.PriceOf(entry)));
+            price.Add(Sim.RepairPrice(kind, Sim.PriceOf(entry), Sim.FromYearOf(entry)));
         }
         var job = Sim.JobFor(RepairSubject.Parked, entry.Id);
         d["condition"] = entry.Condition;

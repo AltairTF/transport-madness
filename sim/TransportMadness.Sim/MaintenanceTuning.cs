@@ -128,8 +128,8 @@ public sealed record MaintenanceTuning
     public required float CriticalCondition { get; init; }
     /// <summary>Seconds a broken-down train stands before the crew has cleared it.</summary>
     public required float TrainBreakdownSeconds { get; init; }
-    /// <summary>Repairs of an old vehicle cost this many times as much; no effect until the campaign has model years.</summary>
-    public required float OldVehicleRepairFactor { get; init; }
+    /// <summary>What a repair costs more for a model that has been on offer for years (C8).</summary>
+    public required OldVehicleTuning OldVehicle { get; init; }
     public required RepairTuning Patch { get; init; }
     public required RepairTuning Service { get; init; }
     public required RepairTuning Overhaul { get; init; }
@@ -159,4 +159,15 @@ public sealed record MaintenanceTuning
             throw new JsonException("maintenance.roads is out of range");
         if (Bays.Simple < 1 || Bays.Workshop < 1 || Bays.Complex < 1) throw new JsonException("maintenance.bays must be at least 1");
     }
+}
+
+/// <summary>A model is old after <see cref="AfterYears"/> years since its year; each further year adds <see cref="ExtraPerYear"/> to the price of a repair, up to <see cref="MaxExtra"/>.</summary>
+public sealed record OldVehicleTuning
+{
+    public required int AfterYears { get; init; }
+    public required float ExtraPerYear { get; init; }
+    public required float MaxExtra { get; init; }
+
+    /// <summary>The multiple of the repair price for a model of <paramref name="fromYear"/> in <paramref name="year"/>.</summary>
+    public float Factor(int fromYear, int year) => 1f + MathF.Min(MaxExtra, ExtraPerYear * MathF.Max(0, year - fromYear - AfterYears));
 }

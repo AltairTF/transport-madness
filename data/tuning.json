@@ -335,7 +335,9 @@
       "clearance": 4.0
     },
     "locomotives": [
-      { "id": "diesel", "name": "Diesel locomotive", "length": 18.0, "mass": 90000.0, "power": 1600000.0, "tractiveEffort": 220000.0, "maxSpeed": 36.0, "maxWagons": 8, "price": 120000, "upkeepPerDay": 2000.0 }
+      { "id": "diesel", "name": "Diesel locomotive", "fromYear": 1942, "length": 18.0, "mass": 90000.0, "power": 1600000.0, "tractiveEffort": 220000.0, "maxSpeed": 36.0, "maxWagons": 8, "price": 120000, "upkeepPerDay": 2000.0 },
+      // The first locomotive (C8): cheaper and slower than the diesel of 1942, and dearer to keep.
+      { "id": "steam", "name": "Steam locomotive", "fromYear": 1938, "length": 16.0, "mass": 80000.0, "power": 900000.0, "tractiveEffort": 190000.0, "maxSpeed": 26.0, "maxWagons": 6, "price": 70000, "upkeepPerDay": 2800.0 }
     ],
     "wagons": [
       { "id": "coach", "name": "Passenger coach", "cargo": "passengers", "capacity": 48, "length": 20.0, "mass": 26000.0, "unitMass": 80.0, "price": 36000, "upkeepPerDay": 400.0, "dwellSeconds": 10.0, "secondsPerUnit": 0.15 },
@@ -357,7 +359,9 @@
     "wreckCondition": 5.0,          // Condition of a vehicle after a breakdown
     "criticalCondition": 15.0,      // a breakdown below this is negligence (fined)
     "trainBreakdownSeconds": 150.0, // a broken-down train stands this long before the crew has cleared it
-    "oldVehicleRepairFactor": 1.0,  // no effect until the campaign has model years
+    // A model is old after 'afterYears' years since its year; each year after that adds 'extraPerYear' to what a repair costs, up to 'maxExtra'. No wear
+    // that cannot be repaired: an old model is only dearer to keep, which is the reason to buy the newer one.
+    "oldVehicle": { "afterYears": 3, "extraPerYear": 0.12, "maxExtra": 0.6 },
     "patch": { "gain": 15.0, "ceiling": 100.0, "seconds": 20.0, "priceShare": 0.03 },
     "service": { "gain": 50.0, "ceiling": 100.0, "seconds": 60.0, "priceShare": 0.12 },
     "overhaul": { "gain": 100.0, "ceiling": 95.0, "seconds": 180.0, "priceShare": 0.4 },
@@ -635,9 +639,12 @@
   // The vehicles the company can buy at a depot. A model that carries 'freight' takes whichever freight cargo (anything but
   // passengers) is waiting at a stop and wanted at the next one.
   "vehicles": [
-    { "id": "bus", "name": "Bus", "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
-    { "id": "truck", "name": "Truck", "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 900.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 },
+    { "id": "bus", "name": "Bus", "fromYear": 1938, "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
+    { "id": "truck", "name": "Light truck", "fromYear": 1938, "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 900.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 },
     // Takes the workers waiting at a station beside homes to a station beside an industry with jobs (C7).
-    { "id": "workerbus", "name": "Workers' bus", "cargo": "workers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 }
+    { "id": "workerbus", "name": "Workers' bus", "fromYear": 1938, "cargo": "workers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
+    // Later models (C8): a model can be bought from its year on; the roster is data and the code names none of them.
+    { "id": "heavytruck", "name": "Heavy truck", "fromYear": 1940, "cargo": "freight", "capacity": 35, "length": 10.0, "maxSpeed": 14.0, "price": 46000, "upkeepPerDay": 1400.0, "dwellSeconds": 7.0, "secondsPerUnit": 0.5 },
+    { "id": "bigbus", "name": "Large bus", "fromYear": 1941, "cargo": "passengers", "capacity": 45, "length": 12.0, "maxSpeed": 18.0, "price": 36000, "upkeepPerDay": 1100.0, "dwellSeconds": 7.0, "secondsPerUnit": 0.35 }
   ]
 }

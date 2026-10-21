@@ -142,6 +142,7 @@ func _ready() -> void:
 
 
 var _campaign_over_seen := false
+var _model_year := 0
 
 
 func _process(delta: float) -> void:
@@ -152,6 +153,15 @@ func _process(delta: float) -> void:
 		hud.show_stats(host.GetStats())
 		var company: Dictionary = host.GetCompany()
 		hud.show_company(company)
+		if company["year"] != _model_year:
+			# A new year: the models on sale change, and the news says which are new.
+			var first: bool = _model_year == 0
+			_model_year = company["year"]
+			hud.set_models(host.GetVehicleModels())
+			hud.set_train_options(host.GetTrainOptions())
+			var news: Array = host.GetNewModels(_model_year)
+			if not first and not news.is_empty():
+				hud.show_message("New on sale in %d: %s" % [_model_year, ", ".join(news)])
 		if company["campaign_over"] and not _campaign_over_seen:
 			_campaign_over_seen = true
 			host.SetSpeed(0.0)

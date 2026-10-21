@@ -8,7 +8,7 @@ public class GarageTests
     /// <summary>A straight road 1200 m long with a depot at its west end, stations at x = 150 and x = 1050, and a line between them.</summary>
     static (Simulation Sim, int Depot, int A, int B, int Line) Road(Tuning? tuning = null)
     {
-        var net = new RoadNetwork(Terrain.Flat(), tuning);
+        var net = new RoadNetwork(Terrain.Flat(), Worlds.Late(tuning));
         var sim = new Simulation(net, 5);
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, 1200, 0, RoadType.TwoLane, 14f)));
         int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(0, 0, 1f), DepotLevel.Simple));

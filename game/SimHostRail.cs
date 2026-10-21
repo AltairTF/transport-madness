@@ -192,7 +192,7 @@ public partial class SimHost
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetTrainOptions()
     {
         var options = new Godot.Collections.Array<Godot.Collections.Dictionary>();
-        foreach (var loco in Sim.Locomotives)
+        foreach (var loco in Sim.AvailableLocomotives)
             foreach (var wagon in Sim.Wagons)
                 foreach (int count in new[] { 4, 8 })
                 {

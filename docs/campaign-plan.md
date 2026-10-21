@@ -1,6 +1,6 @@
 # Campaign plan: a region at war, 1938 to 1945
 
-Status: C1 to C7 done on 2026-10-21 (sections 5.23, 5.25 to 5.30 of `project-status.md`); the rest is planned (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
+Status: C1 to C8 done on 2026-10-21 (sections 5.23, 5.25 to 5.31 of `project-status.md`); the rest is planned (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
 
 ## What was decided
 
@@ -29,7 +29,7 @@ Status: C1 to C7 done on 2026-10-21 (sections 5.23, 5.25 to 5.30 of `project-sta
 | C5 (done) | Orders: the three kinds, the phases, the random schedule, acceptance, reward and failure, the Orders window and the first order (section 5.28 of `project-status.md`). |
 | C6 (done) | Electricity: plants, demand, shortage, the monthly purchase (section 5.29 of `project-status.md`). |
 | C7 (done) | Workers: jobs in big industries, staffing, output by staffing, workers' bus lines to factories (section 5.30 of `project-status.md`; workers are a cargo, not trip groups). |
-| C8 | The fleet by year, the new models, the old-vehicle repair multiplier. |
+| C8 (done) | The fleet by year, the new models, the old-vehicle repair multiplier (section 5.31 of `project-status.md`). |
 | C9 | The war: rationing, conscription, requisition, bombing, in that order, each its own slice with tests. |
 | M6 | Save and load, overlays, balancing, art, audio (the old M6 without eras). |
 

@@ -98,6 +98,8 @@ public sealed record LocomotiveTuning
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
+    /// <summary>The year of the campaign from which the locomotive can be bought.</summary>
+    public required int FromYear { get; init; }
     public required float Length { get; init; }
     /// <summary>Kilograms.</summary>
     public required float Mass { get; init; }

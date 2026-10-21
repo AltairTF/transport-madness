@@ -189,7 +189,7 @@ public class CrossingTests
         // A bowl 30 m deep with a road along its floor; the railway runs across the rim on a bridge.
         float Smooth(float x) => MathF.Abs(x) >= 90f ? 0f : 0.5f * (1f + MathF.Cos(MathF.PI * x / 90f));
         var terrain = Terrain.Create(256, 8f, (x, z) => 50f - 30f * Smooth(x) * Smooth(z * 0.5f));
-        var sim = new Simulation(new RoadNetwork(terrain), 1);
+        var sim = new Simulation(new RoadNetwork(terrain, Worlds.Late()), 1);
         sim.Execute(new TakeLoanCommand(1000000));
         Assert.True(sim.Execute(new BuildRoadCommand(0, -60, 0, 60, RoadType.TwoLane, 14f)) > 0);
 

@@ -637,9 +637,17 @@ public partial class SimHost : Node3D
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetVehicleModels()
     {
         var models = new Godot.Collections.Array<Godot.Collections.Dictionary>();
-        foreach (var m in Sim.VehicleModels)
-            models.Add(new Godot.Collections.Dictionary { ["id"] = m.Id, ["name"] = m.Name, ["price"] = m.Price, ["capacity"] = m.Capacity, ["upkeep"] = m.UpkeepPerDay, ["cargo"] = m.Cargo });
+        foreach (var m in Sim.AvailableModels)
+            models.Add(new Godot.Collections.Dictionary { ["id"] = m.Id, ["name"] = m.Name, ["price"] = m.Price, ["capacity"] = m.Capacity, ["upkeep"] = m.UpkeepPerDay, ["cargo"] = m.Cargo, ["from_year"] = m.FromYear });
         return models;
+    }
+
+    /// <summary>The names of the models (vehicles and locomotives) that went on sale in a year, for the news.</summary>
+    public Godot.Collections.Array<string> GetNewModels(int year)
+    {
+        var names = new Godot.Collections.Array<string>();
+        foreach (var n in Sim.ModelsOfYear(year)) names.Add(n);
+        return names;
     }
 
     /// <summary>

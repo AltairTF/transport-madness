@@ -17,7 +17,7 @@ public class MaintenanceDeterminismTests
     /// </summary>
     static Simulation Scenario(Tuning? tuning = null)
     {
-        var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning ?? Worn());
+        var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Worlds.Late(tuning ?? Worn()));
         var sim = new Simulation(net, 17, IncidentFrequency.High);
         sim.Execute(new TakeLoanCommand(1000000));
         sim.Execute(new BuildRoadCommand(-200, 0, 1000, 0, RoadType.Avenue2x2, 19f));
@@ -58,7 +58,7 @@ public class MaintenanceDeterminismTests
         Assert.True(a.Company.Total(LedgerEntry.Maintenance) < 0, "nothing was ever repaired");
         Assert.True(a.Events.Any(e => e.Kind is SimEventKind.Breakdown or SimEventKind.TrainBreakdown), "nothing ever broke down");
 
-        var fresh = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Worn()), 17, IncidentFrequency.High);
+        var fresh = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Worlds.Late(Worn())), 17, IncidentFrequency.High);
         fresh.Replay(a.CommandLog, a.Tick);
         Assert.Equal(a.StateHash(), fresh.StateHash());
     }
@@ -67,7 +67,7 @@ public class MaintenanceDeterminismTests
     public void ADifferentFrequency_GivesADifferentRun()
     {
         var normal = Scenario();
-        var off = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Worn()), 17, IncidentFrequency.Off);
+        var off = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Worlds.Late(Worn())), 17, IncidentFrequency.Off);
         off.Replay(normal.CommandLog.Where(c => c.Command is not SetFrequencyCommand).ToList(), normal.Tick);
 
         Assert.NotEqual(normal.StateHash(), off.StateHash());

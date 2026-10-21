@@ -6,7 +6,7 @@ namespace TransportMadness.Sim.Tests;
 internal static class RailWorlds
 {
     internal static Simulation Flat(ulong seed = 1, Tuning? tuning = null) =>
-        new(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning), seed);
+        new(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Worlds.Late(tuning)), seed);
 
     internal static void Run(Simulation sim, double seconds)
     {
@@ -81,7 +81,7 @@ public class TrainTests
         Assert.Equal(-1, sim.Execute(new BuyTrainCommand(w.Depot, "diesel", "coach", 3, cut)));   // not joined to the depot
         Assert.Equal(-1, sim.Execute(new BuyTrainCommand(w.Depot, "diesel", "coach", 0, w.Line)));  // no wagons
         Assert.Equal(-1, sim.Execute(new BuyTrainCommand(w.Depot, "diesel", "coach", 99, w.Line))); // too many
-        Assert.Equal(-1, sim.Execute(new BuyTrainCommand(w.Depot, "steam", "coach", 3, w.Line)));   // no such locomotive
+        Assert.Equal(-1, sim.Execute(new BuyTrainCommand(w.Depot, "monorail", "coach", 3, w.Line)));   // no such locomotive
         Assert.True(sim.Execute(new BuyTrainCommand(w.Depot, "diesel", "coach", 3, w.Line)) >= 0);
     }
 

@@ -624,7 +624,7 @@ public sealed partial class Simulation
         if (c.Depot == BuyTrainCommand.NearestDepot) return BuyTrainAtNearestDepot(c);
         SyncRail();
         int l = LocomotiveIndex(c.Locomotive), w = WagonIndex(c.Wagon);
-        if (l < 0 || w < 0 || c.Depot < 0 || c.Depot >= _railDepots.Count || !_railDepots[c.Depot].Active) return -1;
+        if (l < 0 || w < 0 || c.Depot < 0 || c.Depot >= _railDepots.Count || !_railDepots[c.Depot].Active || !IsAvailable(_railTuning.Locomotives[l])) return -1;
         if (c.Line < 0 || c.Line >= _lines.Count || !_lines[c.Line].Active || _lines[c.Line].Mode != StationMode.Rail) return -1;
         var loco = _railTuning.Locomotives[l];
         var wagon = _railTuning.Wagons[w];

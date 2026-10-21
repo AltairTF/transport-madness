@@ -49,6 +49,9 @@ public sealed partial class Simulation
     }
 
     /// <summary>What a parked vehicle cost new.</summary>
+    /// <summary>The year the model of a parked vehicle or train was first sold.</summary>
+    public int FromYearOf(ParkedVehicle parked) => parked.Rail ? _railTuning.Locomotives[parked.Locomotive].FromYear : _models[parked.Model].FromYear;
+
     public long PriceOf(ParkedVehicle parked) =>
         parked.Rail
             ? _railTuning.Locomotives[parked.Locomotive].Price + parked.Wagons * _railTuning.Wagons[parked.Wagon].Price
@@ -61,7 +64,7 @@ public sealed partial class Simulation
     {
         int model = ModelIndex(modelId);
         if (depot == BuyParkedVehicleCommand.AnyDepot) depot = FirstOpen(_depots, d => d.Active, d => d.Id);
-        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active) return -1;
+        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active || !IsAvailable(_models[model])) return -1;
         long price = _models[model].Price;
         if (!CanAfford(price)) return -1;
         TrySpend(price, LedgerEntry.Vehicles);
@@ -74,7 +77,7 @@ public sealed partial class Simulation
         SyncRail();
         int l = LocomotiveIndex(locomotive), w = WagonIndex(wagon);
         if (depot == BuyParkedVehicleCommand.AnyDepot) depot = FirstOpen(_railDepots, d => d.Active, d => d.Id);
-        if (l < 0 || w < 0 || depot < 0 || depot >= _railDepots.Count || !_railDepots[depot].Active) return -1;
+        if (l < 0 || w < 0 || depot < 0 || depot >= _railDepots.Count || !_railDepots[depot].Active || !IsAvailable(_railTuning.Locomotives[l])) return -1;
         if (wagons < 1 || wagons > _railTuning.Locomotives[l].MaxWagons) return -1;
         long price = _railTuning.Locomotives[l].Price + wagons * _railTuning.Wagons[w].Price;
         if (!CanAfford(price)) return -1;

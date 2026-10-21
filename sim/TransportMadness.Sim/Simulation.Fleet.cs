@@ -197,7 +197,7 @@ public sealed partial class Simulation
     {
         SyncNetwork();
         int model = ModelIndex(modelId);
-        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active) return -1;
+        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active || !IsAvailable(_models[model])) return -1;
         if (!CanAfford(_models[model].Price)) return -1;
         int id = PlaceAtDepot(depot, model, line);
         if (id >= 0) TrySpend(_models[model].Price, LedgerEntry.Vehicles);

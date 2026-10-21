@@ -39,7 +39,7 @@ internal static class MaintenanceWorlds
     /// <summary>A straight road 1200 m long with a depot of the given level at its west end, stations at x = 150 and x = 1050, and a line between them. No random breakdowns unless asked for.</summary>
     internal static RoadLine Road(DepotLevel level = DepotLevel.Workshop, Tuning? tuning = null, IncidentFrequency frequency = IncidentFrequency.Off)
     {
-        var net = new RoadNetwork(Terrain.Flat(), tuning ?? Calm());
+        var net = new RoadNetwork(Terrain.Flat(), Worlds.Late(tuning ?? Calm()));
         var sim = new Simulation(net, 5, frequency);
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, 1200, 0, RoadType.TwoLane, 14f)));
         int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(0, 0, 1f), level));
@@ -80,7 +80,7 @@ internal static class MaintenanceWorlds
     /// <summary>Track from x = 0 to x = 1500 with a depot of the given level at 300, stations at 100 and 1400, and a line between the stations.</summary>
     internal static RailLine Rail(DepotLevel level = DepotLevel.Workshop, Tuning? tuning = null, IncidentFrequency frequency = IncidentFrequency.Off)
     {
-        var sim = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning ?? Calm()), 1, frequency);
+        var sim = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Worlds.Late(tuning ?? Calm())), 1, frequency);
         Assert.True(sim.Execute(new BuildTrackCommand(0, 0, 300, 0)) > 0);
         Assert.True(sim.Execute(new BuildTrackCommand(300, 0, 1500, 0)) > 0);
         int a = sim.Execute(new BuildRailStationCommand(100, 0));
