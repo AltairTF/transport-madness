@@ -202,7 +202,7 @@
     },
     // The call-up (C9b): at the start of each month listed, 'share' of the people of every trip group are called up (they leave for good; they are
     // only a number in the Region's books). The workforce falls: the share missing 'gap' goes to 1 - (1 - gap) * (1 - share) and every industry makes
-    // its output times 1 - outputLoss * gap, the people's own staffing of the big industries and the workers a station sends fall by (1 - gap), and
+    // its output times 1 - outputLoss * gap (the people called up are also missing from the trip groups that staff the big industries), and
     // each town loses satisfactionLoss. The gap closes by recoveryPerMonth a month (those who stayed work more).
     "conscription": {
       "outputLoss": 0.7,
@@ -269,21 +269,6 @@
     "pricePerMegawattMonth": 1500,
     "maxPurchase": 40,
     "purchaseStep": 5
-  },
-
-  // Workers (C7). The big industries (steel mill, engine works, truck plant, power plant) have 'jobs' and make their output times their staffing
-  // (0 to 1). Staffing is the people's own movement plus the workers a vehicle has brought: an industry within ownReach of a town's middle
-  // is staffed by ownShare * (1 - distance / ownReach) without help, and every worker delivered to its station counts for 1 / jobs more; the
-  // workers present leave at a rate of staffLossPerDay of them, so they must keep coming. A station beside homes sends workers when some
-  // industry with jobs within reach of it is not fully staffed: the covered residents times homeShare wait there, refilled by refillPerDay of
-  // that number a day. They are carried by the workers' bus. On a map without towns there is nobody to work and staffing is 1.
-  "workers": {
-    "ownReach": 2500.0,
-    "ownShare": 0.5,
-    "staffLossPerDay": 1.0,
-    "homeShare": 0.35,
-    "refillPerDay": 1.0,
-    "reach": 3000.0
   },
 
   // The government's orders (C5). Offers come at random intervals (the gap depends on the phase of the war), at most maxOpen at once; the
@@ -492,9 +477,7 @@
     { "id": "engines", "name": "Engines", "payPerUnitKm": 45.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 100.0 },
     { "id": "bodies", "name": "Truck bodies", "payPerUnitKm": 38.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 100.0 },
     { "id": "tyres", "name": "Tyres", "payPerUnitKm": 40.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "trucks", "name": "Military trucks", "payPerUnitKm": 70.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 60.0 },
-    // Workers (C7): people on their way to a big industry's jobs. Not freight: only a vehicle that carries "workers" takes them.
-    { "id": "workers", "name": "Workers", "payPerUnitKm": 40.0, "freeSeconds": 600.0, "zeroSeconds": 2400.0, "minPayShare": 0.3, "supplyPerDay": 0.0, "maxWaiting": 120.0 }
+    { "id": "trucks", "name": "Military trucks", "payPerUnitKm": 70.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 60.0 }
   ],
 
 
@@ -593,9 +576,9 @@
     ]
   },
 
-  // Trip groups (M3c): the people of a home travel in groups of at most groupSize between home, a workplace and a leisure
-  // place, on a daily schedule. Windows are hours of the day; a group's own time inside a window and its jitter are drawn once
-  // from the seed. A group walks when the place is within walkRadius, otherwise takes the mode (car, public transport) with the
+  // Trip groups (M3c): the people of a home travel in groups of at most groupSize between home, a workplace (a building or, since C11, an
+  // industry with jobs: they are what staffs it) and a leisure place, on a daily schedule. Windows are hours of the day; a group's own
+  // time inside a window and its jitter are drawn once from the seed. A group walks when the place is within walkRadius, otherwise takes the mode (car, public transport) with the
   // lowest generalised cost: seconds plus moneyWeight times the money it costs.
   "trips": {
     "groupSize": 10,                // people in one trip group at most; a bigger home has several
@@ -719,8 +702,6 @@
   "vehicles": [
     { "id": "bus", "name": "Bus", "fromYear": 1938, "cargo": "passengers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
     { "id": "truck", "name": "Light truck", "fromYear": 1938, "cargo": "freight", "capacity": 20, "length": 8.0, "maxSpeed": 15.0, "price": 28000, "upkeepPerDay": 900.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.5 },
-    // Takes the workers waiting at a station beside homes to a station beside an industry with jobs (C7).
-    { "id": "workerbus", "name": "Workers' bus", "fromYear": 1938, "cargo": "workers", "capacity": 30, "length": 10.0, "maxSpeed": 17.0, "price": 24000, "upkeepPerDay": 800.0, "dwellSeconds": 6.0, "secondsPerUnit": 0.4 },
     // Later models (C8): a model can be bought from its year on; the roster is data and the code names none of them.
     { "id": "heavytruck", "name": "Heavy truck", "fromYear": 1940, "cargo": "freight", "capacity": 35, "length": 10.0, "maxSpeed": 14.0, "price": 46000, "upkeepPerDay": 1400.0, "dwellSeconds": 7.0, "secondsPerUnit": 0.5 },
     { "id": "bigbus", "name": "Large bus", "fromYear": 1941, "cargo": "passengers", "capacity": 45, "length": 12.0, "maxSpeed": 18.0, "price": 36000, "upkeepPerDay": 1100.0, "dwellSeconds": 7.0, "secondsPerUnit": 0.35 }

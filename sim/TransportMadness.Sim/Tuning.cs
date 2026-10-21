@@ -36,7 +36,6 @@ public sealed record Tuning
     public required OrderTuning Orders { get; init; }
     public required PowerTuning Power { get; init; }
     public required WarTuning War { get; init; }
-    public required WorkersTuning Workers { get; init; }
     public required TripsTuning Trips { get; init; }
     public required RailTuning Rail { get; init; }
     public required MaintenanceTuning Maintenance { get; init; }
@@ -537,20 +536,6 @@ public sealed record IndustryTypeTuning
     /// <summary>Megawatts a power plant adds while it burns its coal; 0 for everything else. A plant makes no cargo (its <see cref="Output"/> is empty).</summary>
     public required float Supply { get; init; }
     public required IReadOnlyList<float> Color { get; init; }
-}
-
-/// <summary>Workers (C7): how an industry with jobs is staffed.</summary>
-public sealed record WorkersTuning
-{
-    /// <summary>An industry within this of a town's middle has staff of its own, by the people's own movement.</summary>
-    public required float OwnReach { get; init; }
-    public required float OwnShare { get; init; }
-    public required float StaffLossPerDay { get; init; }
-    /// <summary>Share of the residents a station covers that wait there for a ride to work when an industry needs staff.</summary>
-    public required float HomeShare { get; init; }
-    public required float RefillPerDay { get; init; }
-    /// <summary>A station sends workers to industries within this distance.</summary>
-    public required float Reach { get; init; }
 }
 
 /// <summary>Electricity (C6): the grid the map started with, and power bought from outside.</summary>

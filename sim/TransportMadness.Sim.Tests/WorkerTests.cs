@@ -2,34 +2,42 @@ using TransportMadness.Sim;
 
 namespace TransportMadness.Sim.Tests;
 
-/// <summary>Workers (C7): jobs in the big industries, staffing from the people's own movement and from the workers' bus.</summary>
+/// <summary>Residents as workers (C11): an industry with jobs is a workplace of the trip groups, and its staffing is the share of its jobs they fill.</summary>
 public class WorkerTests
 {
-    const int Forest = 0, SteelMill = 9, PowerPlant = 15;
-    const int Wood = 2, Coal = 8, Ore = 9, Steel = 10, Workers = 18;
+    const int SteelMill = 9, PowerPlant = 15;
+    const int Coal = 8, Ore = 9;
 
-    static Tuning Quick()
+    /// <summary>A 300 s day: with a very short one the trips of the groups last longer than the day.</summary>
+    static Tuning Quick(float carShare = 1f)
     {
         var t = Tuning.Load();
-        return t with { Economy = t.Economy with { DayLength = 120f } };
+        return t with { Economy = t.Economy with { DayLength = 300f }, Trips = t.Trips with { CarShare = carShare } };
     }
 
-    /// <summary>A block of streets round (0, 0) that is a town, a road east from its corner, a steel mill at the given x beside the road.</summary>
-    static (Simulation Sim, int Depot) Build(float millX = 700, Tuning? tuning = null, bool town = true)
+    /// <summary>
+    /// A street along z = 0 from x = -200 to 0 with a town of homes beside it (<paramref name="homes"/> homes of 20 people, a home with no road would stand
+    /// empty), and a steel mill at <paramref name="millX"/>, 50 m beside the line of the street. No commerce, so the mill is the only workplace there is.
+    /// With <paramref name="road"/> the street goes on to the mill; it is built after the mill so that it gets a spur to its access point.
+    /// </summary>
+    static (Simulation Sim, int Depot) Build(int homes = 2, float millX = 1000, float millZ = 50, Tuning? tuning = null, bool town = true, bool road = true)
     {
         tuning ??= Quick();
         var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
-        foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
-            sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
-        Assert.Equal(1, sim.Execute(new BuildRoadCommand(60, -60, 1400, -60, RoadType.TwoLane, 14f)));
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
         var buildings = new List<BuildingPlan>();
-        for (int k = 0; k < 6; k++) buildings.Add(new BuildingPlan(k % 3 == 2 ? BuildingType.Commerce : BuildingType.Home, 1, lots[k].X, lots[k].Z, lots[k].Facing));
-        var towns = town ? new[] { new TownPlan("Testville", 0, 0, 0, 1, buildings) } : Array.Empty<TownPlan>();
-        sim.AddTowns(new WorldPlan(1, towns, new[] { new IndustryPlan(SteelMill, millX, -30, 0) }));
-        int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(60, -60, 1f), DepotLevel.Simple));
+        for (int k = 0; k < homes; k++) buildings.Add(new BuildingPlan(BuildingType.Home, 1, -100 - k * 30, 25, 0));
+        var towns = town ? new[] { new TownPlan("Testville", -150, 0, 0, 1, buildings) } : Array.Empty<TownPlan>();
+        sim.AddTowns(new WorldPlan(1, towns, new[] { new IndustryPlan(SteelMill, millX, millZ, 0) }));
+        sim.Company.Money = 10_000_000;
+        Assert.Equal(1, sim.Execute(new BuildRoadCommand(-200, 0, 0, 0, RoadType.TwoLane, 14f)));
+        int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(-200, 0, 1f), DepotLevel.Simple));
         Assert.True(depot >= 0);
+        if (road)
+        {
+            Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, millX + 10, 0, RoadType.TwoLane, 14f)));
+            Assert.True(sim.AccessNodeOf(sim.Industries[0]) >= 0, "the road reaches the mill");
+        }
         return (sim, depot);
     }
 
@@ -39,16 +47,19 @@ public class WorkerTests
         for (long t = 0; t < ticks; t++) sim.Step();
     }
 
-    static double MillOutput(Simulation sim, double days)
+    /// <summary>What the mill makes in a day, run after one day has closed (so that its staffing is the people's).</summary>
+    static double MillOutput(Simulation sim)
     {
         var mill = sim.Industries[0];
+        RunDays(sim, 1.05);
         mill.Input[Ore] = 600f;
         mill.Input[Coal] = 600f;
-        RunDays(sim, days);
-        return mill.Produced;
+        double before = mill.Produced;
+        RunDays(sim, 1);
+        return mill.Produced - before;
     }
 
-    // ---- Staffing --------------------------------------------------------------------------------------------------
+    // ---- Jobs and staffing -----------------------------------------------------------------------------------------
 
     [Fact]
     public void ABigIndustry_HasJobs_AndTheSmallOnesHaveNone()
@@ -62,147 +73,181 @@ public class WorkerTests
     [Fact]
     public void OnAMapWithoutTowns_NobodyIsNeeded_AndStaffingIsFull()
     {
-        var (sim, _) = Build(town: false);
-
-        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
-    }
-
-    [Fact]
-    public void TheOwnStaff_FallsWithTheDistanceToTheTown_AndIsNothingBeyondItsReach()
-    {
-        var w = Tuning.Load().Workers;
-        float Own(float x, float reach)
-        {
-            var t = Quick();
-            var (sim, _) = Build(millX: x, tuning: t with { Workers = t.Workers with { OwnReach = reach } });
-            return sim.Industries[0].OwnStaff;
-        }
-
-        Assert.Equal(w.OwnShare * (1f - 700f / w.OwnReach), Own(700, w.OwnReach), 0.01f);
-        Assert.True(Own(700, w.OwnReach) > Own(1200, w.OwnReach));
-        Assert.Equal(0f, Own(1200, 1000f));
-    }
-
-    [Fact]
-    public void WithoutWorkersBrought_AnIndustryMakesOnlyWhatItsOwnStaffAllows()
-    {
-        var (sim, _) = Build(millX: 700);
-        float own = sim.Industries[0].OwnStaff;
-        Assert.InRange(own, 0.2f, 0.5f);
-
-        double made = MillOutput(sim, 1);
-        var (full, _) = Build(millX: 700, town: false);
-        double fullMade = MillOutput(full, 1);
-
-        Assert.Equal(own, made / fullMade, 1);
-    }
-
-    [Fact]
-    public void WorkersDelivered_AddToTheStaffing_AndLeaveAgainEachDay()
-    {
-        var (sim, _) = Build();
-        var mill = sim.Industries[0];
-        sim.Step();
-        float own = sim.StaffingOf(mill);
-
-        mill.Input[Workers] = 20f;
-        sim.Step();
-        Assert.Equal(MathF.Min(1f, own + 20f / 40f), sim.StaffingOf(mill), 0.01f);
-
-        RunDays(sim, 1);
-        Assert.True(mill.Input[Workers] < 20f * 0.45f, $"{mill.Input[Workers]} left after a day");
-    }
-
-    [Fact]
-    public void AStationBesideTheIndustry_AcceptsWorkers_OnlyWhereThereAreJobs()
-    {
-        var (sim, _) = Build();
-        int mill = sim.Execute(new BuildStationCommand(700, -60));
-        int homes = sim.Execute(new BuildStationCommand(-60, -60));
-
-        Assert.True(sim.Accepts(sim.Stations[mill], Workers));
-        Assert.False(sim.Accepts(sim.Stations[homes], Workers));
-    }
-
-    // ---- Carrying them ---------------------------------------------------------------------------------------------
-
-    [Fact]
-    public void AStationBesideHomes_GetsWorkersWaiting_WhileTheIndustryIsShortOfStaff()
-    {
-        var (sim, _) = Build();
-        int homes = sim.Execute(new BuildStationCommand(-60, -60));
-
-        RunDays(sim, 1.2);
-
-        float waiting = sim.Stations[homes].Waiting[Workers];
-        Assert.True(waiting > 5f, $"{waiting} workers waiting");
-        Assert.True(waiting <= sim.CargoTypes[Workers].MaxWaiting);
-    }
-
-    [Fact]
-    public void ANoWorkersAreSent_ToAnIndustryThatIsFullyStaffed_OrOutOfReach()
-    {
-        var (sim, _) = Build();
-        int homes = sim.Execute(new BuildStationCommand(-60, -60));
-        sim.Industries[0].Input[Workers] = 100f;
-        sim.Step();
-        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
-
-        RunDays(sim, 0.05);
-
-        Assert.Equal(0f, sim.Stations[homes].Waiting[Workers]);
-    }
-
-    [Fact]
-    public void AWorkersBus_CarriesThemToTheIndustry_StaffsItAndEarnsTheFare()
-    {
-        var (sim, depot) = Build();
-        int homes = sim.Execute(new BuildStationCommand(-60, -60));
-        int mill = sim.Execute(new BuildStationCommand(700, -60));
-        int line = sim.Execute(new CreateLineCommand(new[] { homes, mill }));
-        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "workerbus", line)) >= 0);
-        var industry = sim.Industries[0];
-        sim.Step();
-        float before = sim.StaffingOf(industry);
-
-        float best = 0f;
-        for (long t = 0; t < 4L * 2400; t++)
-        {
-            sim.Step();
-            best = MathF.Max(best, sim.StaffOf(industry));
-        }
-
-        Assert.True(best > 10f, $"{best} workers at the mill at most");
-        Assert.True(sim.Lines[line].Delivered > 20);
-        Assert.True(sim.Lines[line].Income > 0);
-        Assert.True(sim.StaffingOf(industry) > before || best > 10f);
-    }
-
-    [Fact]
-    public void AFreightTruck_NeverTakesWorkers_AndAWorkersBusNeverTakesFreight()
-    {
-        var (sim, depot) = Build();
-        int homes = sim.Execute(new BuildStationCommand(-60, -60));
-        int mill = sim.Execute(new BuildStationCommand(700, -60));
-        sim.Stations[homes].Waiting[Workers] = 50f;
-        sim.Stations[homes].Waiting[Wood] = 50f;
-        int truckLine = sim.Execute(new CreateLineCommand(new[] { homes, mill }));
-        sim.Execute(new BuyVehicleCommand(depot, "truck", truckLine));
+        var (sim, _) = Build(town: false, road: false);
 
         RunDays(sim, 2);
 
-        Assert.Equal(50f, sim.Stations[homes].Waiting[Workers]); // untouched by the truck
+        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
     }
 
     [Fact]
-    public void StateWorksFoundedLater_NeedTheirOwnStaff()
+    public void BeforeTheFirstDayCloses_AnIndustryIsFullyStaffed()
+    {
+        var (sim, _) = Build(road: false);
+
+        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
+        RunDays(sim, 0.5);
+        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
+    }
+
+    [Fact]
+    public void AnIndustryWithJobs_IsAWorkplace_OfTheGroupsWithinReach()
+    {
+        var (sim, _) = Build(homes: 3);
+        int place = Simulation.IndustryPlace;
+
+        Assert.All(sim.TripGroups, g => Assert.Equal(place, g.Work));
+        Assert.Equal(60, sim.JobsTakenAt(place));
+        Assert.All(sim.TripGroups, g => Assert.Equal(0, g.WorkIndustry));
+    }
+
+    [Fact]
+    public void AnIndustryOutOfReach_IsNotAWorkplace()
+    {
+        var reach = Tuning.Load().Trips.WorkRadius;
+        var (sim, _) = Build(millX: reach + 400, road: false);
+
+        Assert.All(sim.TripGroups, g => Assert.Equal(-1, g.Work));
+        Assert.Equal(0, sim.JobsTakenAt(Simulation.IndustryPlace));
+    }
+
+    [Fact]
+    public void AnIndustryWithoutJobs_IsNeverAWorkplace()
+    {
+        var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Quick());
+        var sim = new Simulation(net, 5, IncidentFrequency.Off);
+        var homes = new[] { new BuildingPlan(BuildingType.Home, 1, -100, 25, 0) };
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", -150, 0, 0, 1, homes) }, new[] { new IndustryPlan(3, 400, 50, 0) })); // a sawmill
+
+        Assert.All(sim.TripGroups, g => Assert.Equal(-1, g.Work));
+    }
+
+    [Fact]
+    public void GroupsByCar_FillTheJobs_AndTheStaffingIsTheShareFilledWhenTheDayCloses()
+    {
+        var (sim, _) = Build(homes: 1); // 20 people for 40 jobs
+        var mill = sim.Industries[0];
+
+        RunDays(sim, 1.2);
+
+        Assert.Equal(20, sim.StaffOf(mill));
+        Assert.Equal(0.5f, sim.StaffingOf(mill));
+        Assert.Contains(sim.TripGroups, g => g.LastMode == TripMode.Car);
+    }
+
+    [Fact]
+    public void WhenThePeopleOutnumberTheJobs_TheIndustryIsFullyStaffed()
+    {
+        var (sim, _) = Build(homes: 3); // 60 people for 40 jobs
+
+        RunDays(sim, 1.2);
+
+        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
+        Assert.True(sim.StaffOf(sim.Industries[0]) >= 40);
+    }
+
+    [Fact]
+    public void WithNoRoadAndNoLine_NobodyReachesAnIndustryOutOfWalkingDistance_AndItStopsWorking()
+    {
+        var (sim, _) = Build(road: false);
+
+        RunDays(sim, 1.2);
+
+        Assert.Equal(0, sim.StaffOf(sim.Industries[0]));
+        Assert.Equal(0f, sim.StaffingOf(sim.Industries[0]));
+        Assert.Equal(0.0, MillOutput(sim));
+    }
+
+    [Fact]
+    public void ThePeopleWhoAreNotCarOwners_StayHome_WithoutALine()
+    {
+        var (sim, _) = Build(tuning: Quick(carShare: 0f));
+
+        RunDays(sim, 1.2);
+
+        Assert.Equal(0f, sim.StaffingOf(sim.Industries[0]));
+    }
+
+    [Fact]
+    public void ANeighbouringIndustry_IsReachedOnFoot()
+    {
+        var (sim, _) = Build(homes: 2, millX: -70, millZ: 120, road: false); // 40 people, a hundred metres away
+
+        RunDays(sim, 1.2);
+
+        Assert.Equal(40, sim.StaffOf(sim.Industries[0]));
+        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
+        Assert.Contains(sim.TripGroups, g => g.LastMode == TripMode.Walk);
+    }
+
+    [Fact]
+    public void AnIndustryMakesItsOutputTimesItsStaffing()
+    {
+        var (half, _) = Build(homes: 1);
+        var (full, _) = Build(town: false, road: false);
+
+        double made = MillOutput(half), fullMade = MillOutput(full);
+
+        Assert.True(fullMade > 0.0);
+        Assert.Equal(0.5, made / fullMade, 1);
+    }
+
+    // ---- By a line -------------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void AStationBesideTheIndustry_AcceptsPassengers_AndOneBesideNothingDoesNot()
     {
         var (sim, _) = Build();
-        var plant = sim.Industries[0];
+        int mill = sim.Execute(new BuildStationCommand(1000, 0));
+        int homes = sim.Execute(new BuildStationCommand(-100, 0));
+        int nowhere = sim.Execute(new BuildStationCommand(500, 0));
 
-        Assert.True(sim.StaffingOf(plant) < 1f);
-        Assert.Equal(0f, sim.StaffOf(plant));
+        Assert.True(sim.Accepts(sim.Stations[mill], 0));
+        Assert.True(sim.Accepts(sim.Stations[homes], 0));
+        Assert.False(sim.Accepts(sim.Stations[nowhere], 0));
     }
+
+    [Fact]
+    public void ALineThatEndsAtTheIndustry_CarriesTheGroupsWithoutACar_AndStaffsIt()
+    {
+        var (sim, depot) = Build(homes: 2, tuning: Quick(carShare: 0f));
+        int homes = sim.Execute(new BuildStationCommand(-100, 0));
+        int atMill = sim.Execute(new BuildStationCommand(1000, 0));
+        int line = sim.Execute(new CreateLineCommand(new[] { homes, atMill }));
+        for (int k = 0; k < 3; k++) Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", line)) >= 0);
+        var industry = sim.Industries[0];
+
+        int best = 0;
+        for (int day = 0; day < 4; day++)
+        {
+            RunDays(sim, 1);
+            best = Math.Max(best, sim.StaffOf(industry));
+        }
+
+        Assert.True(best >= 20, $"{best} reached the mill on the best day");
+        Assert.True(sim.Stations[atMill].Yesterday.Alighted + sim.Stations[atMill].Today.Alighted > 0 || sim.Lines[line].Delivered > 0);
+        Assert.True(sim.Lines[line].Income > 0);
+        Assert.Contains(sim.TripGroups, g => g.LastMode == TripMode.Transit);
+    }
+
+    [Fact]
+    public void TheModeToAnIndustry_IsChosenLikeAnyOther_ByTheQuickestWay()
+    {
+        var (sim, depot) = Build(homes: 1, tuning: Quick(carShare: 1f));
+        int home = sim.TripGroups[0].Home;
+        int place = Simulation.IndustryPlace;
+        Assert.Equal(TripMode.Car, sim.ModeFor(home, place, hasCar: true).Mode);
+        Assert.Equal(TripMode.None, sim.ModeFor(home, place, hasCar: false).Mode);
+
+        int homes = sim.Execute(new BuildStationCommand(-100, 0));
+        int mill = sim.Execute(new BuildStationCommand(1000, 0));
+        int line = sim.Execute(new CreateLineCommand(new[] { homes, mill }));
+        Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", line)) >= 0);
+
+        Assert.Equal(TripMode.Transit, sim.ModeFor(home, place, hasCar: false).Mode);
+    }
+
+    // ---- Founding, determinism -------------------------------------------------------------------------------------
 
     [Fact]
     public void ThePowerPlant_WithoutStaff_BurnsCoalMoreSlowly_SoItGivesLessPower()
@@ -210,34 +255,31 @@ public class WorkerTests
         var tuning = Quick();
         var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
-        var homes = new[] { new BuildingPlan(BuildingType.Home, 1, lots[0].X, lots[0].Z, lots[0].Facing) };
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, homes) }, new[] { new IndustryPlan(PowerPlant, 800, 0, 0) }));
+        var homes = new[] { new BuildingPlan(BuildingType.Home, 1, -100, 25, 0) };
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", -150, 0, 0, 1, homes) }, new[] { new IndustryPlan(PowerPlant, 800, 0, 0) }));
         var plant = sim.Industries[0];
         plant.Input[Coal] = 400f;
 
+        RunDays(sim, 1.2); // nobody can get there: no road
+        Assert.Equal(0f, sim.StaffingOf(plant));
+        plant.Input[Coal] = 400f;
         sim.Step();
         sim.Step();
 
-        Assert.True(plant.Load < 0.5f, $"load {plant.Load}");
-        plant.Input[Workers] = 60f;
-        sim.Step();
-        sim.Step();
-        Assert.Equal(1f, plant.Load, 0.01f);
+        Assert.True(plant.Load < 0.05f, $"load {plant.Load}");
     }
 
     [Fact]
-    public void WorkersAreInTheStateHash()
+    public void Staffing_IsInTheStateHash_AndTheRunIsDeterministic()
     {
-        ulong Run(float workers)
+        ulong Run(float carShare)
         {
-            var (sim, _) = Build();
-            sim.Industries[0].Input[Workers] = workers;
-            RunDays(sim, 0.1);
+            var (sim, _) = Build(tuning: Quick(carShare));
+            RunDays(sim, 1.5);
             return sim.StateHash();
         }
 
-        Assert.Equal(Run(10f), Run(10f));
-        Assert.NotEqual(Run(10f), Run(0f));
+        Assert.Equal(Run(1f), Run(1f));
+        Assert.NotEqual(Run(1f), Run(0f));
     }
 }

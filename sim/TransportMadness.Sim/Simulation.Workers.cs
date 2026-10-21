@@ -1,66 +1,69 @@
 namespace TransportMadness.Sim;
 
 /// <summary>
-/// Workers (C7): the big industries have jobs and make their output times their staffing. The people's own movement staffs part of them; the
-/// rest are carried by the company's workers' buses from stations beside homes to a station beside the industry, and leave again at a rate.
+/// Staffing (C11): the big industries have jobs, and the people who fill them are the residents of the towns within reach, as trip groups: an industry is
+/// a workplace like a building with jobs (see <see cref="PickPlace"/>), and its people come on foot, by car or by a line that stops where the industry
+/// is covered. The staffing of an industry is the share of its jobs that groups filled by reaching it in a day, worked out when the day closes; it makes
+/// its output times that staffing until the next day closes. There are no shifts.
 /// </summary>
 public sealed partial class Simulation
 {
-    readonly WorkersTuning _workers;
-    readonly int _workerCargo; // index into the cargo list, -1 when the roster has none
-    float _staffKeepPerTick => 1f - _workers.StaffLossPerDay / _ticksPerDay;
-
-    public WorkersTuning WorkersTuning => _workers;
-    /// <summary>The cargo workers are carried as (index into the cargo list).</summary>
-    public int WorkerCargo => _workerCargo;
-
     /// <summary>
-    /// How fully an industry is staffed, 0 to 1: its own staff plus the workers delivered, over its jobs. 1 for an industry without jobs
-    /// and on a map without towns, where there is nobody to work.
+    /// How fully an industry is staffed, 0 to 1: the share of its jobs filled by the groups that reached it on the last day that closed (1 until the first
+    /// closes). 1 for an industry without jobs and on a map without towns, where there is nobody to work.
     /// </summary>
     public float StaffingOf(Industry industry)
     {
-        int jobs = _industryTuning.Types[industry.Type].Jobs;
-        if (jobs <= 0 || _towns.Count == 0 || _workerCargo < 0) return 1f;
-        return MathF.Min(1f, industry.OwnStaff * (1f - _workforceGap) + industry.Input[_workerCargo] / jobs);
+        if (_industryTuning.Types[industry.Type].Jobs <= 0 || _towns.Count == 0) return 1f;
+        return industry.Staffing;
     }
 
-    /// <summary>Workers delivered and still at work in an industry.</summary>
-    public float StaffOf(Industry industry) => _workerCargo < 0 ? 0f : industry.Input[_workerCargo];
+    /// <summary>The people who reached an industry to work on the last day that closed.</summary>
+    public int StaffOf(Industry industry) => industry.WorkersYesterday;
 
-    /// <summary>Sets the staff an industry has by the people's own movement, from its distance to the nearest town (called when it is founded).</summary>
-    void SetOwnStaff(Industry industry)
+    /// <summary>The jobs of an industry.</summary>
+    public int JobsOf(Industry industry) => _industryTuning.Types[industry.Type].Jobs;
+
+    /// <summary>At the turn of a day: the people who reached each industry with jobs today become its staffing.</summary>
+    void CloseDayForStaffing()
     {
-        if (_towns.Count == 0) return;
-        float best = float.MaxValue;
-        foreach (var town in _towns)
-            best = MathF.Min(best, MathF.Sqrt((town.X - industry.X) * (town.X - industry.X) + (town.Z - industry.Z) * (town.Z - industry.Z)));
-        industry.OwnStaff = _workers.OwnShare * MathF.Max(0f, 1f - best / _workers.OwnReach);
+        foreach (var industry in _industries)
+        {
+            industry.WorkersYesterday = industry.WorkersToday;
+            industry.WorkersToday = 0;
+            int jobs = _industryTuning.Types[industry.Type].Jobs;
+            if (jobs > 0) industry.Staffing = MathF.Min(1f, industry.WorkersYesterday / (float)jobs);
+        }
     }
 
     /// <summary>
-    /// At the turn of a day, every road station beside homes gets workers to wait for a ride, up to the share of the residents it covers, when an
-    /// industry with jobs within reach is not fully staffed.
+    /// A new industry with jobs (founded by the state after the groups were made) takes the nearest groups within reach that are at home, until its jobs are
+    /// taken; they leave the building they worked in. Groups made from now on choose among workplaces with it already in the list.
     /// </summary>
-    void SendWorkers()
+    void StaffNewIndustry(Industry industry)
     {
-        if (_workerCargo < 0 || _towns.Count == 0 || _stations.Count == 0) return;
-        var short_ = _industries.Where(i => _industryTuning.Types[i.Type].Jobs > 0 && StaffingOf(i) < 1f).ToList();
-        if (short_.Count == 0) return;
-        if (_coverageDirty || _stationBuildings.Count != _stations.Count) RefreshCoverage();
-        float reach2 = _workers.Reach * _workers.Reach, limit = _cargo[_workerCargo].MaxWaiting;
-        foreach (var station in _stations)
+        int jobs = _industryTuning.Types[industry.Type].Jobs;
+        if (jobs <= 0 || _groups.Count == 0) return;
+        float reach2 = _trips.WorkRadius * _trips.WorkRadius;
+        int place = IndustryPlace + industry.Id;
+        var near = new List<(float D, int Id)>();
+        foreach (var g in _groups)
         {
-            if (!station.Active || station.Mode != StationMode.Road) continue;
-            int people = 0;
-            foreach (int b in _stationBuildings[station.Id])
-                if (_buildings[b].Type == BuildingType.Home) people += _townTuning.Of(_buildings[b].Type, _buildings[b].Tier).People;
-            if (people == 0) continue;
-            var (x, z) = PointOf(station);
-            if (!short_.Any(i => (i.X - x) * (i.X - x) + (i.Z - z) * (i.Z - z) <= reach2)) continue;
-            float target = MathF.Min(limit, people * _workers.HomeShare * (1f - _workforceGap));
-            if (station.Waiting[_workerCargo] < target)
-                station.Waiting[_workerCargo] = MathF.Min(target, station.Waiting[_workerCargo] + target * _workers.RefillPerDay);
+            if (g.Retired || g.Travelling || g.Work >= IndustryPlace) continue; // a group that works in an industry already stays there
+            var home = _buildings[g.Home];
+            float d2 = Dist2(home.X, home.Z, industry.X, industry.Z);
+            if (d2 <= reach2) near.Add((d2, g.Id));
+        }
+        near.Sort((a, b) => a.D != b.D ? a.D.CompareTo(b.D) : a.Id.CompareTo(b.Id));
+        foreach (var (_, id) in near)
+        {
+            if (_jobsTaken.GetValueOrDefault(place) >= jobs) break;
+            var g = _groups[id];
+            if (g.NextLeg != TripLeg.WorkOut && g.NextLeg != TripLeg.LeisureOut) continue; // between the trips of a day, not at the workplace
+            if (g.Work >= 0) _jobsTaken[g.Work] = Math.Max(0, _jobsTaken.GetValueOrDefault(g.Work) - g.People);
+            g.Work = place;
+            _jobsTaken[place] = _jobsTaken.GetValueOrDefault(place) + g.People;
+            if (g.NextTick == long.MaxValue) { g.PlanDay = Day + 1; Advance(g, -1, Tick); } // it had no workplace and so nowhere to go
         }
     }
 }

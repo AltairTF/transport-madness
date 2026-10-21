@@ -110,11 +110,11 @@ public class ModelYearTests
         var sim = World(Quick()).Sim;
         var ids = () => sim.AvailableModels.Select(m => m.Id).ToArray();
 
-        Assert.Equal(new[] { "bus", "truck", "workerbus" }, ids());
+        Assert.Equal(new[] { "bus", "truck" }, ids());
         RunDays(sim, YearsToDays(2));
-        Assert.Equal(new[] { "bus", "truck", "workerbus", "heavytruck" }, ids());
+        Assert.Equal(new[] { "bus", "truck", "heavytruck" }, ids());
         RunDays(sim, YearsToDays(1));
-        Assert.Equal(new[] { "bus", "truck", "workerbus", "heavytruck", "bigbus" }, ids());
+        Assert.Equal(new[] { "bus", "truck", "heavytruck", "bigbus" }, ids());
     }
 
     // ---- Old models ------------------------------------------------------------------------------------------------

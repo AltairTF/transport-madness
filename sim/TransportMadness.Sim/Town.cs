@@ -147,8 +147,11 @@ public sealed class Industry
     public long DamagedUntil { get; internal set; }
     /// <summary>For a power plant: the share of full burn it managed in the last step, 0 to 1 (0 for any other industry).</summary>
     public float Load { get; internal set; }
-    /// <summary>Staffing it has without anyone being carried, from the people's own movement (C7): 0 to 1, set when it is founded.</summary>
-    public float OwnStaff { get; internal set; }
+    /// <summary>The share of its jobs the groups that reached it filled on the last day that closed (C11), 0 to 1; 1 before the first day closes.</summary>
+    public float Staffing { get; internal set; } = 1f;
+    /// <summary>People of trip groups who have reached it to work today so far, and on the last day that closed.</summary>
+    public int WorkersToday { get; internal set; }
+    public int WorkersYesterday { get; internal set; }
     /// <summary>What it has made that no station has taken yet.</summary>
     public float Output { get; internal set; }
     /// <summary>Everything it has made so far.</summary>

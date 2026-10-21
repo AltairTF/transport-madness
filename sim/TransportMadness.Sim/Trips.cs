@@ -27,8 +27,10 @@ public sealed class TripGroup
     public int People { get; internal set; }
     /// <summary>The home was demolished: the group is gone for good (its people and the jobs they held are released), and it never travels again.</summary>
     public bool Retired { get; internal set; }
-    /// <summary>Workplace building, -1 when it has none.</summary>
+    /// <summary>Workplace, -1 when it has none: a building id, or <see cref="Simulation.IndustryPlace"/> plus the id of an industry with jobs (C11).</summary>
     public int Work { get; internal set; } = -1;
+    /// <summary>The industry the group works in, -1 when its workplace is a building or it has none.</summary>
+    public int WorkIndustry => Work >= Simulation.IndustryPlace ? Work - Simulation.IndustryPlace : -1;
     /// <summary>Commerce building it goes to in the evening, -1 when there is none.</summary>
     public int Leisure { get; internal set; } = -1;
     public bool HasCar { get; }
@@ -55,7 +57,7 @@ public sealed class TripGroup
     internal long ReachedMonth = -1; // the last month in which a trip out made within the time budget was completed
     internal float FreeRide;  // seconds the car trip would take on empty roads, to see how slow it really was
     internal int OriginNode = -1, DestNode = -1;
-    internal int Origin = -1, Destination = -1; // buildings
+    internal int Origin = -1, Destination = -1; // places: buildings, or industries as Simulation.IndustryPlace plus their id
 
     /// <summary>Seconds the last completed trip took, from leaving to the last of the group arriving.</summary>
     public float LastTripSeconds { get; internal set; }

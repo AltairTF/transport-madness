@@ -13,7 +13,7 @@ public sealed partial class Simulation
     readonly TripsTuning _trips;
     readonly SimRandom _tripRng;
     readonly List<TripGroup> _groups = new();
-    readonly Dictionary<int, int> _jobsTaken = new(); // workplace building -> people assigned to it
+    readonly Dictionary<int, int> _jobsTaken = new(); // workplace (see IndustryPlace) -> people assigned to it
     readonly PriorityQueue<TripEvent, (long Tick, long Order)> _tripEvents = new();
     long _eventOrder;
     readonly List<int> _carQueue = new(); // groups with people still to put on the road, oldest first
@@ -41,9 +41,15 @@ public sealed partial class Simulation
     /// <summary>How a pair of buildings is travelled between, cached until the roads or the lines change.</summary>
     readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version, float FreeRide = 0f);
 
+    /// <summary>
+    /// A place a group goes to is an id: a building id below this, or from here up an industry (this plus the industry's id). Workplaces are
+    /// either; leisure places and homes are always buildings. Building ids never get near it.
+    /// </summary>
+    public const int IndustryPlace = 1 << 24;
+
     public IReadOnlyList<TripGroup> TripGroups => _groups;
-    /// <summary>People of trip groups who have a workplace building as their job.</summary>
-    internal int JobsTakenAt(int building) => _jobsTaken.GetValueOrDefault(building);
+    /// <summary>People of trip groups who have a workplace (a building, or an industry as <see cref="IndustryPlace"/> plus its id) as their job.</summary>
+    internal int JobsTakenAt(int place) => _jobsTaken.GetValueOrDefault(place);
     public TripsTuning TripTuning => _trips;
     /// <summary>Ambient cars on the road that carry a trip group.</summary>
     public int TripVehicleCount => _tripVehicles;
@@ -104,15 +110,17 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// A workplace (a building with jobs, weighted by the jobs not yet taken and by nearness) or a leisure place (a commerce
-    /// building, weighted by size and nearness) within reach of a home; -1 when there is none.
+    /// A workplace (a building or an industry with jobs, weighted by the jobs not yet taken and by nearness) or a leisure place (a commerce
+    /// building, weighted by size and nearness) within reach of a home; -1 when there is none. An industry is returned as <see cref="IndustryPlace"/> plus its id.
     /// </summary>
     int PickPlace(Building home, bool work, int people)
     {
         var near = BuildingsNear(home.X, home.Z, _trips.WorkRadius);
-        var weight = new double[near.Count];
+        var industries = work ? IndustriesNear(home.X, home.Z, _trips.WorkRadius) : new List<int>();
+        int count = near.Count + industries.Count;
+        var weight = new double[count];
         double total = 0, crowded = 0;
-        var crowdedWeight = new double[near.Count];
+        var crowdedWeight = new double[count];
         for (int k = 0; k < near.Count; k++)
         {
             var b = _buildings[near[k]];
@@ -133,16 +141,28 @@ public sealed partial class Simulation
             total += weight[k];
             crowded += crowdedWeight[k];
         }
+        for (int j = 0; j < industries.Count; j++)
+        {
+            var industry = _industries[industries[j]];
+            int jobs = _industryTuning.Types[industry.Type].Jobs;
+            if (jobs <= 0) continue;
+            float nearness = Nearness(MathF.Sqrt((industry.X - home.X) * (industry.X - home.X) + (industry.Z - home.Z) * (industry.Z - home.Z)));
+            int k = near.Count + j;
+            weight[k] = Math.Max(0, jobs - _jobsTaken.GetValueOrDefault(IndustryPlace + industry.Id)) * nearness;
+            crowdedWeight[k] = jobs * nearness;
+            total += weight[k];
+            crowded += crowdedWeight[k];
+        }
         // Every job taken: the people crowd into the workplaces anyway rather than stay without one.
         if (work && total <= 0) { weight = crowdedWeight; total = crowded; }
         if (total <= 0) return -1;
 
         double r = _tripRng.NextFloat() * total;
         int pick = -1;
-        for (int k = 0; k < near.Count; k++)
+        for (int k = 0; k < count; k++)
         {
             if (weight[k] <= 0) continue;
-            pick = near[k];
+            pick = k < near.Count ? near[k] : IndustryPlace + industries[k - near.Count];
             r -= weight[k];
             if (r < 0) break;
         }
@@ -150,7 +170,35 @@ public sealed partial class Simulation
         return pick;
     }
 
-    bool IsStanding(int building) => building >= 0 && _buildings[building].State == BuildingState.Active;
+    // ---- Places: buildings and industries ---------------------------------------------------------------------
+
+    /// <summary>The middle of a building, or of an industry (see <see cref="IndustryPlace"/>).</summary>
+    (float X, float Z) PlacePoint(int place)
+    {
+        if (place >= IndustryPlace) return (_industries[place - IndustryPlace].X, _industries[place - IndustryPlace].Z);
+        return (_buildings[place].X, _buildings[place].Z);
+    }
+
+    /// <summary>The road node a car goes to for a place: the access node of a building, the node at the access point of an industry. -1 when there is none.</summary>
+    int PlaceAccessNode(int place) =>
+        place >= IndustryPlace ? AccessNodeOf(_industries[place - IndustryPlace]) : AccessNodeOf(_buildings[place]);
+
+    /// <summary>The active stations that cover a place (where its people can catch a line, or get off one).</summary>
+    int[] PlaceStations(int place)
+    {
+        if (place >= IndustryPlace) return place - IndustryPlace < _industryStations.Count ? _industryStations[place - IndustryPlace] : Array.Empty<int>();
+        return place < _buildingStations.Count ? _buildingStations[place] : Array.Empty<int>();
+    }
+
+    float PlaceDistance(int a, int b)
+    {
+        var (ax, az) = PlacePoint(a);
+        var (bx, bz) = PlacePoint(b);
+        return MathF.Sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz));
+    }
+
+    /// <summary>Whether a place can be gone to: a building that stands, or an industry (an industry is never pulled down).</summary>
+    bool IsStanding(int place) => place >= IndustryPlace || (place >= 0 && _buildings[place].State == BuildingState.Active);
 
     // ---- The schedule -------------------------------------------------------------------------------------------
 
@@ -242,8 +290,6 @@ public sealed partial class Simulation
 
     long WalkTicks(float distance) => Math.Max(1, Ticks(distance * _trips.WalkDetour / _trips.WalkSpeed));
 
-    float Distance(Building a, Building b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z));
-
     /// <summary>The group starts its next trip, or finds it cannot make it (a place is gone, nothing links the two).</summary>
     void Depart(TripGroup g)
     {
@@ -273,7 +319,7 @@ public sealed partial class Simulation
         switch (choice.Mode)
         {
             case TripMode.Walk:
-                Schedule(Tick + WalkTicks(Distance(_buildings[from], _buildings[to])), new TripEvent(TripEventKind.Arrive, g.Id, g.People, -1, -1));
+                Schedule(Tick + WalkTicks(PlaceDistance(from, to)), new TripEvent(TripEventKind.Arrive, g.Id, g.People, -1, -1));
                 break;
             case TripMode.Car:
                 g.OriginNode = choice.OriginNode;
@@ -299,6 +345,7 @@ public sealed partial class Simulation
     void Arrive(TripGroup g, int people)
     {
         if (!g.Travelling) return;
+        if (g.NextLeg == TripLeg.WorkOut && g.Work >= IndustryPlace) _industries[g.Work - IndustryPlace].WorkersToday += people;
         g.Pending -= people;
         g.Arrived += people;
         if (g.Pending <= 0) Complete(g);
@@ -401,7 +448,7 @@ public sealed partial class Simulation
     /// <summary>The same estimate for an hour of the day (0 to 23).</summary>
     public float CongestionAt(int hour) => _congestion[hour];
 
-    /// <summary>How people living at <paramref name="from"/> would go to <paramref name="to"/> now: the mode and the seconds it takes.</summary>
+    /// <summary>How people living at <paramref name="from"/> would go to <paramref name="to"/> now (places as for <see cref="IndustryPlace"/>): the mode and the seconds it takes.</summary>
     public (TripMode Mode, float Seconds) ModeFor(int from, int to, bool hasCar)
     {
         var c = ChooseMode(from, to, hasCar);
@@ -417,20 +464,20 @@ public sealed partial class Simulation
         // The estimate of the hour is part of the version, in quarters: a choice is made again when people's idea of the jam moves.
         long version = ((long)(_congestion[hour] * 4f) << 50) + ((long)_syncedNetworkVersion << 24) + _transitVersion;
         if (_choices.TryGetValue(key, out var cached) && cached.Version == version) return cached;
-        var choice = ComputeMode(_buildings[from], _buildings[to], hasCar, _congestion[hour]) with { Version = version };
+        var choice = ComputeMode(from, to, hasCar, _congestion[hour]) with { Version = version };
         _choices[key] = choice;
         return choice;
     }
 
-    ModeChoice ComputeMode(Building a, Building b, bool hasCar, float congestion)
+    ModeChoice ComputeMode(int a, int b, bool hasCar, float congestion)
     {
-        float d = Distance(a, b);
+        float d = PlaceDistance(a, b);
         if (d <= _trips.WalkRadius)
             return new ModeChoice(TripMode.Walk, WalkTicks(d) * StepSeconds, -1, -1, -1, -1, 0f, 0);
 
-        // Two buildings that are reached from the same corner are next door whatever the straight line says.
-        int nodeA = AccessNodeOf(a);
-        if (nodeA >= 0 && nodeA == AccessNodeOf(b))
+        // Two places that are reached from the same corner are next door whatever the straight line says.
+        int nodeA = PlaceAccessNode(a);
+        if (nodeA >= 0 && nodeA == PlaceAccessNode(b))
             return new ModeChoice(TripMode.Walk, WalkTicks(d) * StepSeconds, -1, -1, -1, -1, 0f, 0);
 
         var best = new ModeChoice(TripMode.None, 0f, -1, -1, -1, -1, 0f, 0);
@@ -470,12 +517,12 @@ public sealed partial class Simulation
         }
     }
 
-    /// <summary>The time a car takes from the access node of one building to that of the other, false when there is no way.</summary>
-    bool CarSeconds(Building a, Building b, out int originNode, out int destNode, out float seconds)
+    /// <summary>The time a car takes from the access node of one place to that of the other, false when there is no way.</summary>
+    bool CarSeconds(int a, int b, out int originNode, out int destNode, out float seconds)
     {
         seconds = 0f;
-        originNode = AccessNodeOf(a);
-        destNode = AccessNodeOf(b);
+        originNode = PlaceAccessNode(a);
+        destNode = PlaceAccessNode(b);
         if (originNode < 0 || destNode < 0 || originNode == destNode) return false;
         var field = FieldToNode(destNode);
         float best = float.PositiveInfinity;

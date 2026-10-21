@@ -91,25 +91,25 @@ public sealed partial class Simulation
         return best;
     }
 
-    float WalkSeconds(Building b, Station station)
+    float WalkSeconds(int place, Station station)
     {
         var (x, z) = PointOf(station);
-        float d = MathF.Sqrt((b.X - x) * (b.X - x) + (b.Z - z) * (b.Z - z));
+        var (px, pz) = PlacePoint(place);
+        float d = MathF.Sqrt((px - x) * (px - x) + (pz - z) * (pz - z));
         return d * _trips.WalkDetour / _trips.WalkSpeed;
     }
 
     /// <summary>
-    /// The quickest way between two buildings on the company's lines: a station that covers each, joined by a line that has
+    /// The quickest way between two places (buildings or industries) on the company's lines: a station that covers each, joined by a line that has
     /// vehicles. The time is the walk to the station, the wait (shorter with more vehicles), the ride and the walk from the
     /// other. Lines are direct; there are no changes.
     /// </summary>
-    bool TransitSeconds(Building a, Building b, out int stationA, out int stationB, out float total, out float walkToStation)
+    bool TransitSeconds(int a, int b, out int stationA, out int stationB, out float total, out float walkToStation)
     {
         stationA = stationB = -1;
         total = walkToStation = 0f;
-        if (a.Id >= _buildingStations.Count || b.Id >= _buildingStations.Count) return false;
-        var near = _buildingStations[a.Id];
-        var far = _buildingStations[b.Id];
+        var near = PlaceStations(a);
+        var far = PlaceStations(b);
         if (near.Length == 0 || far.Length == 0) return false;
         EnsureLineCycles();
         float best = float.PositiveInfinity;
@@ -200,8 +200,8 @@ public sealed partial class Simulation
             here.Today = here.Today with { Alighted = here.Today.Alighted + lot.Count };
             var g = _groups[lot.Group];
             var (x, z) = PointOf(here);
-            var to = _buildings[g.Destination];
-            float d = MathF.Sqrt((to.X - x) * (to.X - x) + (to.Z - z) * (to.Z - z));
+            var (tx, tz) = PlacePoint(g.Destination);
+            float d = MathF.Sqrt((tx - x) * (tx - x) + (tz - z) * (tz - z));
             Schedule(Tick + WalkTicks(d), new TripEvent(TripEventKind.Arrive, g.Id, lot.Count, -1, -1));
         }
         return unloaded;

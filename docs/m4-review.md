@@ -19,7 +19,7 @@ Status on 2026-10-21 (open points applied the same day: sections 3.1, 3.2, 3.9 a
 | Ghosts (5.21) | A vehicle leaving a busy depot drives out without being held, then becomes ordinary. Trains bought together wait inside the depot. | `Simulation.Fleet.cs` (`StepGhosts`), `Simulation.Trains.cs` |
 | Game layer | Track, curved track, block and path signal, remove signal, remove track, rail station, rail depot tools; traffic light tools; drawing of all of it; Vehicles window with the garage; Lines window buy buttons | `SimHostRail.cs`, `SimHostLights.cs`, `SimHostGarage.cs`, `build_tool.gd`, `hud.gd`, `main.gd` |
 
-Tests: 426 xUnit tests passed at the time on macOS and in the Linux container (Release, x64); the suite has 663 on 2026-10-21. The rail golden hash `0x24A1F669E8A6208C` was unchanged then (the current value is `0x5684A444B74001F2`, see 5.30 of the status) on both systems, so none of the garage or ghost changes moved an existing run.
+Tests: 426 xUnit tests passed at the time on macOS and in the Linux container (Release, x64); the suite has 692 on 2026-10-21. The rail golden hash `0x24A1F669E8A6208C` was unchanged then (the current value is `0x179999302AAEC508`, see 5.37 of the status) on both systems, so none of the garage or ghost changes moved an existing run.
 
 ## 2. Decisions taken
 

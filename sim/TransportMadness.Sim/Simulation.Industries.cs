@@ -90,7 +90,6 @@ public sealed partial class Simulation
             var industry = new Industry(_industries.Count, plan.Type, plan.X, y, plan.Z, plan.Angle, _cargo.Count);
             _industries.Add(industry);
             SetAccessPoint(industry);
-            SetOwnStaff(industry);
         }
         IndustriesVersion++;
         _freeGrid = _industries.Sum(i => _industryTuning.Types[i.Type].Demand) * _power.FreeGridMargin;
@@ -132,7 +131,6 @@ public sealed partial class Simulation
                 industry.Produced += make;
             }
             if (plant) industry.Load = make > 0f ? make / full : 0f;
-            if (type.Jobs > 0 && industry.Input[_workerCargo] > 0f) industry.Input[_workerCargo] *= _staffKeepPerTick;
             if (industry.Output > 0f) ShipOutput(industry);
         }
     }
@@ -209,7 +207,6 @@ public sealed partial class Simulation
 
     float IndustryRoom(Industry industry, int cargo)
     {
-        if (cargo == _workerCargo) return MathF.Max(0f, _industryTuning.Types[industry.Type].Jobs - industry.Input[cargo]);
         foreach (var (input, _) in _industryInputs[industry.Type])
             if (input == cargo) return MathF.Max(0f, _industryTuning.Types[industry.Type].MaxInput - industry.Input[cargo]);
         return 0f;
@@ -260,6 +257,9 @@ public sealed partial class Simulation
             h = h * 31 + BitConverter.SingleToUInt32Bits(industry.Output);
             h = h * 31 + BitConverter.SingleToUInt32Bits(industry.Load);
             foreach (float f in industry.Input) h = h * 31 + BitConverter.SingleToUInt32Bits(f);
+            h = h * 31 + BitConverter.SingleToUInt32Bits(industry.Staffing);
+            h = h * 31 + (ulong)industry.WorkersToday;
+            h = h * 31 + (ulong)industry.WorkersYesterday;
         }
         h = h * 31 + BitConverter.SingleToUInt32Bits(_freeGrid) + (ulong)Company.PowerPurchase;
         foreach (var b in _buildings)

@@ -422,6 +422,22 @@ public class OrderTests
     }
 
     [Fact]
+    public void AStateWork_WithJobs_TakesTheNearestGroupsAsItsPeople_WhenItIsFounded()
+    {
+        var w = Build(OnlyWorks());
+        var sim = w.Sim;
+        RunDays(sim, 9);
+        var o = Assert.Single(sim.Orders, o => o.Kind == OrderKind.StateWork);
+        Station(sim, 1200, -60);
+        Assert.Equal(1, sim.Execute(new AcceptOrderCommand(o.Id)));
+
+        var people = sim.TripGroups.Where(g => o.WorkIds.Contains(g.WorkIndustry)).Sum(g => g.People);
+        Assert.True(people > 0, "the nearest groups were taken");
+        Assert.Equal(people, o.WorkIds.Sum(id => sim.JobsTakenAt(Simulation.IndustryPlace + id)));
+        Assert.All(o.WorkIds, id => Assert.True(sim.JobsTakenAt(Simulation.IndustryPlace + id) <= Math.Max(sim.JobsOf(sim.Industries[id]), 0)));
+    }
+
+    [Fact]
     public void AStateWork_IsOfferedOncePerGame_AndNotWhileTheMapHasNoRoomForIt()
     {
         var w = Build(OnlyWorks());

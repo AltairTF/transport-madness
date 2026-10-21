@@ -261,19 +261,25 @@ public class ConscriptionTests
     }
 
     [Fact]
-    public void ALowerWorkforce_CutsTheOwnStaffOfABigIndustry_AndTheWorkersSent()
+    public void TheCallUp_TakesPeopleFromTheGroupsThatStaffABigIndustry_SoItsStaffingFalls()
     {
         var tuning = Quick(c => Waves(c, (1, 0.5f)) with { RecoveryPerMonth = 0f });
         var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
+        foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
+            sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
         var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, new[] { new BuildingPlan(BuildingType.Home, 1, lots[0].X, lots[0].Z, lots[0].Facing) }) }, new[] { new IndustryPlan(SteelMill, 700, 0, 0) }));
-        sim.Step();
-        float before = sim.StaffingOf(sim.Industries[0]);
+        var homes = new[] { 0, 1 }.Select(k => new BuildingPlan(BuildingType.Home, 1, lots[k].X, lots[k].Z, lots[k].Facing)).ToArray();
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, homes) }, new[] { new IndustryPlan(SteelMill, 100, 0, 0) }));
+        var mill = sim.Industries[0];
+        Assert.All(sim.TripGroups, g => Assert.Equal(Simulation.IndustryPlace, g.Work)); // the mill is next door: they walk
+        RunDays(sim, 2);
+        Assert.Equal(1f, sim.StaffingOf(mill)); // 40 people for 40 jobs
 
-        RunDays(sim, 3 * 1 + 0.5);
+        RunDays(sim, 3 * 1 + 1);
 
-        Assert.Equal(before * 0.5f, sim.StaffingOf(sim.Industries[0]), 0.01f);
+        Assert.InRange(sim.StaffingOf(mill), 0.3f, 0.7f);
+        Assert.Equal(1f - sim.WorkforceGap * sim.WarTuning.Conscription.OutputLoss, sim.WorkforceFactor, 0.001f); // and the output cut stays on top of it
     }
 
     [Fact]
