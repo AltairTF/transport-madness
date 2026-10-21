@@ -90,6 +90,7 @@ public sealed partial class Simulation
         CheckGarage();
         SendWorkers();
         CloseDayForTowns();
+        TakeCalledUp();
         CloseDayForTrips();
         if ((Day + 1) % _economy.DaysPerMonth == 0) CloseMonthForCampaign();
     }

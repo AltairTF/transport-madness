@@ -81,6 +81,8 @@ public sealed class Town
     public float Satisfaction { get; internal set; }
     /// <summary>Share (0 to 1) of last month's needs of its buildings that were not met.</summary>
     public float UnmetShare { get; internal set; }
+    /// <summary>People of this town called up so far (a number only).</summary>
+    public int CalledUp { get; internal set; }
     /// <summary>Share (0 to 1) of its homes that were reached last month: a group living there made a trip to work or leisure within the time budget. 1 until the first month is over.</summary>
     public float Connectivity { get; internal set; } = 1f;
     public GrowthReport LastGrowth { get; internal set; }

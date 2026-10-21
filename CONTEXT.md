@@ -30,6 +30,9 @@ The region's electricity, one number of megawatts and not a cargo or a network. 
 **Staffing**:
 How many of its Jobs an Industry has filled, 0 to 1; it makes its output times this. The people's own movement fills part (more the nearer a Town); the rest are Workers carried by the Company's workers' buses to a Station beside the Industry, and they leave again at the end of each day.
 
+**Call-up**:
+A wave of the war in which a share of the people of every Town leave for good, at fixed months. They are only a number. The workforce is then short by a gap that closes slowly, and every Industry makes less in proportion to it.
+
 **Cargo**:
 Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 

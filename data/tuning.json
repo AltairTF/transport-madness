@@ -199,6 +199,22 @@
         { "phase": "totalwar", "priceFactor": 1.7, "unitsFactor": 0.65 },
         { "phase": "end", "priceFactor": 2.0, "unitsFactor": 0.5 }
       ]
+    },
+    // The call-up (C9b): at the start of each month listed, 'share' of the people of every trip group are called up (they leave for good; they are
+    // only a number in the Region's books). The workforce falls: the share missing 'gap' goes to 1 - (1 - gap) * (1 - share) and every industry makes
+    // its output times 1 - outputLoss * gap, the people's own staffing of the big industries and the workers a station sends fall by (1 - gap), and
+    // each town loses satisfactionLoss. The gap closes by recoveryPerMonth a month (those who stayed work more).
+    "conscription": {
+      "outputLoss": 0.7,
+      "recoveryPerMonth": 0.012,
+      "satisfactionLoss": 3.0,
+      "waves": [
+        { "month": 22, "share": 0.06 },
+        { "month": 34, "share": 0.08 },
+        { "month": 50, "share": 0.10 },
+        { "month": 62, "share": 0.10 },
+        { "month": 74, "share": 0.08 }
+      ]
     }
   },
 

@@ -457,7 +457,7 @@ public partial class SimHost : Node3D
     /// (total so far), imports (total spent), standing, phase, phase_month (months into the campaign), months, country, region, next_allocation,
     /// allocation_factor, months_to_dismissal, dismiss_below, dismiss_months, export_value (this month), expected_value (the phase's), delivered_value, average_satisfaction,
     /// campaign_over, dismissed, finished, grade_name, score, last} where last is the report of the month that ended, {month, export_value,
-    /// export_term, deficit_term, fine_term, standing_before, standing_after, allocation}, empty before the first. Also orders_met, orders_late, orders_failed,
+    /// export_term, deficit_term, fine_term, standing_before, standing_after, allocation}, empty before the first. Also called_up (people, all towns), workforce_gap and workforce_factor (0 to 1), next_call_month (-1 when no more), orders_met, orders_late, orders_failed,
     /// orders_active, orders_open (offers) and orders_income (rewards so far).
     /// </summary>
     public Godot.Collections.Dictionary GetCompany()
@@ -507,6 +507,8 @@ public partial class SimHost : Node3D
             ["finished"] = c.Finished,
             ["grade_name"] = c.Grade >= 0 ? campaign.Grade.Names[c.Grade] : "",
             ["score"] = c.Score,
+            ["called_up"] = Sim.CalledUp, ["workforce_gap"] = Sim.WorkforceGap, ["workforce_factor"] = Sim.WorkforceFactor,
+            ["next_call_month"] = Sim.NextWave is { } wave ? wave.Month : -1,
             ["orders_met"] = c.OrdersMet, ["orders_late"] = c.OrdersLate, ["orders_failed"] = c.OrdersFailed,
             ["orders_active"] = Sim.ActiveOrders, ["orders_open"] = Sim.OpenOffers, ["orders_income"] = c.Total(LedgerEntry.Orders),
             ["last"] = last,

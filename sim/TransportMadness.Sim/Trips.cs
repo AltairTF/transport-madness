@@ -33,6 +33,8 @@ public sealed class TripGroup
     public int Leisure { get; internal set; } = -1;
     public bool HasCar { get; }
     internal ulong Seed { get; }
+    /// <summary>The share of its people called up that has not been taken yet (it waits while the group is on a trip).</summary>
+    internal float PendingCall;
 
     /// <summary>The trip it makes next (or is making).</summary>
     public TripLeg NextLeg { get; internal set; }

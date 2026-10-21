@@ -22,7 +22,7 @@ public sealed partial class Simulation
     {
         int jobs = _industryTuning.Types[industry.Type].Jobs;
         if (jobs <= 0 || _towns.Count == 0 || _workerCargo < 0) return 1f;
-        return MathF.Min(1f, industry.OwnStaff + industry.Input[_workerCargo] / jobs);
+        return MathF.Min(1f, industry.OwnStaff * (1f - _workforceGap) + industry.Input[_workerCargo] / jobs);
     }
 
     /// <summary>Workers delivered and still at work in an industry.</summary>
@@ -58,7 +58,7 @@ public sealed partial class Simulation
             if (people == 0) continue;
             var (x, z) = PointOf(station);
             if (!short_.Any(i => (i.X - x) * (i.X - x) + (i.Z - z) * (i.Z - z) <= reach2)) continue;
-            float target = MathF.Min(limit, people * _workers.HomeShare);
+            float target = MathF.Min(limit, people * _workers.HomeShare * (1f - _workforceGap));
             if (station.Waiting[_workerCargo] < target)
                 station.Waiting[_workerCargo] = MathF.Min(target, station.Waiting[_workerCargo] + target * _workers.RefillPerDay);
         }

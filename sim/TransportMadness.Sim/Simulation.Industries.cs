@@ -122,6 +122,7 @@ public sealed partial class Simulation
             foreach (var (cargo, amount) in inputs) make = MathF.Min(make, industry.Input[cargo] / amount);
             if (!plant) make *= _powerFactor;
             if (type.Jobs > 0) make *= StaffingOf(industry);
+            if (_workforceGap > 0f) make *= WorkforceFactor;
             if (make > 0f)
             {
                 foreach (var (cargo, amount) in inputs) industry.Input[cargo] -= make * amount;
