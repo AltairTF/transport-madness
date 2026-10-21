@@ -81,6 +81,12 @@ public sealed class Town
     public float Satisfaction { get; internal set; }
     /// <summary>Share (0 to 1) of last month's needs of its buildings that were not met.</summary>
     public float UnmetShare { get; internal set; }
+    /// <summary>
+    /// The share (0 to 1) of the nominal people and jobs of its buildings that the town still has room for: each call-up wave lowers it for good by the wave's
+    /// share (C15c). It scales what <see cref="Simulation.StatsOf"/> reports, the monthly needs, the jobs of its buildings as workplaces and the people
+    /// a building brings when it is founded or grows. 1 until the first wave.
+    /// </summary>
+    public float CapacityFactor { get; internal set; } = 1f;
     /// <summary>People of this town called up so far (a number only).</summary>
     public int CalledUp { get; internal set; }
     /// <summary>People of this town killed or hurt in raids so far (a number only).</summary>

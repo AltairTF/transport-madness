@@ -158,10 +158,10 @@ public sealed partial class Simulation
     /// <summary>A building goes up one size; a home gets the people of the new size as new trip groups.</summary>
     void GrowBuilding(Building b)
     {
-        int people = _townTuning.Of(b.Type, b.Tier).People;
+        int people = Scaled(b, _townTuning.Of(b.Type, b.Tier).People);
         b.Tier++;
-        if (b.Type == BuildingType.Home)
-            CreateTripGroups(b, _townTuning.Of(b.Type, b.Tier).People - people, Day + 1);
+        if (b.Type == BuildingType.Home) // the people it brings are those of the new size less those of the old, both lowered by the call-up (C15c)
+            CreateTripGroups(b, Scaled(b, _townTuning.Of(b.Type, b.Tier).People) - people, Day + 1);
         _coverageDirty = true;
         BuildingsVersion++;
     }
@@ -181,7 +181,7 @@ public sealed partial class Simulation
         town.BuildingIds.Add(b.Id);
         CellList(b.X, b.Z, create: true)!.Add(b.Id);
         lot.Building = b.Id;
-        if (type == BuildingType.Home) CreateTripGroups(b, _townTuning.Of(type, 0).People, Day + 1);
+        if (type == BuildingType.Home) CreateTripGroups(b, Scaled(b, _townTuning.Of(type, 0).People), Day + 1);
         _coverageDirty = true;
         BuildingsVersion++;
     }

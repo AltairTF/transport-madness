@@ -142,18 +142,18 @@ public class ConscriptionTests
     const int Wood = 2, Planks = 3;
 
     /// <summary>A 300 s day: with a very short one the trips of the groups last longer than the day and they are always on the road.</summary>
-    static Tuning Quick(Func<ConscriptionTuning, ConscriptionTuning>? change = null)
+    internal static Tuning Quick(Func<ConscriptionTuning, ConscriptionTuning>? change = null)
     {
         var t = Tuning.Load();
         t = t with { Economy = t.Economy with { DayLength = 300f }, Campaign = t.Campaign with { MaxExportSwing = 0f, DeficitPenalty = 0f } };
         return change == null ? t : t with { War = t.War with { Conscription = change(t.War.Conscription) } };
     }
 
-    static ConscriptionTuning Waves(ConscriptionTuning c, params (int Month, float Share)[] waves) =>
+    internal static ConscriptionTuning Waves(ConscriptionTuning c, params (int Month, float Share)[] waves) =>
         c with { Waves = waves.Select(w => new WarWave { Month = w.Month, Share = w.Share }).ToList() };
 
     /// <summary>A block of streets that is a town with eight homes (so eight trip groups), and a sawmill beside it.</summary>
-    static Simulation Town(Tuning tuning)
+    internal static Simulation Town(Tuning tuning)
     {
         var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
@@ -166,13 +166,13 @@ public class ConscriptionTests
         return sim;
     }
 
-    static void RunDays(Simulation sim, double days)
+    internal static void RunDays(Simulation sim, double days)
     {
         long ticks = (long)Math.Round(days * sim.DayLengthSeconds / Simulation.StepSeconds);
         for (long t = 0; t < ticks; t++) sim.Step();
     }
 
-    static int People(Simulation sim) => sim.TripGroups.Where(g => !g.Retired).Sum(g => g.People);
+    internal static int People(Simulation sim) => sim.TripGroups.Where(g => !g.Retired).Sum(g => g.People);
 
     [Fact]
     public void BeforeTheFirstWave_NobodyIsCalledUp_AndTheWorkforceIsWhole()

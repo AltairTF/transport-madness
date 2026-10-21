@@ -943,7 +943,7 @@ public partial class SimHost : Node3D
     public string WhyNotImport(int gateway, string cargo) => Sim.WhyNotImport(gateway, cargo) ?? "";
 
     /// <summary>
-    /// The towns: for each {id, name, x, y, z, satisfaction, population (what its standing buildings have room for), residents (the people of its trip groups, fewer after raids), casualties (killed in raids so far), jobs, homes, commerce, industry, inactive,
+    /// The towns: for each {id, name, x, y, z, satisfaction, population (what its standing buildings have room for), residents (the people of its trip groups, fewer after raids), capacity (the share of its buildings' nominal room that the call-up has left, 0 to 1; population and jobs are already scaled by it), casualties (killed in raids so far), jobs, homes, commerce, industry, inactive,
     /// abandoned, unmet, walked, drove, rode, stayed, connectivity, min_connectivity, min_satisfaction, grew_sizes, grew_buildings, grew_blocks, blocked, buildings, covered, needs} (counts of buildings, inactive and abandoned ones apart; unmet is the share
     /// of last month's needs that were not met, 0 to 1; the last four are people-trips of the day before by foot, by car, on the
     /// company's lines, and trips that could not be made; buildings standing and covered is how many of those a station of the company
@@ -965,7 +965,7 @@ public partial class SimHost : Node3D
             {
                 ["id"] = town.Id, ["name"] = town.Name, ["x"] = town.X, ["y"] = HeightAt(town.X, town.Z), ["z"] = town.Z,
                 ["satisfaction"] = town.Satisfaction,
-                ["population"] = s.Population, ["residents"] = residents[town.Id], ["casualties"] = town.Casualties, ["jobs"] = s.Jobs,
+                ["population"] = s.Population, ["residents"] = residents[town.Id], ["capacity"] = town.CapacityFactor, ["casualties"] = town.Casualties, ["jobs"] = s.Jobs,
                 ["homes"] = s.Homes, ["commerce"] = s.Commerce, ["industry"] = s.Industry,
                 ["inactive"] = s.Inactive, ["abandoned"] = s.Abandoned, ["unmet"] = town.UnmetShare,
                 ["walked"] = town.TripsYesterday[(int)TripMode.Walk], ["drove"] = town.TripsYesterday[(int)TripMode.Car],

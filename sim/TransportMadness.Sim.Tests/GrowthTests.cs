@@ -217,7 +217,10 @@ public class GrowthTests
     [Fact]
     public void ATownWithNothingDelivered_KeepsItsSize_ForYears()
     {
-        var (sim, _) = BlockTown(Quick(), (BuildingType.Home, 1), (BuildingType.Home, 2), (BuildingType.Commerce, 1), (BuildingType.Industry, 0));
+        // No call-up here: the first wave (month 22) lowers the room of the buildings for good, which CapacityTests covers.
+        var tuning = Quick();
+        tuning = tuning with { War = tuning.War with { Conscription = tuning.War.Conscription with { Waves = new List<WarWave>() } } };
+        var (sim, _) = BlockTown(tuning, (BuildingType.Home, 1), (BuildingType.Home, 2), (BuildingType.Commerce, 1), (BuildingType.Industry, 0));
         var tiers = sim.Buildings.Select(b => b.Tier).ToList();
         int people = sim.StatsOf(0).Population;
 

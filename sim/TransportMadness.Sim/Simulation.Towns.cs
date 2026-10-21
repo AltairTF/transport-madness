@@ -116,12 +116,13 @@ public sealed partial class Simulation
             if (id < _buildingStations.Count && _buildingStations[id].Length > 0) covered++;
             var need = _sustainNeed[(int)b.Type][b.Tier];
             var cap = _constructionCap[(int)b.Type][b.Tier];
+            float scale = _towns[town].CapacityFactor;
             for (int c = 0; c < _cargo.Count; c++)
             {
                 if (need[c] > 0f)
                 {
                     wanted[c] = true;
-                    float lack = need[c] - b.Sustain[c];
+                    float lack = need[c] * scale - b.Sustain[c];
                     if (lack > 0f) { short_[c]++; monthly[c] += lack; }
                 }
                 if (cap[c] > 0f)
@@ -136,6 +137,12 @@ public sealed partial class Simulation
             if (wanted[c]) list.Add(new CargoNeed(c, short_[c], monthly[c], construction[c]));
         return new TownNeeds(list, active, covered);
     }
+
+    /// <summary>A number of people or jobs of the nominal capacity, as much as a town with this capacity factor has room for.</summary>
+    static int ScaledBy(int amount, float factor) => factor >= 1f ? amount : (int)MathF.Round(amount * factor);
+
+    /// <summary>The people (or jobs) of a size of a building of this town, lowered by what the call-up has taken for good (C15c).</summary>
+    int Scaled(Building b, int amount) => ScaledBy(amount, _towns[b.Town].CapacityFactor);
 
     public TownStats StatsOf(int town)
     {
@@ -159,7 +166,8 @@ public sealed partial class Simulation
                 default: industry++; break;
             }
         }
-        return new TownStats(people, jobs, homes, commerce, industry, inactive, abandoned);
+        float capacity = _towns[town].CapacityFactor; // what the call-up has left of the nominal room (C15c)
+        return new TownStats(ScaledBy(people, capacity), ScaledBy(jobs, capacity), homes, commerce, industry, inactive, abandoned);
     }
 
     // ---- Road access, abandonment ------------------------------------------------------------------------------

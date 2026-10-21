@@ -34,7 +34,10 @@ The region's electricity, one number of megawatts and not a cargo or a network. 
 How many of its Jobs an Industry has filled, 0 to 1: the share filled by the Trip groups that reached it on the last day that closed (worked out at the turn of the day; 1 before the first day closes, and on a map without Towns). It makes its output times this. A Trip group goes to an Industry with Jobs like to any workplace: on foot, by car to its Access point or by a Line that ends at a Station covering it; a Town with no road or Line to it fills none of its Jobs.
 
 **Call-up**:
-A wave of the war in which a share of the people of every Town leave for good, at fixed months. They are only a number. The workforce is then short by a gap that closes slowly, and every Industry makes less in proportion to it.
+A wave of the war in which a share of the people of every Town leave for good, at fixed months. The workforce is then short by a gap that closes slowly, and every Industry makes less in proportion to it. Each wave also lowers the Capacity factor of every Town for good.
+
+**Capacity factor**:
+The share (0 to 1) of the nominal people and jobs of its Buildings that a Town still has room for after the Call-up (C15c): each wave multiplies it by one less the wave's share, and it never goes back up. It scales what the Town reports as its people and jobs, the monthly needs of its Buildings, the jobs of its Buildings as workplaces and the people a Building brings when it is founded or goes up a size, so that Growth cannot refill what the Call-up took. The jobs of Industries are not scaled.
 
 **Requisition**:
 At fixed months the army buys a share of the Company's vehicles and trains (freight first, the biggest first, the garage too) at a table price, whatever their Condition. The Player is told a month ahead and cannot refuse, but in that month of notice chooses the **Requisition rule** of the wave.

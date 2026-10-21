@@ -101,7 +101,8 @@ public sealed partial class Simulation
         b.Sustain = new float[_cargo.Count];
         b.Construction = new float[_cargo.Count];
         var need = _sustainNeed[(int)b.Type][b.Tier];
-        for (int c = 0; c < need.Length; c++) b.Sustain[c] = need[c] * _townTuning.InitialStockMonths;
+        float scale = _towns[b.Town].CapacityFactor;
+        for (int c = 0; c < need.Length; c++) b.Sustain[c] = need[c] * scale * _townTuning.InitialStockMonths;
     }
 
     // ---- Production --------------------------------------------------------------------------------------------
@@ -201,7 +202,7 @@ public sealed partial class Simulation
 
     float BuildingRoom(Building b, int cargo)
     {
-        var need = _sustainNeed[(int)b.Type][b.Tier][cargo];
+        var need = _sustainNeed[(int)b.Type][b.Tier][cargo] * _towns[b.Town].CapacityFactor;
         float room = need > 0f ? need * _townTuning.SustainStockMonths - b.Sustain[cargo] : 0f;
         room += _constructionCap[(int)b.Type][b.Tier][cargo] - b.Construction[cargo];
         return MathF.Max(0f, room);
@@ -217,7 +218,7 @@ public sealed partial class Simulation
     /// <summary>The monthly needs fill first, then the construction stock.</summary>
     void GiveToBuilding(Building b, int cargo, float amount)
     {
-        var need = _sustainNeed[(int)b.Type][b.Tier][cargo];
+        var need = _sustainNeed[(int)b.Type][b.Tier][cargo] * _towns[b.Town].CapacityFactor;
         if (need > 0f)
         {
             float toSustain = MathF.Min(amount, need * _townTuning.SustainStockMonths - b.Sustain[cargo]);
@@ -235,13 +236,15 @@ public sealed partial class Simulation
         {
             if (b.State != BuildingState.Active) continue;
             var need = _sustainNeed[(int)b.Type][b.Tier];
+            float scale = _towns[b.Town].CapacityFactor;
             for (int c = 0; c < need.Length; c++)
             {
                 if (need[c] <= 0f) continue;
-                float used = MathF.Min(b.Sustain[c], need[c]);
+                float wanted = need[c] * scale;
+                float used = MathF.Min(b.Sustain[c], wanted);
                 b.Sustain[c] -= used;
-                needed[b.Town] += need[c];
-                unmet[b.Town] += need[c] - used;
+                needed[b.Town] += wanted;
+                unmet[b.Town] += wanted - used;
             }
         }
         foreach (var town in _towns)

@@ -86,7 +86,7 @@ public sealed partial class Simulation
     void CreateTripGroups()
     {
         foreach (var b in _buildings)
-            if (b.Type == BuildingType.Home) CreateTripGroups(b, _townTuning.Of(b.Type, b.Tier).People, 0);
+            if (b.Type == BuildingType.Home) CreateTripGroups(b, Scaled(b, _townTuning.Of(b.Type, b.Tier).People), 0);
     }
 
     /// <summary>
@@ -119,7 +119,7 @@ public sealed partial class Simulation
     /// A workplace (a building or an industry with jobs, weighted by the jobs not yet taken and by nearness) or a leisure place (a commerce
     /// building, weighted by size and nearness) within reach of a home; -1 when there is none. An industry is returned as <see cref="IndustryPlace"/> plus its id.
     /// </summary>
-    int PickPlace(Building home, bool work, int people)
+    internal int PickPlace(Building home, bool work, int people)
     {
         var near = BuildingsNear(home.X, home.Z, _trips.WorkRadius);
         var industries = work ? IndustriesNear(home.X, home.Z, _trips.WorkRadius) : new List<int>();
@@ -133,16 +133,18 @@ public sealed partial class Simulation
             if (b.State != BuildingState.Active) continue;
             var tier = _townTuning.Of(b.Type, b.Tier);
             float nearness = Nearness(MathF.Sqrt((b.X - home.X) * (b.X - home.X) + (b.Z - home.Z) * (b.Z - home.Z)));
+            // The jobs (and the size of a shop as a place to go) are what the call-up has left of the building's nominal capacity (C15c).
+            float jobs = tier.Jobs * _towns[b.Town].CapacityFactor;
             if (work)
             {
-                if (tier.Jobs <= 0) continue;
-                weight[k] = Math.Max(0, tier.Jobs - _jobsTaken.GetValueOrDefault(b.Id)) * nearness;
-                crowdedWeight[k] = tier.Jobs * nearness;
+                if (jobs <= 0) continue;
+                weight[k] = Math.Max(0, jobs - _jobsTaken.GetValueOrDefault(b.Id)) * nearness;
+                crowdedWeight[k] = jobs * nearness;
             }
             else
             {
                 if (b.Type != BuildingType.Commerce) continue;
-                weight[k] = tier.Jobs * nearness;
+                weight[k] = jobs * nearness;
             }
             total += weight[k];
             crowded += crowdedWeight[k];

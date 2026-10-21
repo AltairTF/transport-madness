@@ -1287,6 +1287,8 @@ func show_towns(towns: Array) -> void:
 			town["name"], town["residents"], town["jobs"], town["homes"], town["commerce"], town["industry"]]
 		if town["residents"] < town["population"]:
 			label.text += "\nThe homes have room for %d" % town["population"]
+		if town["capacity"] < 0.995:
+			label.text += "\nThe call-up has left its buildings room for %d%% of their people and jobs" % roundi(100.0 * town["capacity"])
 		if town["casualties"] > 0:
 			label.text += "\n%d killed in raids" % town["casualties"]
 		if town["inactive"] > 0 or town["abandoned"] > 0:

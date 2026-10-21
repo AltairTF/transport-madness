@@ -1,6 +1,6 @@
 # Campaign plan: a region at war, 1938 to 1945
 
-Status: C1 to C14, C15a and C15b done on 2026-10-21 (sections 5.23, 5.25 to 5.42 of `project-status.md`); only M6 is left, and six more slices (C10 to C15; C10 to C14, C15a and C15b are done) were decided on 2026-10-21 to come before it (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
+Status: C1 to C15 done on 2026-10-21 (sections 5.23, 5.25 to 5.43 of `project-status.md`); only M6 is left, and the six more slices (C10 to C15, all done) were decided on 2026-10-21 to come before it (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
 
 ## What was decided
 
@@ -38,7 +38,7 @@ Status: C1 to C14, C15a and C15b done on 2026-10-21 (sections 5.23, 5.25 to 5.42
 | C14 (done) | Civilians: a siren when a flight is launched, people on foot or in a station queue take cover, casualties really lower the people of a group (section 5.40 of project-status). |
 | C15a (done) | Rebuilding: what a raid destroys becomes a free lot and the town founds it again through its growth; a raid never destroys the last standing building (section 5.41 of project-status). |
 | C15b (done) | Requisition rule: in the month of notice the player chooses the order in which the army takes vehicles: freight first and the biggest (default), the oldest first, passengers first (section 5.42 of project-status). |
-| C15 (planned, the rest) | C15c the call-up lowers the towns' building capacity for good. |
+| C15c (done) | Call-up capacity: each call-up wave lowers for good the capacity of the buildings of every town for people and jobs (`StatsOf`, the needs, the jobs as workplaces and what growth creates); growth cannot refill it (section 5.43 of project-status). With it the work before M6 is finished. |
 | M6 | Save and load, overlays, balancing, art, audio (the old M6 without eras). |
 
 Each slice has its tests and its own pinned hashes where the world changes, and is committed only when the user asks. The 3D side of each is compiled and its GDScript parsed here; the user plays it.
@@ -73,7 +73,7 @@ These were taken without the developer seeing them; each is described in the sec
 
 ## Decided with the developer, 2026-10-21 (before M6)
 
-The 3D side of M5 and of C2 to C9 was played by the developer and works. The interface is awkward and hard to reach (many buttons and windows); it is deferred until the features are done. Balance is ok for now. Before M6 six slices are built, in the order of the table (C10 to C15). Left for after M6: trains carrying workers, wages and shifts, a standing graph and an orders history, sandbox mode, a wider choice of models, a depot with its own stock, and a factory of ammunition. Each slice has its tests and hashes and is one commit and push; design decisions are asked of the developer first, and the tuning numbers are chosen by Claude and listed. The decisions below were settled in an interview on 2026-10-21 (the first plan of four slices was replaced by this one when the developer asked for a dynamic war and for residents as workers).
+The 3D side of M5 and of C2 to C9 was played by the developer and works. The interface is awkward and hard to reach (many buttons and windows); it is deferred until the features are done. Balance is ok for now. Before M6 six slices were built, in the order of the table (C10 to C15; all are done). Left for after M6: trains carrying workers, wages and shifts, a standing graph and an orders history, sandbox mode, a wider choice of models, a depot with its own stock, and a factory of ammunition. Each slice has its tests and hashes and is one commit and push; design decisions are asked of the developer first, and the tuning numbers are chosen by Claude and listed. The decisions below were settled in an interview on 2026-10-21 (the first plan of four slices was replaced by this one when the developer asked for a dynamic war and for residents as workers).
 
 - **Access points (C10, built).** An industry, and a gateway, has an access point on its edge facing the nearest town and is a node of the road network, as in Transport Fever. A road built so that its end falls within about 60 m of the point is drawn to it; a road that only passes within that distance gets a short spur of its own type to the point. The preview shows it and the price is in the bill. Depots and stations already stand on nodes. Coverage does not change: a station still covers an industry within `stations.coverageRadius` (150 m), so a station at the point is the direct line and a station farther off, inside the radius, is a hub as now. The access point is also the destination of people going to work. A depot with its own stock is left for after M6. *Built as follows (see project-status 5.36):* the point is 3 m outside the square's edge facing the nearest town; a road end not on a node within 60 m is moved onto it, a road passing within 60 m (and not nearer than 10 m) gets a spur of its own type and speed from its nearest point; an end already on a node is left alone; a rail gateway has no road point; the node is made lazily, when a road reaches it, so no existing world changes.
 - **Residents as workers (C11, built, 5.37).** An industry with jobs is a workplace candidate for the trip groups of towns within `workRadius`; they arrive on foot, by car or by a line, and a line ends at the station that covers the industry. The `workers` cargo, the `workerbus` model and the own-staff formula by distance are removed. Staffing is the share of the jobs filled by groups that reached the industry that day, computed when the day closes; there are no shifts. This reverses the decision of C7 (workers as a cargo) and moves the rail and maintenance goldens and about 12 to 15 tests.
@@ -97,7 +97,7 @@ Items marked *needs play* cannot be settled in the headless simulation. Since 20
 
 **Design not done**
 
-Before M6 (slice C15, decided 2026-10-21, see the section above; C10, access points, C11, residents as workers, C12, dynamic raids, C13, anti-aircraft, C14, civilians, C15a, rebuilding, and C15b, the requisition rule, are built): the call-up lowering capacity.
+Before M6 (slices C10 to C15, decided 2026-10-21, see the section above): all built, C10 access points, C11 residents as workers, C12 dynamic raids, C13 anti-aircraft, C14 civilians, C15a rebuilding, C15b the requisition rule and C15c the call-up lowering capacity. M6 is the only thing left.
 
 After M6:
 - A depot with its own stock that nearby industries draw from; a factory of ammunition (until then ammunition is imported only).
