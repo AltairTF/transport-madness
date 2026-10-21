@@ -457,7 +457,7 @@ public partial class SimHost : Node3D
     /// (total so far), imports (total spent), standing, phase, phase_month (months into the campaign), months, country, region, next_allocation,
     /// allocation_factor, months_to_dismissal, dismiss_below, dismiss_months, export_value (this month), expected_value (the phase's), delivered_value, average_satisfaction,
     /// campaign_over, dismissed, finished, grade_name, score, last} where last is the report of the month that ended, {month, export_value,
-    /// export_term, deficit_term, fine_term, standing_before, standing_after, allocation}, empty before the first. Also called_up (people, all towns), workforce_gap and workforce_factor (0 to 1), next_call_month (-1 when no more), orders_met, orders_late, orders_failed,
+    /// export_term, deficit_term, fine_term, standing_before, standing_after, allocation}, empty before the first. Also requisitioned (vehicles and trains the army has taken), requisition_income, next_requisition_month (-1 when none), next_requisition_share, expected_requisition (how many it would take now), called_up (people, all towns), workforce_gap and workforce_factor (0 to 1), next_call_month (-1 when no more), orders_met, orders_late, orders_failed,
     /// orders_active, orders_open (offers) and orders_income (rewards so far).
     /// </summary>
     public Godot.Collections.Dictionary GetCompany()
@@ -509,6 +509,9 @@ public partial class SimHost : Node3D
             ["score"] = c.Score,
             ["called_up"] = Sim.CalledUp, ["workforce_gap"] = Sim.WorkforceGap, ["workforce_factor"] = Sim.WorkforceFactor,
             ["next_call_month"] = Sim.NextWave is { } wave ? wave.Month : -1,
+            ["requisitioned"] = c.Requisitioned, ["requisition_income"] = c.Total(LedgerEntry.Requisition),
+            ["next_requisition_month"] = Sim.NextRequisition is { } req ? req.Month : -1, ["next_requisition_share"] = Sim.NextRequisition is { } req2 ? req2.Share : 0f,
+            ["expected_requisition"] = Sim.ExpectedRequisition,
             ["orders_met"] = c.OrdersMet, ["orders_late"] = c.OrdersLate, ["orders_failed"] = c.OrdersFailed,
             ["orders_active"] = Sim.ActiveOrders, ["orders_open"] = Sim.OpenOffers, ["orders_income"] = c.Total(LedgerEntry.Orders),
             ["last"] = last,

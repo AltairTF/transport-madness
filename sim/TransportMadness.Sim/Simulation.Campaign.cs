@@ -79,6 +79,7 @@ public sealed partial class Simulation
             Earn(allocation, LedgerEntry.Allocation);
             WarNewsForMonth(month + 1);
             ConscriptionForMonth(month + 1);
+            RequisitionForMonth(month + 1);
             WarnAboutStanding();
         }
         LastMonth = new MonthReport(month, _monthExportValue, exportTerm, deficitTerm, fineTerm, before, Company.Standing, allocation);

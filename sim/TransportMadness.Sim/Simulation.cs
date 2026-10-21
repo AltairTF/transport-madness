@@ -265,6 +265,7 @@ public sealed partial class Simulation
         if (_gateways.Count > 0) Mix(OrderHash());
         if (_groups.Count > 0) Mix(TripHash());
         if (_wavesFired > 0) Mix(ConscriptionHash());
+        if (_nextRequisition > 0) Mix(RequisitionHash());
         Mix(FleetHash());
         if (_lines.Count > 0 || _roadWorks.Count > 0 || _resurfaced > 0) Mix(RoadWearHash());
         if (_lights.Count > 0) Mix(LightHash());

@@ -842,6 +842,11 @@ func show_company(company: Dictionary) -> void:
 	if company["called_up"] > 0 or company["next_call_month"] >= 0:
 		text += "\nCall-up   %d people called up so far   workforce %d%% short (industry at %d%%)%s" % [company["called_up"], roundi(company["workforce_gap"] * 100.0), roundi(company["workforce_factor"] * 100.0),
 			"   next call-up in %s %d" % [MONTHS[company["next_call_month"] % 12], company["year"] - floori(company["phase_month"] / 12.0) + floori(company["next_call_month"] / 12.0)] if company["next_call_month"] >= 0 else ""]
+	if company["requisitioned"] > 0 or company["next_requisition_month"] >= 0:
+		text += "\nRequisition   the army has taken %d vehicles and trains (paid %s)" % [company["requisitioned"], _money_text(company["requisition_income"])]
+		if company["next_requisition_month"] >= 0:
+			text += "   next in %s %d: %d%% of the fleet, about %d now" % [MONTHS[company["next_requisition_month"] % 12],
+				company["year"] - floori(company["phase_month"] / 12.0) + floori(company["next_requisition_month"] / 12.0), roundi(company["next_requisition_share"] * 100.0), company["expected_requisition"]]
 	text += "\nDelivered to the gateways this month   %s  (the phase expects %s)" % [_money_text(company["export_value"]), _money_text(company["expected_value"])]
 	var last: Dictionary = company["last"]
 	if not last.is_empty():

@@ -215,6 +215,20 @@
         { "month": 62, "share": 0.10 },
         { "month": 74, "share": 0.08 }
       ]
+    },
+    // Requisitions (C9c): at the start of each month listed the army buys 'share' of the company's vehicles and trains (the freight ones first, then
+    // the biggest) at priceShare of the price new, whatever their Condition; the player cannot refuse, and is told noticeMonths ahead so as to
+    // prepare. The army's good opinion adds 'standing' points when something was taken. Vehicles in a depot's garage count too.
+    "requisition": {
+      "noticeMonths": 1,
+      "priceShare": 0.8,
+      "standing": 1.0,
+      "waves": [
+        { "month": 26, "share": 0.15 },
+        { "month": 40, "share": 0.20 },
+        { "month": 56, "share": 0.25 },
+        { "month": 72, "share": 0.25 }
+      ]
     }
   },
 

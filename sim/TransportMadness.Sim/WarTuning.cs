@@ -7,6 +7,7 @@ public sealed record WarTuning
 {
     public required RationingTuning Rationing { get; init; }
     public required ConscriptionTuning Conscription { get; init; }
+    public required RequisitionTuning Requisition { get; init; }
 
     internal void Validate(Tuning tuning)
     {
@@ -25,6 +26,13 @@ public sealed record WarTuning
         {
             if (call.Waves[i].Share <= 0f || call.Waves[i].Share >= 1f) throw new JsonException("war.conscription: a wave's share must be between 0 and 1");
             if (i > 0 && call.Waves[i].Month <= call.Waves[i - 1].Month) throw new JsonException("war.conscription: the waves must be in order of month");
+        }
+        var r = Requisition;
+        if (r.PriceShare <= 0f || r.NoticeMonths < 0) throw new JsonException("war.requisition: priceShare must be positive and noticeMonths not negative");
+        for (int i = 0; i < r.Waves.Count; i++)
+        {
+            if (r.Waves[i].Share <= 0f || r.Waves[i].Share > 1f) throw new JsonException("war.requisition: a wave's share must be above 0 and at most 1");
+            if (i > 0 && r.Waves[i].Month <= r.Waves[i - 1].Month) throw new JsonException("war.requisition: the waves must be in order of month");
         }
     }
 }
@@ -51,12 +59,24 @@ public sealed record ConscriptionTuning
     public required float OutputLoss { get; init; }
     public required float RecoveryPerMonth { get; init; }
     public required float SatisfactionLoss { get; init; }
-    public required IReadOnlyList<CallUpWave> Waves { get; init; }
+    public required IReadOnlyList<WarWave> Waves { get; init; }
 }
 
-/// <summary>A wave of the call-up: at the start of <see cref="Month"/> (0 is the first January) <see cref="Share"/> of the people go.</summary>
-public sealed record CallUpWave
+/// <summary>A wave of the war (the call-up, a requisition): at the start of <see cref="Month"/> (0 is the first January) <see cref="Share"/> of the people or the fleet go.</summary>
+public sealed record WarWave
 {
     public required int Month { get; init; }
     public required float Share { get; init; }
+}
+
+/// <summary>The army's requisitions: at fixed months it buys a share of the company's fleet at a table price.</summary>
+public sealed record RequisitionTuning
+{
+    /// <summary>The player is told this many months ahead.</summary>
+    public required int NoticeMonths { get; init; }
+    /// <summary>The army pays this share of the price of a vehicle new, whatever its Condition.</summary>
+    public required float PriceShare { get; init; }
+    /// <summary>Standing the army's good opinion adds when a requisition has taken something.</summary>
+    public required float Standing { get; init; }
+    public required IReadOnlyList<WarWave> Waves { get; init; }
 }

@@ -16,7 +16,7 @@ public sealed partial class Simulation
     /// <summary>People called up so far, in all the towns.</summary>
     public long CalledUp => _calledUp;
     /// <summary>The wave that comes next, null when there are no more.</summary>
-    public CallUpWave? NextWave => _nextWave < _war.Conscription.Waves.Count ? _war.Conscription.Waves[_nextWave] : null;
+    public WarWave? NextWave => _nextWave < _war.Conscription.Waves.Count ? _war.Conscription.Waves[_nextWave] : null;
 
     /// <summary>At the turn of a month: the workforce recovers a little, and the waves that begin with the coming month fire.</summary>
     void ConscriptionForMonth(long nextMonth)
@@ -26,7 +26,7 @@ public sealed partial class Simulation
             CallUp(_war.Conscription.Waves[_nextWave++]);
     }
 
-    void CallUp(CallUpWave wave)
+    void CallUp(WarWave wave)
     {
         _wavesFired++;
         _workforceGap = 1f - (1f - _workforceGap) * (1f - wave.Share);
