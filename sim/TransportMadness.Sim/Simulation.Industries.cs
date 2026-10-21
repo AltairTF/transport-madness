@@ -41,7 +41,7 @@ public sealed partial class Simulation
         var missing = new List<int>();
         foreach (var (cargo, amount) in _industryInputs[industry.Type])
             if (industry.Input[cargo] < amount) missing.Add(cargo);
-        return new IndustryStatus(_industryStations[industry.Id].Length > 0, industry.Output >= type.MaxOutput - 0.5f, missing);
+        return new IndustryStatus(_industryStations[industry.Id].Length > 0, type.Supply <= 0f && industry.Output >= type.MaxOutput - 0.5f, missing);
     }
 
     /// <summary>Changes whenever industries are added (for a renderer).</summary>
@@ -90,6 +90,7 @@ public sealed partial class Simulation
             _industries.Add(new Industry(_industries.Count, plan.Type, plan.X, y, plan.Z, plan.Angle, _cargo.Count));
         }
         IndustriesVersion++;
+        _freeGrid = _industries.Sum(i => _industryTuning.Types[i.Type].Demand) * _power.FreeGridMargin;
     }
 
     /// <summary>Gives every building its starting stock (called by <see cref="AddTowns"/>).</summary>
@@ -108,19 +109,23 @@ public sealed partial class Simulation
     {
         if (_industries.Count == 0) return;
         if (_coverageDirty) RefreshCoverage();
+        UpdatePowerBalance();
         foreach (var industry in _industries)
         {
             var type = _industryTuning.Types[industry.Type];
-            float make = type.PerMonth * (float)_productionPerTick;
-            make = MathF.Min(make, type.MaxOutput - industry.Output);
+            bool plant = type.Supply > 0f;
+            float full = type.PerMonth * (float)_productionPerTick;
+            float make = plant ? full : MathF.Min(full, type.MaxOutput - industry.Output);
             var inputs = _industryInputs[industry.Type];
             foreach (var (cargo, amount) in inputs) make = MathF.Min(make, industry.Input[cargo] / amount);
+            if (!plant) make *= _powerFactor;
             if (make > 0f)
             {
                 foreach (var (cargo, amount) in inputs) industry.Input[cargo] -= make * amount;
-                industry.Output += make;
+                if (!plant) industry.Output += make;
                 industry.Produced += make;
             }
+            if (plant) industry.Load = make > 0f ? make / full : 0f;
             if (industry.Output > 0f) ShipOutput(industry);
         }
     }
@@ -245,8 +250,10 @@ public sealed partial class Simulation
         foreach (var industry in _industries)
         {
             h = h * 31 + BitConverter.SingleToUInt32Bits(industry.Output);
+            h = h * 31 + BitConverter.SingleToUInt32Bits(industry.Load);
             foreach (float f in industry.Input) h = h * 31 + BitConverter.SingleToUInt32Bits(f);
         }
+        h = h * 31 + BitConverter.SingleToUInt32Bits(_freeGrid) + (ulong)Company.PowerPurchase;
         foreach (var b in _buildings)
         {
             foreach (float f in b.Sustain) h = h * 31 + BitConverter.SingleToUInt32Bits(f);

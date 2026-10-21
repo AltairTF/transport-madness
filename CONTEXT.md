@@ -24,6 +24,9 @@ A Cargo that no Industry makes (oil, rubber): it can only arrive as an Import sh
 **Industry**:
 A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm, and the two Deposits) produce at a fixed rate; processors (sawmill, cement works, food plant, factory, steel mill, refinery and the military truck's works) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods, iron ore and coal → steel, imported oil → fuel, and for the military truck steel and fuel → engines, steel and planks → bodies, imported rubber → tyres, then engines, bodies and tyres → trucks. Its output goes to the Stations that cover it, shared evenly; its inputs are filled by deliveries to those Stations. The generator places a processor within reach of a producer of its inputs and of a Town; one that did not fit is reported when a game starts.
 
+**Power**:
+The region's electricity, one number of megawatts and not a cargo or a network. Every Industry asks for some; the supply is a free grid sized for the industries of the start, the Power plants that are burning coal, and power bought from outside by the month. When the demand is higher, every Industry makes less in proportion.
+
 **Cargo**:
 Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 

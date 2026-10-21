@@ -136,6 +136,8 @@ public sealed class Industry
     public float Angle { get; }
     /// <summary>Delivered inputs waiting to be used, by cargo.</summary>
     public float[] Input { get; }
+    /// <summary>For a power plant: the share of full burn it managed in the last step, 0 to 1 (0 for any other industry).</summary>
+    public float Load { get; internal set; }
     /// <summary>What it has made that no station has taken yet.</summary>
     public float Output { get; internal set; }
     /// <summary>Everything it has made so far.</summary>

@@ -135,7 +135,7 @@ public sealed partial class Simulation
         _trips = tuning.Trips;
         _growth = tuning.Towns.Growth;
         _industryTuning = tuning.Industries;
-        _industryOutput = tuning.Industries.Types.Select(t => CargoIndex(tuning, t.Output)).ToArray();
+        _industryOutput = tuning.Industries.Types.Select(t => t.Output.Length == 0 ? -1 : CargoIndex(tuning, t.Output)).ToArray();
         _industryInputs = ResolveIndustryInputs(tuning);
         _gatewayTuning = tuning.Gateways;
         _importCargo = tuning.Gateways.Imports.Select(i => CargoIndex(tuning, i.Cargo)).ToArray();
@@ -159,6 +159,7 @@ public sealed partial class Simulation
         _productionPerTick = 1.0 / (_ticksPerDay * _economy.DaysPerMonth);
         _campaign = tuning.Campaign;
         _orderTuning = tuning.Orders;
+        _power = tuning.Power;
         _orderRng = new SimRandom(seed ^ OrderSeedMix);
         Company = new Company(_economy.StartingMoney) { Standing = tuning.Campaign.StartStanding };
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);

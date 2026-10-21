@@ -1,6 +1,6 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: 2026-10-21, after C5 (the government's orders; section 5.28), C4 (budget, standing, dismissal and the grade; section 5.27), C3 (gateways, import shipments and exports; section 5.26), C2 (the heavy chain: coal, iron ore, steel, fuel, the military truck's parts; section 5.25), M5 (condition, maintenance, depot capability, full incidents, road condition; section 5.24), C1 (the campaign time scale, section 5.23) and M4 (rail, signals, level crossings, deadlock detection, traffic lights; sections 5.19 and 5.20) and its follow-ups (garage, 5.21; rail prices, road signs and the benchmark job, 5.22). M0 to M5 are done. Open work is in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: 2026-10-21, after C6 (electricity; section 5.29), C5 (the government's orders; section 5.28), C4 (budget, standing, dismissal and the grade; section 5.27), C3 (gateways, import shipments and exports; section 5.26), C2 (the heavy chain: coal, iron ore, steel, fuel, the military truck's parts; section 5.25), M5 (condition, maintenance, depot capability, full incidents, road condition; section 5.24), C1 (the campaign time scale, section 5.23) and M4 (rail, signals, level crossings, deadlock detection, traffic lights; sections 5.19 and 5.20) and its follow-ups (garage, 5.21; rail prices, road signs and the benchmark job, 5.22). M0 to M5 are done. Open work is in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
@@ -17,7 +17,8 @@ Last updated: 2026-10-21, after C5 (the government's orders; section 5.28), C4 (
 | C3 Gateways | Done (sim, tests and the Gateways window; the 3D side was not played): one road and one rail gateway at the map edge, import shipments paid at once, exports by unloading (section 5.26) |
 | C4 Budget and standing | Done (sim, tests and the HUD; the 3D side was not played): monthly allocation by phase and standing, standing from deliveries, deficit and fines, dismissal, four grades (section 5.27) |
 | C5 Orders | Done (sim, tests and the Orders window; the 3D side was not played): quota, civil and state-work orders drawn at random inside the phase, accepted once stations cover their ends, met by deliveries, rewarded or fined (section 5.28) |
-| C6 to C9 The campaign | Planned: electricity, workers, fleet by year, the war |
+| C6 Electricity | Done (sim, tests and the power panel of the Industries window; the 3D side was not played): demand per industry, a free grid sized at the start, power plants that burn coal, power bought by the month, a shortage that slows every industry (section 5.29) |
+| C7 to C9 The campaign | Planned: workers, fleet by year, the war |
 | M6 Save/load, overlays, balancing, art, audio | Not started |
 
 ## 2. M0 exit criteria
@@ -73,7 +74,7 @@ Tooling: Godot 4.7.2 .NET editor build, .NET 8 SDK (installed per user in `~/.do
 
 ### Current status (2026-10-19)
 
-M0, M1 and M2 are done (M2 without tier 1 and 2 ambient traffic, section 11), M3 (a to d) is built and so is M4 (rail, 5.19; traffic lights, 5.20). 591 tests pass (macOS). The game layer of M3, of the M2 follow-ups (5.15), of M4 and of M5 compiles (the HUD and menu scripts were run in a headless Godot, the HUD with made-up rail data) but the 3D side has not been played (section 10). The design changed on 2026-10-21: the game becomes a campaign about a region at war, 1938 to 1945 (ADR 0006). C1 (the new time scale, 5.23), M5 (5.24) C2 (the chain, 5.25) and C3 (gateways, 5.26), C4 (budget and standing, 5.27) and C5 (orders, 5.28) are done. Next are the campaign slices C6 to C9 (`docs/campaign-plan.md`); follow-ups are in section 11.
+M0, M1 and M2 are done (M2 without tier 1 and 2 ambient traffic, section 11), M3 (a to d) is built and so is M4 (rail, 5.19; traffic lights, 5.20). 604 tests pass (macOS). The game layer of M3, of the M2 follow-ups (5.15), of M4 and of M5 compiles (the HUD and menu scripts were run in a headless Godot, the HUD with made-up rail data) but the 3D side has not been played (section 10). The design changed on 2026-10-21: the game becomes a campaign about a region at war, 1938 to 1945 (ADR 0006). C1 (the new time scale, 5.23), M5 (5.24) C2 (the chain, 5.25) and C3 (gateways, 5.26), C4 (budget and standing, 5.27) C5 (orders, 5.28) and C6 (electricity, 5.29) are done. Next are the campaign slices C7 to C9 (`docs/campaign-plan.md`); follow-ups are in section 11.
 
 ## 4. Architecture
 
@@ -311,6 +312,19 @@ Files: `data/tuning.json` (`economy`, `towns`, `industries`, `cargo`, upkeep fie
 - **What moves because of it.** People still make four trips a day, so passenger traffic per second is half what it was; measured on eight maps the bus line's income per hour fell by about 10 percent on average (the buses fill more evenly over a longer rush), so passenger fares were not touched. Freight is unchanged per second. The campaign's budget (C4) is set against these figures.
 - **Calendar.** `economy.startYear` is 1938: day 0 is 1 January 1938, day 35 is 3 December 1938, day 287 is 3 December 1945 (the last day of the campaign). The HUD shows "2 Mar 1938   14:30".
 - **Tests.** 445 (a calendar theorem grew to six cases). Tests that carried a literal number of the old scale now read it from the tuning (upkeep, building needs); the balance and rail economy tests measure in periods of 600 s (`Worlds.Period`) so their windows and thresholds keep their meaning; a few runs that waited for a half day wait a quarter. Pinned hashes: the rail scenario hash moved to `0x6B1D2292DC4DE3EF` and is the same on macOS and Linux; the road golden hashes did not move.
+
+### 5.29 Electricity (C6, 2026-10-21)
+
+Files: `data/tuning.json` (`power`; `demand` and `supply` on every industry type; the `powerplant` type), `Tuning.cs` (`PowerTuning`), `Simulation.Power.cs`, `Simulation.Industries.cs` (the production step), `Town.cs` (`Industry.Load`), `Company.cs` (`PowerPurchase`, ledger heading `Power`), `SimCommand.cs` (`SetPowerPurchaseCommand`), `SimEventKind.Power`; the game layer is `SimHostPower.cs`, `SimHost.GetIndustries`, `hud.gd` (the power panel at the top of the Industries window) and `main.gd`. Tests in `PowerTests.cs`.
+
+- **Abstract capacity.** Electricity is one number for the whole region, not a cargo and not a network. Every industry type has a `demand` in megawatts (always, working or not): 0 for forest and farm, 1 for quarry, sawmill and food plant, 2 for cement works, factory and the two mines, 8 for the steel mill, 5 for the refinery, 3 to 6 for the truck's works. The supply is the *free grid*, plus what is bought, plus the power plants that are burning.
+- **Free grid.** At the start the grid supplies the demand of the industries that stand, times `freeGridMargin` (1.1), so the first game runs at full power on any setting. Industries founded later (the state works of C5, 16 MW) are not in it: they need a plant or power from outside, or every industry slows.
+- **Power plant.** An industry type with `supply` 20 and `output` "" (it makes no cargo, `OutputOf` is -1). It takes coal as its input and burns 300 a month at full load; `Industry.Load` is the share of full burn it managed in the last step, so a plant with coal gives its 20 MW and one without gives nothing. It is placed by the generator like any processor (within reach of the coal mine and a town), one in every setting; it idles until a station brings it coal. It does not show as stopped for a full output.
+- **Shortage.** When the demand is above the supply every industry (plants excepted) makes its output times supply over demand, and consumes its inputs in the same proportion. A change of state (a shortage begins, or ends) is an event. The supply is computed from the load of the step before, so a plant that runs dry takes effect one step later.
+- **Buying.** `SetPowerPurchaseCommand(mw)` sets the megawatts bought from outside, 0 to 40, and they are charged at the turn of every month at 1 500 a megawatt (ledger `Power`) until set back to 0. No transport. The panel shows the supply, the demand, the factor, the free grid, the plants burning and two buttons to buy 5 MW more or less.
+- **Hash.** `Industry.Load`, the free grid and the purchase are in the industry hash; the other goldens did not move (their worlds have no industries).
+- **Decisions the player has not seen.** The numbers (demands, 20 MW and 300 coal for a plant, 1 500 a MW and month: 14 MW for the truck works costs 21 000 a month, about a third of the allocation in Mobilisation, against hauling 300 coal a month to a plant) are first guesses. Towns do not use power. A plant is part of the map at the start, not an order.
+- **Tests.** 604 (13 more); the industry counts of the tests went up by one for the plant.
 
 ### 5.28 Orders (C5, 2026-10-21)
 

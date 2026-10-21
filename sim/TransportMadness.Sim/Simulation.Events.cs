@@ -20,6 +20,8 @@ public enum SimEventKind : byte
     Standing,
     /// <summary>The government offered an order, or one was met, paid late, failed or lapsed.</summary>
     Order,
+    /// <summary>The region's industries are short of power, or the shortage is over.</summary>
+    Power,
 }
 
 public enum EventSeverity : byte { Info, Warning, Serious }

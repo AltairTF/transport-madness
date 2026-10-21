@@ -52,6 +52,7 @@ public sealed partial class Simulation
     void CloseMonthForCampaign()
     {
         if (Company.CampaignOver) return;
+        ChargePower();
         long month = MonthIndex; // the month that is ending (Day has not moved on yet, see CloseDay)
         var phase = _campaign.PhaseOf(month);
         float before = Company.Standing;

@@ -74,9 +74,9 @@ public class TuningTests
     {
         var t = Tuning.Load().Industries;
 
-        Assert.Equal(new[] { "forest", "quarry", "farm", "sawmill", "cementworks", "foodplant", "factory", "coalmine", "ironmine", "steelmill", "refinery", "engineworks", "bodyworks", "tyreworks", "truckplant" }, t.Types.Select(x => x.Id));
-        Assert.Equal(new[] { "wood", "stone", "grain", "planks", "materials", "food", "goods", "coal", "ore", "steel", "fuel", "engines", "bodies", "tyres", "trucks" }, t.Types.Select(x => x.Output));
-        Assert.Equal(new[] { 0, 0, 0, 1, 1, 1, 1, 0, 0, 2, 1, 2, 2, 1, 3 }, t.Types.Select(x => x.Inputs.Count));
+        Assert.Equal(new[] { "forest", "quarry", "farm", "sawmill", "cementworks", "foodplant", "factory", "coalmine", "ironmine", "steelmill", "refinery", "engineworks", "bodyworks", "tyreworks", "truckplant", "powerplant" }, t.Types.Select(x => x.Id));
+        Assert.Equal(new[] { "wood", "stone", "grain", "planks", "materials", "food", "goods", "coal", "ore", "steel", "fuel", "engines", "bodies", "tyres", "trucks", "" }, t.Types.Select(x => x.Output));
+        Assert.Equal(new[] { 0, 0, 0, 1, 1, 1, 1, 0, 0, 2, 1, 2, 2, 1, 3, 1 }, t.Types.Select(x => x.Inputs.Count));
         Assert.Equal(new[] { "coalmine", "ironmine" }, t.Types.Where(x => x.Deposit).Select(x => x.Id));
         Assert.All(new[] { t.Counts.Few, t.Counts.Normal, t.Counts.Many }, counts => Assert.Equal(t.Types.Count, counts.Count));
     }

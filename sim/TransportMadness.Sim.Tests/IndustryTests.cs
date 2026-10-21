@@ -43,9 +43,9 @@ public class IndustryTests
     // ---- Generation ----------------------------------------------------------------------------------------------
 
     [Theory]
-    [InlineData(IndustryAmount.Few, 11)]
-    [InlineData(IndustryAmount.Normal, 13)]
-    [InlineData(IndustryAmount.Many, 20)]
+    [InlineData(IndustryAmount.Few, 12)]
+    [InlineData(IndustryAmount.Normal, 14)]
+    [InlineData(IndustryAmount.Many, 21)]
     public void TheAmountSetting_DecidesHowManyIndustriesOfEachTypeAreMade(IndustryAmount amount, int expected)
     {
         var net = new RoadNetwork(DryLevelMap());

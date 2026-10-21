@@ -33,6 +33,7 @@ public sealed record Tuning
     public required GatewaysTuning Gateways { get; init; }
     public required CampaignTuning Campaign { get; init; }
     public required OrderTuning Orders { get; init; }
+    public required PowerTuning Power { get; init; }
     public required TripsTuning Trips { get; init; }
     public required RailTuning Rail { get; init; }
     public required MaintenanceTuning Maintenance { get; init; }
@@ -516,7 +517,21 @@ public sealed record IndustryTypeTuning
     public required float MaxOutput { get; init; }
     public required IReadOnlyList<CargoAmount> Inputs { get; init; }
     public required float MaxInput { get; init; }
+    /// <summary>Megawatts this industry uses whether it works or not (C6).</summary>
+    public required float Demand { get; init; }
+    /// <summary>Megawatts a power plant adds while it burns its coal; 0 for everything else. A plant makes no cargo (its <see cref="Output"/> is empty).</summary>
+    public required float Supply { get; init; }
     public required IReadOnlyList<float> Color { get; init; }
+}
+
+/// <summary>Electricity (C6): the grid the map started with, and power bought from outside.</summary>
+public sealed record PowerTuning
+{
+    /// <summary>The free grid supplies the demand of the industries of the start times this.</summary>
+    public required float FreeGridMargin { get; init; }
+    public required long PricePerMegawattMonth { get; init; }
+    public required int MaxPurchase { get; init; }
+    public required int PurchaseStep { get; init; }
 }
 
 /// <summary>A stretch of the day, in hours (0 to 24), in which a kind of trip starts.</summary>

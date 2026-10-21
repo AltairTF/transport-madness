@@ -102,6 +102,8 @@ func _ready() -> void:
 			hud.show_message("Order accepted: the clock is running")
 		else:
 			hud.show_message(host.WhyNotAccept(order)))
+	hud.power_purchase_set.connect(func(megawatts: int) -> void:
+		hud.show_message("Power bought from outside: %d MW a month" % megawatts if host.SetPowerPurchase(megawatts) else "That can't be set"))
 	hud.campaign_left.connect(_leave_to_menu)
 	hud.town_focus.connect(rig.focus_on)
 	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
@@ -159,6 +161,7 @@ func _process(delta: float) -> void:
 		hud.show_lines(host.GetLines())
 		hud.show_towns(host.GetTowns())
 		hud.show_industries(host.GetIndustries())
+		hud.show_power(host.GetPower())
 		hud.show_gateways(host.GetGateways())
 		hud.show_orders(host.GetOrders(), company["orders_open"])
 		hud.show_stations(host.GetStations())

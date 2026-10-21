@@ -176,3 +176,6 @@ public sealed record AcceptOrderCommand(int Order) : SimCommand;
 
 /// <summary>Turns an order that has been offered down, with no penalty. Result: 1, 0 when it is not on offer.</summary>
 public sealed record DeclineOrderCommand(int Order) : SimCommand;
+
+/// <summary>Sets the megawatts bought from outside for every month from now on (0 to the limit in the tuning), charged at the turn of the month. Result: 1, 0 when refused.</summary>
+public sealed record SetPowerPurchaseCommand(int Megawatts) : SimCommand;

@@ -107,6 +107,8 @@ public sealed partial class Simulation
                 return SellVehicle(c.Vehicle);
             case RequestImportCommand c:
                 return RequestImport(c.Gateway, c.Cargo);
+            case SetPowerPurchaseCommand c:
+                return SetPowerPurchase(c.Megawatts);
             case AcceptOrderCommand c:
                 return AcceptOrder(c.Order);
             case DeclineOrderCommand c:

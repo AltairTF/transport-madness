@@ -786,7 +786,7 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// The industries: for each {id, name, x, y, z, output (cargo name), stock (waiting to be collected), max_output, produced,
-    /// deposit (a scarce resource), inputs, used_by, status, status_kind} where inputs lists {cargo, stock, max, imported} for the
+    /// deposit (a scarce resource), demand and supply (megawatts), load (a plant's share of full burn), inputs, used_by, status, status_kind} where inputs lists {cargo, stock, max, imported} for the
     /// cargo it uses (imported: no industry makes it, it comes through a gateway), used_by says who takes the output, status is a line
     /// of text and status_kind is "ok", "warn" or "idle".
     /// </summary>
@@ -807,7 +807,8 @@ public partial class SimHost : Node3D
             list.Add(new Godot.Collections.Dictionary
             {
                 ["id"] = industry.Id, ["name"] = type.Name, ["x"] = industry.X, ["y"] = HeightAt(industry.X, industry.Z), ["z"] = industry.Z,
-                ["output"] = Sim.CargoTypes[Sim.OutputOf(industry.Type)].Name, ["stock"] = industry.Output, ["max_output"] = type.MaxOutput,
+                ["output"] = type.Supply > 0f ? "Electricity" : Sim.CargoTypes[Sim.OutputOf(industry.Type)].Name, ["stock"] = industry.Output,
+                ["demand"] = type.Demand, ["supply"] = type.Supply, ["load"] = industry.Load, ["max_output"] = type.MaxOutput,
                 ["produced"] = industry.Produced, ["deposit"] = type.Deposit, ["inputs"] = inputs, ["used_by"] = UsedBy(type),
                 ["status"] = status, ["status_kind"] = kind,
             });

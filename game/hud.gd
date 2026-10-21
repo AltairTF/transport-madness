@@ -39,6 +39,8 @@ signal campaign_left
 signal import_requested(gateway: int, cargo: String)
 ## Accept (true) or decline an order the government offered.
 signal order_answered(order: int, accept: bool)
+## The megawatts to buy from outside each month.
+signal power_purchase_set(megawatts: int)
 
 signal town_focus(x: float, z: float)
 ## The Towns window turns the connectivity view of the map on or off.
@@ -135,6 +137,12 @@ var _parked_header: Label
 var _parked_box: VBoxContainer
 var _parked_rows: Dictionary = {} # garage id -> {"row", "separator", "label", "choice", "lines_key", "assign", "go", "go_call"}
 var _vehicle_rows: Dictionary = {} # vehicle id -> {"row": Control, "label": Label, "separator": Control}
+var _power_label: Label
+var _power_less: Button
+var _power_more: Button
+var _power_purchased := 0
+var _power_step := 5
+var _power_max := 0
 var _industries_box: VBoxContainer
 var _industries_empty: Label
 var _orders_box: VBoxContainer
@@ -405,6 +413,18 @@ func _build_gateways_page() -> Control:
 
 func _build_industries_page() -> Control:
 	_industries_box = VBoxContainer.new()
+	_power_label = Label.new()
+	_power_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_industries_box.add_child(_power_label)
+	var power_buttons := HBoxContainer.new()
+	_industries_box.add_child(power_buttons)
+	_power_less = Button.new()
+	_power_less.pressed.connect(func() -> void: power_purchase_set.emit(maxi(0, _power_purchased - _power_step)))
+	power_buttons.add_child(_power_less)
+	_power_more = Button.new()
+	_power_more.pressed.connect(func() -> void: power_purchase_set.emit(mini(_power_max, _power_purchased + _power_step)))
+	power_buttons.add_child(_power_more)
+	_industries_box.add_child(HSeparator.new())
 	_industries_empty = Label.new()
 	_industries_empty.theme_type_variation = "Dim"
 	_industries_empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -991,6 +1011,24 @@ func _add_gateway_row(id: int, gateway: Dictionary) -> void:
 	_gateway_rows[id] = {"row": row, "title": title, "offers": offers, "exports": exports, "separator": separator}
 
 
+## The electricity of the region: what the industries ask for, what the grid, the plants and the power bought from outside give, and the buttons to buy more.
+func show_power(power: Dictionary) -> void:
+	_power_purchased = power["purchased"]
+	_power_step = power["step"]
+	_power_max = power["max_purchase"]
+	var text := "Power   supply %d MW   demand %d MW" % [roundi(power["supply"]), roundi(power["demand"])]
+	if power["factor"] < 0.995:
+		text += "   SHORT: the industries make %d%% of their output" % roundi(power["factor"] * 100.0)
+	text += "\nFree grid %d MW   %d of %d power plants burning   bought from outside %d MW (%s a month)" % [
+		roundi(power["free_grid"]), power["plants_burning"], power["plants"], power["purchased"], _money_text(power["cost"])]
+	_power_label.text = text
+	_power_label.add_theme_color_override("font_color", Color(1.0, 0.7, 0.35) if power["factor"] < 0.995 else UiTheme.TEXT)
+	_power_less.text = "Buy %d MW less" % _power_step
+	_power_less.disabled = _power_purchased <= 0
+	_power_more.text = "Buy %d MW more (%s a month each)" % [_power_step, _money_text(power["price"])]
+	_power_more.disabled = _power_purchased >= _power_max
+
+
 ## One row per industry: what it makes and holds, who takes it, what it is doing, with a button that takes the camera there.
 func show_industries(industries: Array) -> void:
 	var seen := {}
@@ -1004,6 +1042,11 @@ func show_industries(industries: Array) -> void:
 			title += "   (deposit)"
 		var text := "%s\nmakes %s   %d of %d waiting for a truck   %d made so far" % [
 			title, industry["output"], industry["stock"], industry["max_output"], industry["produced"]]
+		if industry.get("supply", 0.0) > 0.0:
+			text = "%s\ngives %d MW to the region while it has coal (now %d MW)   %d coal burned so far" % [
+				title, roundi(industry["supply"]), roundi(industry["supply"] * industry["load"]), industry["produced"]]
+		elif industry.get("demand", 0.0) > 0.0:
+			text += "   uses %d MW" % roundi(industry["demand"])
 		var used_by: String = industry.get("used_by", "")
 		if used_by != "":
 			text += "\nused by %s" % used_by

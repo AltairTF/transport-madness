@@ -413,6 +413,8 @@ public class OrderTests
         var tuning = sim.OrderTuning.Sites;
         Assert.All(founded.Skip(1), f => Assert.True(MathF.Sqrt(MathF.Pow(f.X - founded[0].X, 2) + MathF.Pow(f.Z - founded[0].Z, 2)) <= tuning.ClusterReach + 0.01f));
         Assert.Contains(sim.Events, e => e.Text.StartsWith("The state has founded"));
+        sim.Step();
+        Assert.True(sim.PowerFactor < 1f, "the works need power the free grid of the start does not have");
 
         // Trucks delivered to a gateway count, whichever it is.
         sim.Distribute(sim.Stations.Last(), Trucks, 5);
