@@ -32,7 +32,7 @@ public sealed partial class Simulation
     public string? WhyNotUpgrade(bool rail, int depot, DepotLevel level)
     {
         if (!Enum.IsDefined(level)) return "that is not a depot level";
-        bool open = rail ? depot >= 0 && depot < _railDepots.Count && _railDepots[depot].Active : depot >= 0 && depot < _depots.Count && _depots[depot].Active;
+        bool open = rail ? depot >= 0 && depot < _railDepots.Count && _railDepots[depot].Active : depot >= 0 && depot < _depots.Count && (_depots[depot].Active || _depots[depot].FreeStanding);
         if (!open) return "that depot is closed";
         var now = rail ? _railDepots[depot].Level : _depots[depot].Level;
         if ((int)level <= (int)now) return "it is at that level already";

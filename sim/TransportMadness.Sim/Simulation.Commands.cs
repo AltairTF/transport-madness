@@ -47,12 +47,19 @@ public sealed partial class Simulation
                 var inTheWay = _net.PlannedMoveRoads(c.Node, c.X, c.Z) is { } rebuilt ? BuildingsInTheWay(rebuilt) : new List<int>();
                 if (RailInUse && _net.PlannedMoveRoads(c.Node, c.X, c.Z) is { } moved2 && MovedRoadsMeetTracks(moved2)) return 0;
                 if (!CanAfford(cost.Money + DemolitionOf(inTheWay).Price)) return 0;
+                var (oldX, oldZ) = _net.GetNode(c.Node);
                 if (!_net.MoveNode(c.Node, c.X, c.Z, out int moved)) return 0;
                 Charge(Price(cost.Money), LedgerEntry.Construction);
                 DemolishForRoad(inTheWay);
                 _coverageDirty = true;
                 foreach (var depot in _depots)
-                    if (depot.Active && depot.Node == c.Node) depot.Node = moved; // the depot goes with its node
+                    if (depot.Active && depot.Node == c.Node)
+                    {
+                        depot.Node = moved; // the depot goes with its node
+                        if (!depot.FreeStanding) continue;
+                        var (newX, newZ) = _net.GetNode(moved);
+                        depot.X += newX - oldX; depot.Z += newZ - oldZ; depot.AccessX = newX; depot.AccessZ = newZ;
+                    }
                 foreach (var station in _stations)
                     if (station.Active && station.Node == c.Node) station.Node = moved; // and so does a station
                 return 1;
@@ -63,6 +70,8 @@ public sealed partial class Simulation
                     if (depot.Active && depot.Node == c.Node) return -1;
                 if (!TrySpend(_economy.DepotPrice.For(c.Level), LedgerEntry.Depots)) return -1;
                 return AddDepot(c.Node, c.Level);
+            case BuildDepotCommand c:
+                return BuildFreeDepot(c);
             case ResurfaceRoadCommand c:
                 return ResurfaceRoad(c.Road);
             case UpgradeDepotCommand c:

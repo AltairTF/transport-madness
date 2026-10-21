@@ -71,5 +71,5 @@ func _points(kind: String, item: Dictionary) -> Array[Vector2]:
 		"station":
 			return [p, p + Vector2(-24, -24)]
 		"depot":
-			return [p, p + Vector2(26, 26)]
+			return [p] if item.get("free", false) else [p, p + Vector2(26, 26)]
 	return [p]

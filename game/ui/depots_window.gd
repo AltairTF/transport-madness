@@ -18,6 +18,8 @@ func _build() -> void:
 static func text_of(depot: Dictionary) -> String:
 	var text := "%s   %s, %d bays%s" % [depot["name"], depot["level_name"], depot["bays"],
 		"   BOMBED: shut for %s more days, no repairs, no crews, nothing bought or sold" % str(snappedf(depot["shut_days"], 0.1)) if depot.get("shut_days", 0.0) > 0.0 else ""]
+	if not depot.get("connected", true):
+		text += "\nNot connected: no road reaches its door yet (a road built within 60 m of it gets a path to it). No vehicles, service or crews until then."
 	var jobs := ""
 	for job in depot["jobs"]:
 		jobs += "\n%s: %s%s" % [job["label"], String(Kit.REPAIR_NAMES[job["kind"]]).to_lower(), (" (%d s left)" % ceili(job["seconds"])) if job["working"] else ", waiting for a bay"]

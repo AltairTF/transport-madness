@@ -78,13 +78,21 @@ public sealed class Depot
     }
 
     public int Id { get; }
-    /// <summary>The node it stands at; follows the node when that is moved.</summary>
+    /// <summary>The node it stands at, or the last one it stood at; -1 for a free-standing depot no road has reached yet. Follows the node when that is moved.</summary>
     public int Node { get; internal set; }
+    /// <summary>A depot built at a point with an access point of its own (M6f) rather than on a node: it is connected, and active, while a road reaches that point.</summary>
+    public bool FreeStanding { get; internal set; }
+    /// <summary>Where a free-standing depot's middle is, which way its door faces (radians), and its access point.</summary>
+    public float X { get; internal set; }
+    public float Z { get; internal set; }
+    public float Angle { get; internal set; }
+    public float AccessX { get; internal set; }
+    public float AccessZ { get; internal set; }
     /// <summary>What the depot can repair and how many bays it has; raised in place by an upgrade.</summary>
     public DepotLevel Level { get; internal set; }
     public int Crews { get; internal set; }
     public int BusyCrews { get; internal set; }
-    /// <summary>False once every road at its node has been torn down: the depot sends no more crews.</summary>
+    /// <summary>False while no road reaches its node (it was torn down, or a free-standing depot has none yet): the depot sends no more crews and takes no vehicles. It is active again when a road reaches the node.</summary>
     public bool Active { get; internal set; } = true;
     /// <summary>The tick until which a raid keeps it shut, 0 when it is not (C12): it sends no crew, repairs nothing and sells and buys nothing meanwhile.</summary>
     public long ShutUntil { get; internal set; }
@@ -124,14 +132,24 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// Closes depots whose node has lost every road. A crew already on its way is lost with it: the incident falls back
-    /// to the distant service, counted from now.
+    /// Finds out which depots are connected: one has a road at its node (a free-standing one at its access point). A depot that lost every road is
+    /// not connected: a crew already on its way is lost with it, and the incident falls back to the distant service, counted from now. It is connected
+    /// again, and active, when a road reaches the node.
     /// </summary>
-    void CloseOrphanedDepots()
+    void UpdateDepotConnections()
     {
         foreach (var depot in _depots)
         {
-            if (!depot.Active || _net.RoadsAt(depot.Node).Count > 0) continue;
+            int node = depot.FreeStanding
+                ? _net.FindNodeNear(depot.AccessX, depot.AccessZ, AccessOnNode, withRoadsOnly: true)
+                : depot.Node >= 0 && _net.RoadsAt(depot.Node).Count > 0 ? depot.Node : -1;
+            if (node >= 0)
+            {
+                depot.Node = node;
+                depot.Active = true;
+                continue;
+            }
+            if (!depot.Active) continue;
             depot.Active = false;
             depot.BusyCrews = 0;
             foreach (int k in _openIncidents)

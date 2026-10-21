@@ -286,6 +286,10 @@ public sealed partial class Simulation
         {
             Mix((ulong)depot.Node);
             Mix((ulong)depot.Level);
+            if (!depot.FreeStanding) continue;
+            Mix(BitConverter.SingleToUInt32Bits(depot.X));
+            Mix(BitConverter.SingleToUInt32Bits(depot.Z));
+            Mix(depot.Active ? 1UL : 0UL);
         }
         var (a, b, c, d) = _rng.State;
         Mix(a); Mix(b); Mix(c); Mix(d);
@@ -633,7 +637,7 @@ public sealed partial class Simulation
             }
             if (!CanEnter(_lane[i], _nextLane[i])) _nextLane[i] = NextLaneFor(i, _lane[i]);
         }
-        CloseOrphanedDepots();
+        UpdateDepotConnections();
         CloseOrphanedStations();
         RebuildOrder();
     }

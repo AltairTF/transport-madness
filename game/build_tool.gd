@@ -94,7 +94,7 @@ func set_tool(tool_name: String) -> void:
 		"move": message.emit("Move: click a junction to pick it up, then click where it goes (roads keep their bend; vehicles carry on)")
 		"resurface": message.emit("Resurface: click a worn road piece; a crew restores it (the road is closed while they work)")
 		"remove": message.emit("Remove: click a road piece (junction to junction) to tear it down")
-		"depot": message.emit("Depot: click near a junction")
+		"depot": message.emit("Depot: click anywhere. Against a road it stands beside it, with a road within about 74 m it gets a stone path to it, else it waits until a road reaches its door (raise its level in its window)")
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
 		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
 		"line": message.emit("New line: click the stations in order, Enter finishes the line, Esc cancels")
@@ -195,6 +195,9 @@ func _ground(x: float, z: float) -> Vector3:
 
 
 func _click(screen: Vector2) -> void:
+	if tool == "depot":
+		_click_depot(screen)
+		return
 	var target: Variant = _target_point(screen)
 	if target == null:
 		return
@@ -223,10 +226,6 @@ func _click(screen: Vector2) -> void:
 		return
 	if tool == "battery":
 		_click_battery(screen)
-		return
-	if tool == "depot":
-		var level := 1
-		message.emit("Depot built" if host.BuildDepot(target.x, target.z, level) else "No free junction nearby")
 		return
 
 	if _start == null:
@@ -358,14 +357,13 @@ func _update_preview(screen: Vector2) -> void:
 	if tool == "move":
 		_hover_move(screen)
 		return
+	if tool == "depot":
+		_hover_depot(screen)
+		return
 	var target: Variant = _target_point(screen)
-	if target == null or tool == "depot":
-		_preview.visible = tool == "depot" and target != null
+	if target == null:
+		_preview.visible = false
 		_arc_preview.visible = false
-		if _preview.visible:
-			_preview.mesh.size = Vector3(22, 6, 22)
-			_preview.transform = Transform3D(Basis.IDENTITY, target + Vector3(26, 3, 26))
-			_material.albedo_color = ROAD_COLORS["valid"]
 		return
 	if _start == null:
 		_preview.visible = true
@@ -594,6 +592,68 @@ func _draw_arc(points: PackedVector3Array, width: float, clear := true) -> void:
 		mesh.surface_add_vertex(points[i] - right + lift)
 		mesh.surface_add_vertex(points[i] + right + lift)
 	mesh.surface_end()
+
+
+## Depot tool (M6f): the box where the depot would stand (door toward its access point), the stone path that would join it to a road, and what it costs.
+const DEPOT_ALONE_COLOR := Color(1.0, 0.8, 0.3, 0.7)
+
+
+func _hover_depot(screen: Vector2) -> void:
+	var p: Variant = ground_point(screen)
+	if p == null:
+		_preview.visible = false
+		_arc_preview.visible = false
+		return
+	var site: Dictionary = host.DepotPreview(p.x, p.z, 0)
+	if not site["valid"]:
+		_preview.visible = false
+		_arc_preview.visible = false
+		message.emit("Can't build a depot there: %s" % site["why"])
+		return
+	var connection: int = site["connection"]
+	_arc_preview.visible = false
+	var runs: Array = site["path_runs"]
+	if not runs.is_empty():
+		_draw_runs(runs, PATH_WIDTH)
+	elif site["path_points"].size() >= 2:
+		_draw_arc(site["path_points"], PATH_WIDTH)
+	_preview.visible = true
+	var size: Vector3 = site["size"]
+	_preview.mesh.size = size
+	_preview.transform = Transform3D(Basis(Vector3.UP, -float(site["angle"])), Vector3(site["x"], site["y"] + size.y * 0.5, site["z"]))
+	var total: float = site["price"] + site["path_money"]
+	var ok: bool = site["affordable"]
+	_material.albedo_color = ROAD_COLORS["invalid"] if not ok else (DEPOT_ALONE_COLOR if connection == 0 or (connection == 2 and not site["path_buildable"]) else ROAD_COLORS["valid"])
+	var text := "Depot: %s" % _money(total)
+	match connection:
+		1:
+			text += "   stands against the road (it is split there)"
+		2:
+			if site["path_buildable"]:
+				text += "   stone path %d m (%s) joins it to the road" % [site["path_length"], _money(site["path_money"])]
+			else:
+				text += "   NOT connected: no path can be built to the road from here, so it waits for a road to reach its door"
+		_:
+			text += "   NOT connected: no road within reach, so it waits until a road is built within 60 m of its door"
+	if not ok:
+		text += "   (not enough money)"
+	message.emit(text)
+
+
+func _click_depot(screen: Vector2) -> void:
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	var site: Dictionary = host.DepotPreview(p.x, p.z, 0)
+	if not site["valid"]:
+		message.emit("Can't build a depot there: %s" % site["why"])
+		return
+	if host.BuildDepot(p.x, p.z, 0):
+		var connected: bool = site["connection"] != 0 and (site["connection"] == 1 or site["path_buildable"])
+		message.emit("Depot built" if connected else "Depot built, not connected yet: build a road within 60 m of its door")
+	else:
+		message.emit("Can't build the depot: not enough money")
+	_hover_depot(screen)
 
 
 ## A planned road from the simulation's stretches (RoadRuns): the road surface in the usual colour, with the earthworks, bridges and tunnels marked.

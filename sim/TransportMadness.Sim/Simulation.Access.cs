@@ -1,7 +1,7 @@
 namespace TransportMadness.Sim;
 
-/// <summary>An industry or a road gateway, as the thing a road is joined to (C10).</summary>
-public readonly record struct AccessRef(bool Gateway, int Id);
+/// <summary>An industry, a road gateway or (<paramref name="Depot"/>) a free-standing depot (M6f), as the thing a road is joined to (C10).</summary>
+public readonly record struct AccessRef(bool Gateway, int Id, bool Depot = false);
 
 /// <summary>
 /// The stone road of type <see cref="RoadType.Path"/> from a point of the road being built to an access point within reach (M6e), with what it is
@@ -62,17 +62,19 @@ public sealed partial class Simulation
         return (x + dx * (scale + _accessTuning.EdgeMargin), z + dz * (scale + _accessTuning.EdgeMargin));
     }
 
-    /// <summary>The access points a road can be joined to, in order: industries, then road gateways (a rail gateway is not on the road network).</summary>
+    /// <summary>The access points a road can be joined to, in order: industries, then road gateways (a rail gateway is not on the road network), then free-standing depots.</summary>
     IEnumerable<(AccessRef Ref, float X, float Z)> AccessPoints()
     {
         foreach (var i in _industries) yield return (new AccessRef(false, i.Id), i.AccessX, i.AccessZ);
         foreach (var g in _gateways)
             if (g.Kind == GatewayKind.Road) yield return (new AccessRef(true, g.Id), g.AccessX, g.AccessZ);
+        foreach (var d in _depots)
+            if (d.FreeStanding) yield return (new AccessRef(false, d.Id, true), d.AccessX, d.AccessZ);
     }
 
     /// <summary>Where an industry or gateway meets the roads.</summary>
     public (float X, float Z) AccessPointOf(AccessRef target) =>
-        target.Gateway ? (_gateways[target.Id].AccessX, _gateways[target.Id].AccessZ) : (_industries[target.Id].AccessX, _industries[target.Id].AccessZ);
+        target.Depot ? (_depots[target.Id].AccessX, _depots[target.Id].AccessZ) : target.Gateway ? (_gateways[target.Id].AccessX, _gateways[target.Id].AccessZ) : (_industries[target.Id].AccessX, _industries[target.Id].AccessZ);
 
     /// <summary>The node of the road network at the access point of an industry or gateway, or -1 while no road reaches it.</summary>
     public int AccessNodeOf(AccessRef target)
@@ -157,6 +159,7 @@ public sealed partial class Simulation
         if (built == 0) return 0;
         foreach (var spur in join.Spurs)
             if (spur.Buildable) BuildRoadPiece(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, RoadType.Path, _net.Tuning.Roads.Path.SpeedLimit, 0f, 0f);
+        SyncNetwork(); // a free-standing depot the road reached is connected now
         return built;
     }
 

@@ -166,6 +166,8 @@ public sealed record CrewTuning
     public required float ClearDuration { get; init; }
     public required int IncidentsKept { get; init; }
     public required float DepotSnapRadius { get; init; }
+    public required float DepotHalfSize { get; init; }
+    public required float DepotBesideRadius { get; init; }
     public required CrewsPerDepot PerDepot { get; init; }
 }
 

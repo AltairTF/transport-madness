@@ -13,16 +13,19 @@ public partial class SimHost
 {
     /// <summary>
     /// The open depots, road and rail: for each {id, rail, name, x, z, level, level_name, bays, jobs (for each {label, kind, working,
-    /// seconds}, oldest first), shut_days (days a raid keeps it shut, 0 when open), upgrades (for each {level, name, price}: the levels above this one with the price of the difference)}.
+    /// seconds}, oldest first), free (a free-standing depot), connected (a road reaches it), shut_days (days a raid keeps it shut, 0 when open), upgrades (for each {level, name, price}: the levels above this one with the price of the difference)}.
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetDepots()
     {
         var list = new Godot.Collections.Array<Godot.Collections.Dictionary>();
         foreach (var depot in Sim.Depots)
         {
-            if (!depot.Active) continue;
-            var (x, z) = Sim.Network.GetNode(depot.Node);
-            list.Add(DepotDictionary(depot.Id, false, $"Road depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot), depot.ShutUntil));
+            if (!depot.Active && !depot.FreeStanding) continue;
+            var (x, z) = depot.FreeStanding ? (depot.X, depot.Z) : Sim.Network.GetNode(depot.Node);
+            var entry = DepotDictionary(depot.Id, false, $"Road depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot), depot.ShutUntil);
+            entry["free"] = depot.FreeStanding;
+            entry["connected"] = depot.Active;
+            list.Add(entry);
         }
         foreach (var depot in Sim.RailDepots)
         {

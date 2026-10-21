@@ -28,6 +28,13 @@ public sealed record MoveNodeCommand(int Node, float X, float Z) : SimCommand;
 public sealed record AddDepotCommand(int Node, DepotLevel Level) : SimCommand;
 
 /// <summary>
+/// Builds a depot where it is put, not on a node (M6f): against a road when one is near (the road is split there), joined to the nearest road by a Path
+/// when one is within reach, or alone, not connected until a road reaches it. See <see cref="Simulation.PlanDepot"/>. Result: the depot id, -1 when
+/// refused (in water, a depot there already, or not enough money for it and its Path).
+/// </summary>
+public sealed record BuildDepotCommand(float X, float Z, DepotLevel Level) : SimCommand;
+
+/// <summary>
 /// Raises a depot to a higher level in place, paying the difference in price: a Workshop does a Service and has two bays, a Complex also does an
 /// Overhaul and has three. A road depot's crews grow with its level. Result: 1, 0 when refused (no such open depot, not a higher level, or not enough money).
 /// </summary>

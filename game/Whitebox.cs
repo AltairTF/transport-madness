@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 /// <summary>
@@ -9,7 +10,16 @@ public sealed class Whitebox
     /// <summary>A box on a node: its size, where its middle stands from the node on the ground plane, and its colour.</summary>
     public sealed record Block(Vector3 Size, Vector2 Offset, Color Color);
 
-    public Block Depot = new(new Vector3(22f, 6f, 22f), new Vector2(26f, 26f), new Color(0.85f, 0.25f, 0.2f));
+    /// <summary>A depot by level (Simple, Workshop, Complex): the same footprint, a taller and darker box for each step up (the upgrade grows it). Offset: where a depot on a node stands from the node.</summary>
+    public Block[] Depots =
+    {
+        new(new Vector3(22f, 4f, 22f), new Vector2(26f, 26f), new Color(0.92f, 0.45f, 0.38f)),
+        new(new Vector3(22f, 6f, 22f), new Vector2(26f, 26f), new Color(0.85f, 0.25f, 0.2f)),
+        new(new Vector3(22f, 9f, 22f), new Vector2(26f, 26f), new Color(0.65f, 0.15f, 0.15f)),
+    };
+    public Block Depot => Depots[1];
+    /// <summary>The colour of a depot no road reaches.</summary>
+    public Color DepotIdle = new(0.5f, 0.5f, 0.52f);
     public Block Station = new(new Vector3(14f, 4f, 10f), new Vector2(-24f, -24f), new Color(0.2f, 0.45f, 0.85f));
     public Block RailDepot = new(new Vector3(16f, 5f, 12f), new Vector2(16f, 16f), new Color(0.72f, 0.28f, 0.22f));
     public Color GatewayRoad = new(0.30f, 0.55f, 0.85f), GatewayRail = new(0.80f, 0.55f, 0.25f);
@@ -26,7 +36,23 @@ public sealed class Whitebox
         var parsed = Json.ParseString(file.GetAsText());
         if (parsed.VariantType != Variant.Type.Dictionary) return box;
         var root = parsed.AsGodotDictionary();
-        box.Depot = Read(root, "depot", box.Depot);
+        if (Dict(root, "depot") is { } depot)
+        {
+            var offset = Numbers(depot, "offset", 2);
+            if (depot.TryGetValue("levels", out var levels) && levels.VariantType == Variant.Type.Array)
+            {
+                var array = levels.AsGodotArray();
+                for (int i = 0; i < Math.Min(3, array.Count); i++)
+                {
+                    if (array[i].VariantType != Variant.Type.Dictionary) continue;
+                    var d = array[i].AsGodotDictionary();
+                    var block = box.Depots[i];
+                    var size = Numbers(d, "size", 3);
+                    box.Depots[i] = new Block(size is null ? block.Size : new Vector3(size[0], size[1], size[2]), offset is null ? block.Offset : new Vector2(offset[0], offset[1]), Colour(d, "color", block.Color));
+                }
+            }
+            box.DepotIdle = Colour(depot, "idle", box.DepotIdle);
+        }
         box.Station = Read(root, "station", box.Station);
         box.RailDepot = Read(root, "railDepot", box.RailDepot);
         if (Dict(root, "gateway") is { } gateway)

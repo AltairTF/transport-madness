@@ -47,7 +47,8 @@ public partial class SimHost : Node3D
     Terrain _terrain = null!, _terrainSource = null!;
     MeshInstance3D _water = null!;
     StandardMaterial3D _waterMaterial = null!, _deckMaterial = null!, _tunnelMaterial = null!, _tunnelHintMaterial = null!;
-    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!, _pathMaterial = null!;
+    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!, _pathMaterial = null!, _depotIdleMaterial = null!;
+    readonly StandardMaterial3D[] _depotLevelMaterials = new StandardMaterial3D[3];
 
     // Per-lane drawing data: start point, unit direction and sideways offset of the lane centre (to the driver's right).
     float[] _laneX = Array.Empty<float>(), _laneZ = Array.Empty<float>();
@@ -69,7 +70,9 @@ public partial class SimHost : Node3D
         _roadMaterial = Flat(new Color(0.23f, 0.24f, 0.26f));
         _pathMaterial = Flat(new Color(0.5f, 0.44f, 0.34f)); // the stone road of an access connection (M6e)
         _medianMaterial = Flat(new Color(0.35f, 0.5f, 0.3f));
-        _depotMaterial = Flat(_whitebox.Depot.Color);
+        for (int level = 0; level < 3; level++) _depotLevelMaterials[level] = Flat(_whitebox.Depots[level].Color);
+        _depotMaterial = _depotLevelMaterials[1];
+        _depotIdleMaterial = Flat(_whitebox.DepotIdle);
         _stationMaterial = Flat(_whitebox.Station.Color);
         _padMaterial = Flat(_whitebox.PadColor);
         _doorMaterial = Flat(_whitebox.DoorColor);
@@ -312,7 +315,7 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>What an access point belongs to, for the build preview: the industry's type or the gateway's name.</summary>
-    string AccessName(AccessRef target) => target.Gateway ? Sim.Gateways[target.Id].Name : Sim.IndustryTuning.Types[Sim.Industries[target.Id].Type].Name;
+    string AccessName(AccessRef target) => target.Depot ? $"Depot {target.Id + 1}" : target.Gateway ? Sim.Gateways[target.Id].Name : Sim.IndustryTuning.Types[Sim.Industries[target.Id].Type].Name;
 
     /// <summary>Points along a road bending by <paramref name="sweep"/> radians, lying on the ground (for the build preview).</summary>
     public Vector3[] CurvePoints(float x0, float z0, float x1, float z1, float sweep)
@@ -473,14 +476,37 @@ public partial class SimHost : Node3D
         return true;
     }
 
-    /// <summary>Places a depot at the node the simulation picks for the point (see <see cref="Simulation.FindDepotNode"/>). False when there is none or it already has one.</summary>
+    /// <summary>
+    /// Builds a depot where it is put (<see cref="Simulation.PlanDepot"/>): against a road, with a Path to one within reach, or alone and not connected until a road
+    /// reaches it. False when it cannot be built or paid for.
+    /// </summary>
     public bool BuildDepot(float x, float z, int level)
     {
-        int node = Sim.FindDepotNode(x, z);
-        if (node < 0) return false;
-        if (Sim.Execute(new AddDepotCommand(node, (DepotLevel)Math.Clamp(level, 0, 2))) < 0) return false;
+        if (Sim.Execute(new BuildDepotCommand(x, z, (DepotLevel)Math.Clamp(level, 0, 2))) < 0) return false;
         RebuildRoads();
         return true;
+    }
+
+    /// <summary>
+    /// What a depot clicked for at (x, z) would be, for the build preview: {valid, why (when not), connection (0 alone, 1 against a road, 2 with a Path), x, z (its middle, on the
+    /// ground), angle, size (its box), price (the depot's), path_money, path_length, path_buildable, path_runs (as RoadRuns), affordable}.
+    /// </summary>
+    public Godot.Collections.Dictionary DepotPreview(float x, float z, int level)
+    {
+        var plan = Sim.PlanDepot(x, z);
+        if (!plan.Valid) return new Godot.Collections.Dictionary { ["valid"] = false, ["why"] = plan.Reason };
+        var lvl = (DepotLevel)Math.Clamp(level, 0, 2);
+        long price = Sim.DepotPrice(false, lvl);
+        bool path = plan.Connection == DepotConnection.Path;
+        return new Godot.Collections.Dictionary
+        {
+            ["valid"] = true, ["connection"] = (int)plan.Connection, ["x"] = plan.X, ["y"] = HeightAt(plan.X, plan.Z), ["z"] = plan.Z, ["angle"] = plan.Angle,
+            ["size"] = _whitebox.Depots[(int)lvl].Size, ["price"] = price,
+            ["path_money"] = plan.PathMoney, ["path_length"] = plan.PathCost?.Length ?? 0f, ["path_buildable"] = plan.PathBuildable,
+            ["path_runs"] = path && plan.PathBuildable ? RoadRuns(plan.PathFromX, plan.PathFromZ, plan.AccessX, plan.AccessZ, 0f, 2) : new Godot.Collections.Array<Godot.Collections.Dictionary>(),
+            ["path_points"] = path && !plan.PathBuildable ? CurvePoints(plan.PathFromX, plan.PathFromZ, plan.AccessX, plan.AccessZ, 0f) : System.Array.Empty<Vector3>(),
+            ["affordable"] = Sim.CanAfford(price + plan.PathMoney),
+        };
     }
 
     // ---- Company, stations and lines ----------------------------------------------------------------------
@@ -1327,11 +1353,20 @@ public partial class SimHost : Node3D
 
         foreach (var depot in Sim.Depots)
         {
-            if (!depot.Active) continue;
-            var (x, z) = net.GetNode(depot.Node);
-            var block = _whitebox.Depot;
-            var building = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _depotMaterial };
-            building.Position = new Vector3(x + block.Offset.X, _terrain.HeightAt(x + block.Offset.X, z + block.Offset.Y) + block.Size.Y * 0.5f, z + block.Offset.Y);
+            if (!depot.Active && !depot.FreeStanding) continue;
+            var block = _whitebox.Depots[(int)depot.Level];
+            var material = depot.Active ? _depotLevelMaterials[(int)depot.Level] : _depotIdleMaterial; // grey while no road reaches it
+            var building = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = material };
+            if (depot.FreeStanding)
+            {
+                building.Position = new Vector3(depot.X, HeightAt(depot.X, depot.Z) + block.Size.Y * 0.5f, depot.Z);
+                building.Rotation = new Vector3(0f, -depot.Angle, 0f);
+            }
+            else
+            {
+                var (x, z) = net.GetNode(depot.Node);
+                building.Position = new Vector3(x + block.Offset.X, _terrain.HeightAt(x + block.Offset.X, z + block.Offset.Y) + block.Size.Y * 0.5f, z + block.Offset.Y);
+            }
             _roadRoot.AddChild(building);
         }
         AddAccessMarks();
@@ -1387,6 +1422,8 @@ public partial class SimHost : Node3D
             AddAccessMark(industry.X, industry.Z, industry.AccessX, industry.AccessZ);
         foreach (var gateway in Sim.Gateways)
             if (gateway.Kind == GatewayKind.Road) AddAccessMark(gateway.X, gateway.Z, gateway.AccessX, gateway.AccessZ);
+        foreach (var depot in Sim.Depots)
+            if (depot.FreeStanding) AddAccessMark(depot.X, depot.Z, depot.AccessX, depot.AccessZ);
     }
 
     void AddAccessMark(float cx, float cz, float ax, float az)

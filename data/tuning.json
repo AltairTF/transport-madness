@@ -100,6 +100,8 @@
     "fallbackResponse": 300.0,      // no depot can respond sooner: help comes from far away
     "clearDuration": 45.0,
     "depotSnapRadius": 60.0,        // a depot goes on the node nearest the point clicked within this distance
+    "depotHalfSize": 11.0,          // half the side of a free-standing depot's square: its access point is this far (plus the access margin) from its middle
+    "depotBesideRadius": 24.0,      // a free-standing depot clicked within this distance of a road stands against it, with its access point on the road
     "incidentsKept": 500,           // cleared incidents kept in memory for the record (the oldest are dropped once there are more); open ones are never dropped
     "perDepot": { "simple": 1, "workshop": 1, "complex": 2 }
   },
