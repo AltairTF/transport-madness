@@ -383,6 +383,13 @@ public sealed partial class Simulation
         var line = _lines[t.Line];
         var station = _stations[line.Stops[t.StopIndex]];
         var wagon = _railTuning.Wagons[t.Wagon];
+        if (IsShut(station))
+        {
+            // A raid has shut the station: the train stands the time of a stop and goes on with what it carries.
+            t.Dwell = (int)Math.Max(1, Ticks(wagon.DwellSeconds));
+            t.Status = TrainStatus.AtStation;
+            return;
+        }
         int fixedCargo = _wagonCargo[t.Wagon];
         bool passengers = Settled && _passengerCargo >= 0 && fixedCargo == _passengerCargo;
         int unloaded = 0, loaded = 0;

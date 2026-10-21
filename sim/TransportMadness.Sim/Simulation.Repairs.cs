@@ -85,6 +85,7 @@ public sealed partial class Simulation
                 Release(job, repaired: false);
                 continue;
             }
+            if (job.Rail ? IsShut(_railDepots[job.Depot]) : IsShut(_depots[job.Depot])) continue; // a raid has shut it: the work waits
             var counts = job.Rail ? rail : road;
             if (!job.Working)
             {

@@ -183,6 +183,7 @@ func _process(delta: float) -> void:
 		hud.show_maintenance(host.GetMaintenance(), vehicles)
 		hud.show_worn_roads(host.GetWornRoads(6))
 		hud.show_events(host.TakeEvents())
+		hud.show_raid_warnings(host.GetRaidWarnings())
 		for warning in host.TakeRailWarnings():
 			hud.show_message(warning)
 

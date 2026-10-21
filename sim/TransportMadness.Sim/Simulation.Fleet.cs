@@ -197,7 +197,7 @@ public sealed partial class Simulation
     {
         SyncNetwork();
         int model = ModelIndex(modelId);
-        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active || !IsAvailable(_models[model])) return -1;
+        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active || IsShut(_depots[depot]) || !IsAvailable(_models[model])) return -1;
         if (!CanAfford(_models[model].Price)) return -1;
         int id = PlaceAtDepot(depot, model, line);
         if (id >= 0) TrySpend(_models[model].Price, LedgerEntry.Vehicles);
@@ -478,6 +478,15 @@ public sealed partial class Simulation
     {
         var station = TargetStation(i)!;
         var spec = _models[_model[i]];
+        if (IsShut(station))
+        {
+            // A raid has shut the station: nothing is unloaded or loaded, the vehicle stands the time of a stop and goes on with what it carries.
+            _speed[i] = 0f;
+            _accel[i] = 0f;
+            _halted[i] = true;
+            _dwell[i] = (int)Math.Max(1, Ticks(spec.DwellSeconds));
+            return;
+        }
         int unloaded = 0, loaded = 0;
         // Due for a repair that a depot can do: it unloads what this stop takes, puts the rest down here and loads nothing.
         bool service = DecideService(i);

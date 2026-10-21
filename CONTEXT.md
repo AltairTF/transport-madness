@@ -40,7 +40,19 @@ A wave of the war in which a share of the people of every Town leave for good, a
 At fixed months the army buys a share of the Company's vehicles and trains (freight first, the biggest first, the garage too) at a table price, whatever their Condition. The Player is told a month ahead and cannot refuse.
 
 **Raid**:
-From 1942 enemy aircraft bomb the Region at random moments: they stop an Industry for a few days, shut a Gateway, fail a rail Signal, destroy buildings of a Town and leave craters in the roads, which the crews clear like wrecks. Casualties are a number only. The frequency option scales how often.
+From 1942 the enemy bombs the Region at random moments. Each raid is a Flight of bombers that comes in from one side of the map, picks a target by value and drops Bombs on it; what a Bomb does is decided where it lands. Industries stop for days, Gateways, Stations and Depots are shut for a time, Vehicles become wrecks, a rail Signal fails, buildings fall and the road gets craters, which the crews clear like wrecks. Casualties are a number only. The frequency option scales how often.
+
+**Flight**:
+A group of 1 to 6 bomber aircraft of a Raid. It enters the map from the side drawn for the game, flies straight at a fixed speed and height over its target (chosen by the value the enemy gives it, less when it is down, idle or defended) and out of the map. Each aircraft drops a stick of Bombs on the way. A flight is a simulated thing: it is stepped, kept in the state hash and drawn from the simulation.
+
+**Bomb**:
+Dropped by an aircraft of a Flight, it falls for a few seconds and lands at an exact point. Its effect is worked out by geometry when it lands: everything inside its Blast radius suffers.
+
+**Blast radius**:
+How far a Bomb reaches from where it lands (35 m). A building inside it is destroyed with a chance that falls with the distance; an industry inside it stays down longer with every bomb; a gateway, station or depot inside it is shut; every vehicle inside it is a wreck; the nearest signal fails.
+
+**Air raid warning**:
+The notice that a Flight has entered the map: how many aircraft, from which side, and how many seconds until they arrive. The target is told only in the last ten seconds.
 
 **Cargo**:
 Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. A Station accepts a Cargo only when a Building or Industry in its radius uses it.

@@ -36,16 +36,33 @@ public sealed record WarTuning
             if (i > 0 && r.Waves[i].Month <= r.Waves[i - 1].Month) throw new JsonException("war.requisition: the waves must be in order of month");
         }
         var b = Bombing;
-        var phasesSet = tuning.Campaign.Phases.Select(p => p.Id).ToHashSet();
         foreach (var g in b.Gaps)
         {
-            if (!phasesSet.Contains(g.Phase)) throw new JsonException($"war.bombing: unknown phase '{g.Phase}'");
+            if (!phases.Contains(g.Phase)) throw new JsonException($"war.bombing: unknown phase '{g.Phase}'");
             if (g.MinDays <= 0 || g.MaxDays < g.MinDays) throw new JsonException($"war.bombing: {g.Phase} needs 0 < minDays <= maxDays");
         }
-        if (b.Gaps.Count == 0 || b.Targets.Count == 0) throw new JsonException("war.bombing needs gaps and targets");
-        foreach (var t in b.Targets)
-            if (t.Kind is not ("industry" or "gateway" or "rail" or "town") || t.Weight <= 0) throw new JsonException($"war.bombing: bad target '{t.Kind}'");
-        if (b.CasualtyShare < 0f || b.CasualtyShare > 1f || b.InputLoss < 0f || b.InputLoss > 1f) throw new JsonException("war.bombing: shares must be 0 to 1");
+        if (b.Gaps.Count == 0 || b.Aircraft.Count == 0) throw new JsonException("war.bombing needs gaps and aircraft");
+        foreach (var a in b.Aircraft)
+        {
+            if (!phases.Contains(a.Phase)) throw new JsonException($"war.bombing: unknown phase '{a.Phase}'");
+            if (a.Min < 1 || a.Max < a.Min || a.Max > 12) throw new JsonException($"war.bombing: {a.Phase} needs 1 <= min <= max <= 12 aircraft");
+        }
+        var types = tuning.Industries.Types.Select(t => t.Id).ToHashSet();
+        foreach (var v in b.IndustryValues)
+            if (!types.Contains(v.Type) || v.Value < 0) throw new JsonException($"war.bombing: bad industry value '{v.Type}'");
+        if (b.DefaultIndustryValue < 0 || b.GatewayValue < 0 || b.TownValue < 0 || b.StationValue < 0 || b.DepotValue < 0 || b.SignalValue < 0)
+            throw new JsonException("war.bombing: values must not be negative");
+        if (b.GatewayValue + b.TownValue + b.StationValue + b.DepotValue + b.SignalValue + b.DefaultIndustryValue + b.IndustryValues.Sum(v => v.Value) <= 0)
+            throw new JsonException("war.bombing: something must be worth bombing");
+        if (b.Speed <= 0f || b.Altitude <= 0f || b.BlastRadius <= 0f || b.RevealSeconds < 0f || b.EntryMargin < 0f || b.EntryArc < 0f || b.EntryArc > 1.5f)
+            throw new JsonException("war.bombing: speed, altitude and blastRadius must be positive, the others not negative, entryArc at most 1.5");
+        if (b.BombsPerAircraft < 1 || b.BombsPerAircraft > 40 || b.BombSpacing <= 0f || b.TrailSpacing < 0f || b.WingSpacing < 0f || b.AimError < 0f || b.Scatter < 0f || b.ScatterAlong < 0f)
+            throw new JsonException("war.bombing: a stick needs 1 to 40 bombs and a positive spacing, the spreads must not be negative");
+        if (b.CasualtyShare < 0f || b.CasualtyShare > 1f || b.InputLoss < 0f || b.InputLoss > 1f || b.BuildingChance < 0f || b.BuildingChance > 1f || b.CraterChance < 0f || b.CraterChance > 1f
+            || b.DamagedFactor < 0f || b.DamagedFactor > 1f || b.IdleFactor < 0f || b.IdleFactor > 1f)
+            throw new JsonException("war.bombing: shares and chances must be 0 to 1");
+        if (b.IndustryDownDays < 0 || b.IndustryMaxDownDays < b.IndustryDownDays || b.GatewayDownDays < 0 || b.StationDownDays < 0 || b.DepotDownDays < 0 || b.CarPeople < 0 || b.TownLossPerBuilding < 0f || b.CraterRadius < 0f)
+            throw new JsonException("war.bombing: days, people and radii must not be negative and the most an industry is down must be at least one bomb's worth");
     }
 }
 
@@ -93,23 +110,72 @@ public sealed record RequisitionTuning
     public required IReadOnlyList<WarWave> Waves { get; init; }
 }
 
-/// <summary>The raids: when they come, what they hit and what they do.</summary>
+/// <summary>The raids (C12): when a flight comes, how it flies, what it aims at, and what each bomb does.</summary>
 public sealed record BombingTuning
 {
     public required int FromMonth { get; init; }
-    public required int IndustryDownDays { get; init; }
-    public required int GatewayDownDays { get; init; }
-    public required float InputLoss { get; init; }
-    public required int Craters { get; init; }
-    public required float CraterRadius { get; init; }
-    public required int BuildingsHit { get; init; }
-    public required float CasualtyShare { get; init; }
-    public required float TownLoss { get; init; }
     public required IReadOnlyList<RaidGapTuning> Gaps { get; init; }
-    public required IReadOnlyList<RaidTargetTuning> Targets { get; init; }
+    /// <summary>How many aircraft a flight has in each phase (the last entry holds for any phase after it).</summary>
+    public required IReadOnlyList<RaidAircraftTuning> Aircraft { get; init; }
+    /// <summary>Metres per second an aircraft flies at, and the height it flies and drops from.</summary>
+    public required float Speed { get; init; }
+    public required float Altitude { get; init; }
+    /// <summary>Aircraft come in this far outside the edge of the map, and leave this far outside it.</summary>
+    public required float EntryMargin { get; init; }
+    /// <summary>The entry point lies on the side of the map the game drew, spread by up to this angle (radians) either way.</summary>
+    public required float EntryArc { get; init; }
+    /// <summary>The target is told to the player this many seconds before the aircraft arrive.</summary>
+    public required float RevealSeconds { get; init; }
+    /// <summary>The aircraft of a flight fly in a formation: each trails the one before by <see cref="TrailSpacing"/> and the pairs are <see cref="WingSpacing"/> apart across the path.</summary>
+    public required float TrailSpacing { get; init; }
+    public required float WingSpacing { get; init; }
+    /// <summary>Every aircraft drops a stick of this many bombs, this far apart along its path, centred on the target.</summary>
+    public required int BombsPerAircraft { get; init; }
+    public required float BombSpacing { get; init; }
+    /// <summary>How far an aircraft's whole stick may be off the target across the path, and how far a single bomb may be off its place across and along it (metres, drawn uniformly either way).</summary>
+    public required float AimError { get; init; }
+    public required float Scatter { get; init; }
+    public required float ScatterAlong { get; init; }
+    /// <summary>What a bomb touches: everything whose middle (or, for a big structure, edge) is within this many metres of where it lands.</summary>
+    public required float BlastRadius { get; init; }
+    /// <summary>The chance a building at the very centre of a blast is destroyed; it falls to nothing at the edge of the radius.</summary>
+    public required float BuildingChance { get; init; }
+    /// <summary>Share of the people in a destroyed building who are counted as casualties, and the satisfaction a town loses for each building it loses.</summary>
+    public required float CasualtyShare { get; init; }
+    public required float TownLossPerBuilding { get; init; }
+    /// <summary>People in an ambient car that is wrecked (the company's vehicles count the passengers they carry).</summary>
+    public required int CarPeople { get; init; }
+    /// <summary>Every bomb that hits an industry adds this many days to the time it stands idle (at most <see cref="IndustryMaxDownDays"/> from now) and takes <see cref="InputLoss"/> of the stock it holds.</summary>
+    public required int IndustryDownDays { get; init; }
+    public required int IndustryMaxDownDays { get; init; }
+    public required float InputLoss { get; init; }
+    /// <summary>A gateway, a station or a depot that a bomb hits is shut for this many days (not added to by the next bomb).</summary>
+    public required int GatewayDownDays { get; init; }
+    public required int StationDownDays { get; init; }
+    public required int DepotDownDays { get; init; }
+    /// <summary>The chance a bomb leaves a crater in the nearest road within <see cref="CraterRadius"/> of where it lands.</summary>
+    public required float CraterChance { get; init; }
+    public required float CraterRadius { get; init; }
+    /// <summary>How much the enemy wants each target: the value of an industry by type, and of the other kinds of target.</summary>
+    public required IReadOnlyList<RaidIndustryValue> IndustryValues { get; init; }
+    public required int DefaultIndustryValue { get; init; }
+    public required int GatewayValue { get; init; }
+    public required int TownValue { get; init; }
+    public required int StationValue { get; init; }
+    public required int DepotValue { get; init; }
+    public required int SignalValue { get; init; }
+    /// <summary>A target that is already down (an industry stopped, a gateway, station or depot shut) weighs this share of its value; an industry that lacks an input weighs <see cref="IdleFactor"/>.</summary>
+    public required float DamagedFactor { get; init; }
+    public required float IdleFactor { get; init; }
 
-    /// <summary>Days between raids in a phase; the last entry holds for any phase after it.</summary>
+    /// <summary>Days between flights in a phase; the last entry holds for any phase after it.</summary>
     public RaidGapTuning GapOf(string phase) => Gaps.FirstOrDefault(g => g.Phase == phase) ?? Gaps[^1];
+
+    /// <summary>How many aircraft a flight has in a phase.</summary>
+    public RaidAircraftTuning AircraftOf(string phase) => Aircraft.FirstOrDefault(g => g.Phase == phase) ?? Aircraft[^1];
+
+    /// <summary>What an industry of a type is worth to the enemy.</summary>
+    public int ValueOf(string industryType) => IndustryValues.FirstOrDefault(v => v.Type == industryType)?.Value ?? DefaultIndustryValue;
 }
 
 public sealed record RaidGapTuning
@@ -119,9 +185,16 @@ public sealed record RaidGapTuning
     public required int MaxDays { get; init; }
 }
 
-/// <summary>A kind of target ("industry", "gateway", "rail" or "town") and how likely it is to be picked.</summary>
-public sealed record RaidTargetTuning
+/// <summary>A flight has between <see cref="Min"/> and <see cref="Max"/> aircraft in a phase.</summary>
+public sealed record RaidAircraftTuning
 {
-    public required string Kind { get; init; }
-    public required int Weight { get; init; }
+    public required string Phase { get; init; }
+    public required int Min { get; init; }
+    public required int Max { get; init; }
+}
+
+public sealed record RaidIndustryValue
+{
+    public required string Type { get; init; }
+    public required int Value { get; init; }
 }

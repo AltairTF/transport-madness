@@ -230,32 +230,77 @@
         { "month": 72, "share": 0.25 }
       ]
     },
-    // Raids (C9d): from month 'fromMonth' (January 1942) enemy aircraft bomb the Region at random moments, every minDays to maxDays of the phase
-    // (all scaled by the frequency option: off none, low half as often, high twice as often). Each raid picks a kind of target by weight and one target
-    // of it: an industry stops for industryDownDays and loses inputLoss of what it holds; a gateway is shut for gatewayDownDays (no import lands, no
-    // export is taken); a railway signal fails, which stops the trains until a crew has repaired it; buildingsHit buildings of a town are destroyed and
-    // casualtyShare of the people who were in them are counted as casualties (a number only) and the town loses townLoss satisfaction. A raid on an
-    // industry, a gateway or a town also leaves 'craters' craters on the nearest roads within craterRadius, wrecks that block a lane until a crew clears them.
+    // Raids (C12): from month 'fromMonth' (January 1942) a flight of enemy aircraft comes every minDays to maxDays of the phase (scaled by the
+    // frequency option: off none, low half as often, high twice as often). The flight has between min and max aircraft of its phase and picks
+    // a target by value: the weight of an industry is the value of its type, of a gateway, a town, a station, a depot or a signal the value of
+    // its kind, times damagedFactor when it is down already and idleFactor for an industry that lacks an input. The aircraft come in from the
+    // side of the map the game drew (spread by entryArc radians), fly straight at 'speed' m/s at 'altitude' m over the target and out of the
+    // map, in a formation (trailSpacing behind each other, wingSpacing across). Each drops a stick of bombsPerAircraft bombs bombSpacing metres
+    // apart, centred on the target; the whole stick may be aimError metres off across the path and each bomb scatter across and scatterAlong
+    // along it. A bomb falls from 'altitude' and then blasts everything within blastRadius metres: a building is destroyed with a chance of
+    // buildingChance at the centre falling to none at the edge (casualtyShare of its people counted as casualties, the town loses
+    // townLossPerBuilding satisfaction), an industry stays down industryDownDays more per bomb (at most industryMaxDownDays from now) and loses
+    // inputLoss of the stock it holds each time, a gateway, a station or a depot is shut for its number of days, every vehicle becomes a wreck
+    // (carPeople for an ambient car, the passengers aboard for a company vehicle, all casualties), the nearest road within craterRadius gets
+    // a crater with craterChance, and the nearest signal within the radius fails.
     "bombing": {
       "fromMonth": 48,
-      "industryDownDays": 3,
-      "gatewayDownDays": 2,
-      "inputLoss": 0.5,
-      "craters": 2,
-      "craterRadius": 250.0,
-      "buildingsHit": 2,
-      "casualtyShare": 0.35,
-      "townLoss": 2.0,
       "gaps": [
         { "phase": "totalwar", "minDays": 6, "maxDays": 12 },
         { "phase": "end", "minDays": 8, "maxDays": 14 }
       ],
-      "targets": [
-        { "kind": "industry", "weight": 4 },
-        { "kind": "gateway", "weight": 2 },
-        { "kind": "rail", "weight": 2 },
-        { "kind": "town", "weight": 2 }
-      ]
+      "aircraft": [
+        { "phase": "totalwar", "min": 1, "max": 4 },
+        { "phase": "end", "min": 2, "max": 6 }
+      ],
+      "speed": 75.0,
+      "altitude": 320.0,
+      "entryMargin": 300.0,
+      "entryArc": 0.6,
+      "revealSeconds": 10.0,
+      "trailSpacing": 45.0,
+      "wingSpacing": 40.0,
+      "bombsPerAircraft": 5,
+      "bombSpacing": 30.0,
+      "aimError": 45.0,
+      "scatter": 12.0,
+      "scatterAlong": 8.0,
+      "blastRadius": 35.0,
+      "buildingChance": 0.9,
+      "casualtyShare": 0.35,
+      "townLossPerBuilding": 0.6,
+      "carPeople": 2,
+      "industryDownDays": 1,
+      "industryMaxDownDays": 8,
+      "inputLoss": 0.2,
+      "gatewayDownDays": 2,
+      "stationDownDays": 2,
+      "depotDownDays": 2,
+      "craterChance": 0.5,
+      "craterRadius": 30.0,
+      "industryValues": [
+        { "type": "steelmill", "value": 14 },
+        { "type": "powerplant", "value": 14 },
+        { "type": "truckplant", "value": 14 },
+        { "type": "engineworks", "value": 12 },
+        { "type": "refinery", "value": 9 },
+        { "type": "bodyworks", "value": 6 },
+        { "type": "tyreworks", "value": 5 },
+        { "type": "factory", "value": 5 },
+        { "type": "coalmine", "value": 4 },
+        { "type": "ironmine", "value": 4 },
+        { "type": "cementworks", "value": 3 },
+        { "type": "sawmill", "value": 3 },
+        { "type": "foodplant", "value": 3 }
+      ],
+      "defaultIndustryValue": 2,
+      "gatewayValue": 6,
+      "townValue": 3,
+      "stationValue": 2,
+      "depotValue": 2,
+      "signalValue": 3,
+      "damagedFactor": 0.15,
+      "idleFactor": 0.4
     }
   },
 

@@ -13,7 +13,7 @@ public partial class SimHost
 {
     /// <summary>
     /// The open depots, road and rail: for each {id, rail, name, x, z, level, level_name, bays, jobs (for each {label, kind, working,
-    /// seconds}, oldest first), upgrades (for each {level, name, price}: the levels above this one with the price of the difference)}.
+    /// seconds}, oldest first), shut_days (days a raid keeps it shut, 0 when open), upgrades (for each {level, name, price}: the levels above this one with the price of the difference)}.
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetDepots()
     {
@@ -22,18 +22,18 @@ public partial class SimHost
         {
             if (!depot.Active) continue;
             var (x, z) = Sim.Network.GetNode(depot.Node);
-            list.Add(DepotDictionary(depot.Id, false, $"Road depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot)));
+            list.Add(DepotDictionary(depot.Id, false, $"Road depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot), depot.ShutUntil));
         }
         foreach (var depot in Sim.RailDepots)
         {
             if (!depot.Active) continue;
             var (x, z) = Sim.Rail.GetNode(depot.Node);
-            list.Add(DepotDictionary(depot.Id, true, $"Rail depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot)));
+            list.Add(DepotDictionary(depot.Id, true, $"Rail depot {depot.Id + 1}", x, z, depot.Level, Sim.BaysOf(depot), depot.ShutUntil));
         }
         return list;
     }
 
-    Godot.Collections.Dictionary DepotDictionary(int id, bool rail, string name, float x, float z, DepotLevel level, int bays)
+    Godot.Collections.Dictionary DepotDictionary(int id, bool rail, string name, float x, float z, DepotLevel level, int bays, long shutUntil)
     {
         var jobs = new Godot.Collections.Array<Godot.Collections.Dictionary>();
         foreach (var job in Sim.RepairJobs)
@@ -52,7 +52,7 @@ public partial class SimHost
             upgrades.Add(new Godot.Collections.Dictionary { ["level"] = higher, ["name"] = LevelNames[higher], ["price"] = Sim.DepotPrice(rail, (DepotLevel)higher) - Sim.DepotPrice(rail, level) });
         return new Godot.Collections.Dictionary
         {
-            ["id"] = id, ["rail"] = rail, ["name"] = name, ["x"] = x, ["z"] = z, ["level"] = (int)level, ["level_name"] = LevelNames[(int)level], ["bays"] = bays,
+            ["id"] = id, ["rail"] = rail, ["name"] = name, ["x"] = x, ["z"] = z, ["level"] = (int)level, ["level_name"] = LevelNames[(int)level], ["bays"] = bays, ["shut_days"] = Math.Max(0f, (shutUntil - Sim.Tick) * Simulation.StepSeconds / Sim.DayLengthSeconds),
             ["jobs"] = jobs, ["upgrades"] = upgrades,
         };
     }

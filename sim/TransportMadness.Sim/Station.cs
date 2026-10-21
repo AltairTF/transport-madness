@@ -39,6 +39,8 @@ public sealed class Station
     public int Node { get; internal set; }
     /// <summary>False once every road at its node has been torn down.</summary>
     public bool Active { get; internal set; } = true;
+    /// <summary>The tick until which a raid keeps it shut, 0 when it is not (C12): nothing is loaded or unloaded and no cargo is put into it meanwhile.</summary>
+    public long ShutUntil { get; internal set; }
     /// <summary>Whether loading vehicles pull out of the lane into bays (<see cref="StationTuning.BayCapacity"/> at a time), so they do not block it.</summary>
     public bool HasBays { get; internal set; }
     /// <summary>Vehicles in the bays now.</summary>

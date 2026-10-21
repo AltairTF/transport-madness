@@ -34,6 +34,8 @@ public sealed class RailDepot
     public int Node { get; internal set; }
     /// <summary>False once every track at its node has been torn down.</summary>
     public bool Active { get; internal set; } = true;
+    /// <summary>The tick until which a raid keeps it shut, 0 when it is not (C12).</summary>
+    public long ShutUntil { get; internal set; }
 }
 
 /// <summary>One track travelled in one direction as part of a train's route.</summary>
@@ -624,7 +626,7 @@ public sealed partial class Simulation
         if (c.Depot == BuyTrainCommand.NearestDepot) return BuyTrainAtNearestDepot(c);
         SyncRail();
         int l = LocomotiveIndex(c.Locomotive), w = WagonIndex(c.Wagon);
-        if (l < 0 || w < 0 || c.Depot < 0 || c.Depot >= _railDepots.Count || !_railDepots[c.Depot].Active || !IsAvailable(_railTuning.Locomotives[l])) return -1;
+        if (l < 0 || w < 0 || c.Depot < 0 || c.Depot >= _railDepots.Count || !_railDepots[c.Depot].Active || IsShut(_railDepots[c.Depot]) || !IsAvailable(_railTuning.Locomotives[l])) return -1;
         if (c.Line < 0 || c.Line >= _lines.Count || !_lines[c.Line].Active || _lines[c.Line].Mode != StationMode.Rail) return -1;
         var loco = _railTuning.Locomotives[l];
         var wagon = _railTuning.Wagons[w];
@@ -693,7 +695,7 @@ public sealed partial class Simulation
         var order = new List<(float Seconds, int Depot)>();
         foreach (var depot in _railDepots)
         {
-            if (!depot.Active) continue;
+            if (!depot.Active || IsShut(depot)) continue;
             if (depot.Node == first.RailNode) { order.Add((0f, depot.Id)); continue; }
             if (FindRailPath(LeavingSteps(depot.Node, TrackId.None), first.RailNode, vmax, out _, out float seconds)) order.Add((seconds, depot.Id));
         }

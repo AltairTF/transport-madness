@@ -119,6 +119,7 @@ public sealed partial class Simulation
                 foreach (int s in stations)
                 {
                     var station = _stations[s];
+                    if (station.ShutUntil > Tick) continue;
                     float take = MathF.Min(share, limit - station.Waiting[c]);
                     if (take <= 0f) continue;
                     station.Waiting[c] += take;

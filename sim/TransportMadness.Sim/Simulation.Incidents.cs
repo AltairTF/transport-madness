@@ -86,6 +86,8 @@ public sealed class Depot
     public int BusyCrews { get; internal set; }
     /// <summary>False once every road at its node has been torn down: the depot sends no more crews.</summary>
     public bool Active { get; internal set; } = true;
+    /// <summary>The tick until which a raid keeps it shut, 0 when it is not (C12): it sends no crew, repairs nothing and sells and buys nothing meanwhile.</summary>
+    public long ShutUntil { get; internal set; }
 }
 
 public sealed partial class Simulation
@@ -460,7 +462,7 @@ public sealed partial class Simulation
         float bestDistance = float.MaxValue;
         foreach (var depot in _depots)
         {
-            if (!depot.Active || depot.BusyCrews >= depot.Crews) continue;
+            if (!depot.Active || IsShut(depot) || depot.BusyCrews >= depot.Crews) continue;
             var (dx, dz) = _net.GetNode(depot.Node);
             float distance = MathF.Sqrt((dx - x) * (dx - x) + (dz - z) * (dz - z));
             if (distance < bestDistance) { best = depot; bestDistance = distance; }

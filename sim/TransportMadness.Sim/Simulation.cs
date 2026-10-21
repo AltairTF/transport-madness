@@ -164,6 +164,7 @@ public sealed partial class Simulation
         _war = tuning.War;
         _orderRng = new SimRandom(seed ^ OrderSeedMix);
         _raidRng = new SimRandom(seed ^ RaidSeedMix);
+        _raidDirection = new SimRandom(seed ^ RaidSideMix).NextInt(8);
         Company = new Company(_economy.StartingMoney) { Standing = tuning.Campaign.StartStanding };
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;
@@ -410,6 +411,7 @@ public sealed partial class Simulation
         UpdateGateways();
         StepOrders();
         StepRaids();
+        StepFlights();
         UpdateTrips();
         UpdateFleet();
         StepRepairs();

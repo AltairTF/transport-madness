@@ -146,6 +146,7 @@ public sealed partial class Simulation
         foreach (int s in stations)
         {
             var station = _stations[s];
+            if (station.ShutUntil > Tick) continue; // shut by a raid: nothing is put into it
             float take = MathF.Min(share, limit - station.Waiting[cargo]);
             if (take <= 0f) continue;
             station.Waiting[cargo] += take;
@@ -158,6 +159,7 @@ public sealed partial class Simulation
     /// <summary>Whether a station takes a cargo: on a map with towns or industries, only when something it covers uses it.</summary>
     public bool Accepts(Station station, int cargo)
     {
+        if (station.ShutUntil > Tick) return false; // shut by a raid
         if (!Settled) return true;
         if (_coverageDirty || _stationAccepts.Count != _stations.Count) RefreshCoverage();
         return _stationAccepts[station.Id][cargo];

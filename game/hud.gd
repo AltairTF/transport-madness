@@ -169,6 +169,7 @@ var _depots_box: VBoxContainer
 var _depots_empty: Label
 var _depot_rows: Dictionary = {} # "r3" / "d1" -> {"row", "label", "jobs", "upgrades", "upgrade_key", "go", "go_call"}
 var _feed: VBoxContainer
+var _raid_banner: Label ## the warning of the bomber flights in the air, hidden when there are none
 var _feed_items: Array = [] ## the entries of the event feed: {"node": Button, "age": float, "lifetime": float}
 const FEED_MAX := 6
 const REPAIR_NAMES := ["Patch", "Service", "Overhaul"]
@@ -188,6 +189,7 @@ func _ready() -> void:
 	_build_top_bar()
 	_build_window_panel()
 	_build_feed()
+	_build_raid_banner()
 	_build_campaign_end()
 	_build_debug_panel()
 	_build_bottom()
@@ -662,6 +664,37 @@ func _build_feed() -> void:
 	_root.add_child(_feed)
 
 
+## The air raid warning: one line for each flight in the air, at the top in the middle, from the simulation's state.
+func _build_raid_banner() -> void:
+	_raid_banner = Label.new()
+	_raid_banner.visible = false
+	_raid_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_raid_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_raid_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_raid_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_raid_banner.offset_top = 84.0
+	_raid_banner.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35))
+	_raid_banner.add_theme_color_override("font_outline_color", Color.BLACK)
+	_raid_banner.add_theme_constant_override("outline_size", 6)
+	_root.add_child(_raid_banner)
+
+
+## The flights in the air (from the host): the warning with the time left, the target once it is told, and "bombs falling" over the target.
+func show_raid_warnings(flights: Array) -> void:
+	var text := ""
+	for flight in flights:
+		var line := "Air raid warning: %d aircraft from the %s" % [flight["aircraft"], flight["direction"]]
+		if flight["dropping"]:
+			line += ", over the target now"
+		else:
+			line += ", arriving in %d s" % ceili(flight["seconds"])
+		if flight["revealed"]:
+			line += "   Target: %s" % String(flight["target"]).to_lower()
+		text += ("" if text.is_empty() else "\n") + line
+	_raid_banner.text = text
+	_raid_banner.visible = text != ""
+
+
 func _placeholder(text: String) -> Control:
 	var label := Label.new()
 	label.theme_type_variation = "Dim"
@@ -843,7 +876,7 @@ func show_company(company: Dictionary) -> void:
 		text += "\nCall-up   %d people called up so far   workforce %d%% short (industry at %d%%)%s" % [company["called_up"], roundi(company["workforce_gap"] * 100.0), roundi(company["workforce_factor"] * 100.0),
 			"   next call-up in %s %d" % [MONTHS[company["next_call_month"] % 12], company["year"] - floori(company["phase_month"] / 12.0) + floori(company["next_call_month"] / 12.0)] if company["next_call_month"] >= 0 else ""]
 	if company["raids"] > 0:
-		text += "\nRaids   %d so far   %d casualties" % [company["raids"], company["casualties"]]
+		text += "\nRaids   %d flights so far, %d bombs, %d casualties" % [company["raids"], company["bombs"], company["casualties"]]
 	if company["requisitioned"] > 0 or company["next_requisition_month"] >= 0:
 		text += "\nRequisition   the army has taken %d vehicles and trains (paid %s)" % [company["requisitioned"], _money_text(company["requisition_income"])]
 		if company["next_requisition_month"] >= 0:
@@ -1138,6 +1171,8 @@ func show_stations(stations: Array) -> void:
 		text += "\ncovers   %d homes   %d shops   %d other workplaces   %d industries" % [
 			station["homes"], station["shops"], station["workplaces"], station["industries"]]
 		text += "\nwaiting   %s\naccepts   %s" % ["nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
+		if station.get("shut_days", 0.0) > 0.0:
+			text += "\nBombed: shut for %s more days, nothing is loaded or unloaded." % str(snappedf(station["shut_days"], 0.1))
 		var bound_for := ""
 		for queue in station.get("waiting_for", []):
 			bound_for += ("" if bound_for.is_empty() else ", ") + "%d to %s" % [queue["count"], queue["name"]]
@@ -1820,7 +1855,8 @@ func show_depots(depots: Array) -> void:
 		if not _depot_rows.has(key):
 			_add_depot_row(key)
 		var entry: Dictionary = _depot_rows[key]
-		entry["label"].text = "%s   %s, %d bays" % [depot["name"], depot["level_name"], depot["bays"]]
+		entry["label"].text = "%s   %s, %d bays%s" % [depot["name"], depot["level_name"], depot["bays"],
+			"   BOMBED: shut for %s more days, no repairs, no crews, nothing bought or sold" % str(snappedf(depot["shut_days"], 0.1)) if depot.get("shut_days", 0.0) > 0.0 else ""]
 		var jobs := ""
 		for job in depot["jobs"]:
 			jobs += "%s: %s%s\n" % [job["label"], String(REPAIR_NAMES[job["kind"]]).to_lower(), (" (%d s left)" % ceili(job["seconds"])) if job["working"] else ", waiting for a bay"]

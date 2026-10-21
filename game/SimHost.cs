@@ -535,7 +535,7 @@ public partial class SimHost : Node3D
             ["finished"] = c.Finished,
             ["grade_name"] = c.Grade >= 0 ? campaign.Grade.Names[c.Grade] : "",
             ["score"] = c.Score,
-            ["raids"] = Sim.Raids, ["casualties"] = Sim.Casualties,
+            ["raids"] = Sim.Raids, ["bombs"] = Sim.Bombs, ["casualties"] = Sim.Casualties,
             ["called_up"] = Sim.CalledUp, ["workforce_gap"] = Sim.WorkforceGap, ["workforce_factor"] = Sim.WorkforceFactor,
             ["next_call_month"] = Sim.NextWave is { } wave ? wave.Month : -1,
             ["requisitioned"] = c.Requisitioned, ["requisition_income"] = c.Total(LedgerEntry.Requisition),
@@ -811,7 +811,7 @@ public partial class SimHost : Node3D
                 ["id"] = station.Id, ["name"] = StationName(station.Id), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["rail"] = station.Mode == StationMode.Rail, ["bays"] = station.HasBays, ["in_bay"] = station.InBay, ["bay_price"] = Sim.StationBayPrice,
                 ["waiting"] = waiting, ["accepts"] = accepts, ["waiting_for"] = waitingFor, ["lines"] = lines,
                 ["homes"] = homes, ["shops"] = shops, ["workplaces"] = workplaces, ["industries"] = Sim.IndustriesCoveredBy(station).Count,
-                ["boarded"] = station.Yesterday.Boarded, ["alighted"] = station.Yesterday.Alighted, ["gave_up"] = station.Yesterday.GaveUp,
+                ["shut_days"] = Math.Max(0f, (station.ShutUntil - Sim.Tick) * Simulation.StepSeconds / Sim.DayLengthSeconds), ["boarded"] = station.Yesterday.Boarded, ["alighted"] = station.Yesterday.Alighted, ["gave_up"] = station.Yesterday.GaveUp,
                 ["boarded_today"] = station.Today.Boarded, ["alighted_today"] = station.Today.Alighted, ["gave_up_today"] = station.Today.GaveUp,
             });
         }
@@ -1091,7 +1091,7 @@ public partial class SimHost : Node3D
         else if (Sim.BuildingsVersion != _buildingsVersion) RebuildBuildings();
         float fraction = _speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f;
         DrawVehicles(fraction);
-        UpdateRaidEffects(delta);
+        UpdateRaidEffects(delta, fraction);
         DrawCrews(fraction);
         DrawRail(fraction);
     }

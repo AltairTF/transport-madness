@@ -63,8 +63,8 @@ public sealed partial class Simulation
     int BuyParkedVehicle(int depot, string modelId)
     {
         int model = ModelIndex(modelId);
-        if (depot == BuyParkedVehicleCommand.AnyDepot) depot = FirstOpen(_depots, d => d.Active, d => d.Id);
-        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active || !IsAvailable(_models[model])) return -1;
+        if (depot == BuyParkedVehicleCommand.AnyDepot) depot = FirstOpen(_depots, d => d.Active && !IsShut(d), d => d.Id);
+        if (model < 0 || depot < 0 || depot >= _depots.Count || !_depots[depot].Active || IsShut(_depots[depot]) || !IsAvailable(_models[model])) return -1;
         long price = _models[model].Price;
         if (!CanAfford(price)) return -1;
         TrySpend(price, LedgerEntry.Vehicles);
@@ -76,8 +76,8 @@ public sealed partial class Simulation
     {
         SyncRail();
         int l = LocomotiveIndex(locomotive), w = WagonIndex(wagon);
-        if (depot == BuyParkedVehicleCommand.AnyDepot) depot = FirstOpen(_railDepots, d => d.Active, d => d.Id);
-        if (l < 0 || w < 0 || depot < 0 || depot >= _railDepots.Count || !_railDepots[depot].Active || !IsAvailable(_railTuning.Locomotives[l])) return -1;
+        if (depot == BuyParkedVehicleCommand.AnyDepot) depot = FirstOpen(_railDepots, d => d.Active && !IsShut(d), d => d.Id);
+        if (l < 0 || w < 0 || depot < 0 || depot >= _railDepots.Count || !_railDepots[depot].Active || IsShut(_railDepots[depot]) || !IsAvailable(_railTuning.Locomotives[l])) return -1;
         if (wagons < 1 || wagons > _railTuning.Locomotives[l].MaxWagons) return -1;
         long price = _railTuning.Locomotives[l].Price + wagons * _railTuning.Wagons[w].Price;
         if (!CanAfford(price)) return -1;
@@ -97,6 +97,7 @@ public sealed partial class Simulation
     {
         if (parked < 0 || parked >= _garage.Count || !_garage[parked].Active) return -1;
         var entry = _garage[parked];
+        if (entry.Rail ? IsShut(_railDepots[entry.Depot]) : IsShut(_depots[entry.Depot])) return -1; // a raid has shut the depot
         Earn((long)MathF.Round(PriceOf(entry) * _economy.SellRefundShare), LedgerEntry.Vehicles);
         CancelJobsFor(RepairSubject.Parked, parked);
         entry.Active = false;
