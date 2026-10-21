@@ -12,13 +12,18 @@ public sealed partial class Simulation
 
     bool IsRationed(string cargo) => _war.Rationing.Cargo.Contains(cargo);
 
-    /// <summary>The multiple of the offer's price now (1 for cargo that is not rationed, and in a phase with no rationing).</summary>
-    public float RationingPriceFactor(string cargo) =>
-        IsRationed(cargo) ? 1f + (_war.Rationing.Of(Phase.Id).PriceFactor - 1f) * RationingScale : 1f;
+    /// <summary>The multiple of the offer's price in a phase (1 for cargo that is not rationed, and in a phase with no rationing).</summary>
+    float PriceFactorIn(string cargo, string phase) =>
+        IsRationed(cargo) ? 1f + (_war.Rationing.Of(phase).PriceFactor - 1f) * RationingScale : 1f;
+
+    float UnitsFactorIn(string cargo, string phase) =>
+        IsRationed(cargo) ? MathF.Max(0.05f, 1f + (_war.Rationing.Of(phase).UnitsFactor - 1f) * RationingScale) : 1f;
+
+    /// <summary>The multiple of the offer's price now.</summary>
+    public float RationingPriceFactor(string cargo) => PriceFactorIn(cargo, Phase.Id);
 
     /// <summary>The multiple of the offer's units now, never more than 1 in the phases of the war.</summary>
-    public float RationingUnitsFactor(string cargo) =>
-        IsRationed(cargo) ? MathF.Max(0.05f, 1f + (_war.Rationing.Of(Phase.Id).UnitsFactor - 1f) * RationingScale) : 1f;
+    public float RationingUnitsFactor(string cargo) => UnitsFactorIn(cargo, Phase.Id);
 
     /// <summary>What a unit of an import costs now.</summary>
     public int ImportPrice(ImportTuning offer) => (int)MathF.Round(offer.PricePerUnit * RationingPriceFactor(offer.Cargo));
@@ -34,8 +39,9 @@ public sealed partial class Simulation
         if (before.Id == after.Id || _frequencyScale <= 0f) return;
         var offers = _gatewayTuning.Imports.Where(i => IsRationed(i.Cargo)).ToList();
         if (offers.Count == 0) return;
-        var f = _war.Rationing.Of(after.Id);
-        AddEvent(SimEventKind.War, EventSeverity.Warning, 0f, 0f, -1,
-            $"{after.Name}: rationing. {string.Join(", ", offers.Select(o => _cargo[CargoIndex(_net.Tuning, o.Cargo)].Name.ToLowerInvariant()))} cost {RationingPriceFactor(offers[0].Cargo):0.##} times as much and shipments are {RationingUnitsFactor(offers[0].Cargo):P0} of the size");
+        float price = PriceFactorIn(offers[0].Cargo, after.Id), units = UnitsFactorIn(offers[0].Cargo, after.Id);
+        if (MathF.Abs(price - PriceFactorIn(offers[0].Cargo, before.Id)) < 0.001f && MathF.Abs(units - UnitsFactorIn(offers[0].Cargo, before.Id)) < 0.001f) return;
+        AddEvent(SimEventKind.War, EventSeverity.Warning, 0f, 0f, -1, FormattableString.Invariant(
+            $"{after.Name}: rationing. {string.Join(", ", offers.Select(o => _cargo[CargoIndex(_net.Tuning, o.Cargo)].Name.ToLowerInvariant()))} cost {price:0.##} times as much and shipments are {units * 100f:0}% of the size"));
     }
 }

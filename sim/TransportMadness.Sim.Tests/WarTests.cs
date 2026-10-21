@@ -112,6 +112,7 @@ public class WarTests
         var news = Assert.Single(sim.Events, e => e.Kind == SimEventKind.War && e.Text.Contains("rationing"));
         Assert.Contains("Mobilisation", news.Text);
         Assert.Contains("rationing", news.Text);
+        Assert.Contains("cost 1.25 times as much and shipments are 85% of the size", news.Text); // the factors of the phase that begins
     }
 
     [Fact]

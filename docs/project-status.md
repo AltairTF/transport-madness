@@ -364,7 +364,7 @@ Files: `data/tuning.json` (`war.rationing`), `WarTuning.cs`, `Simulation.War.cs`
 
 - **The rule.** For the cargo listed in `war.rationing.cargo` (oil, fuel, rubber; coal and iron ore are not rationed) the price of an import is the offer's price times the phase's `priceFactor` (1, 1.25, 1.7, 2.0 for Rearmament, Mobilisation, Total war, The end) and a shipment is the offer's units times `unitsFactor` (1, 0.85, 0.65, 0.5), both fixed when the shipment is asked for: `Gateway.ShipmentUnits` keeps the size, so a shipment that lands after the phase has changed still has the size it was paid for.
 - **The frequency option scales the change**, not the factor: with the option off nothing is rationed, at low half of the change (a price factor of 1.35 in Total war), at normal all of it, at high twice (2.4).
-- **News.** At the turn of the month that begins a new phase the feed says what rationing now does ("Total war: rationing. oil, fuel, rubber cost 1.7 times as much and shipments are 65 % of the size"). The Gateways window shows the price and size in force and "(rationed)" on the offers affected.
+- **News.** At the turn of the month that begins a new phase the feed says what rationing does from then on ("Total war: rationing. oil, rubber, fuel cost 1.7 times as much and shipments are 65% of the size"; a first draft showed the factors of the phase that was ending, found in a full-campaign run). The Gateways window shows the price and size in force and "(rationed)" on the offers affected.
 - **Found on the way.** A state work could not be drawn on a map with gateways and no towns (the first work is founded near a town, and there was none): it is not offered then, with a test.
 - **Tests.** 634 (10 more).
 
