@@ -165,6 +165,9 @@ public sealed partial class Simulation
         _orderRng = new SimRandom(seed ^ OrderSeedMix);
         _raidRng = new SimRandom(seed ^ RaidSeedMix);
         _raidDirection = new SimRandom(seed ^ RaidSideMix).NextInt(8);
+        _defenceRng = new SimRandom(seed ^ DefenceSeedMix);
+        _batteryType = tuning.Industries.Types.ToList().FindIndex(t => t.Id == tuning.War.AntiAircraft.Type);
+        _ammunition = _batteryType >= 0 && _industryInputs[_batteryType].Length > 0 ? _industryInputs[_batteryType][0].Cargo : -1;
         Company = new Company(_economy.StartingMoney) { Standing = tuning.Campaign.StartStanding };
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;

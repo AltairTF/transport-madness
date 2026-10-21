@@ -66,7 +66,7 @@ public class WorkerTests
     {
         var t = Tuning.Load().Industries.Types;
 
-        Assert.Equal(new[] { "steelmill", "engineworks", "truckplant", "powerplant" }, t.Where(x => x.Jobs > 0).Select(x => x.Id));
+        Assert.Equal(new[] { "steelmill", "engineworks", "truckplant", "powerplant", "antiaircraft" }, t.Where(x => x.Jobs > 0).Select(x => x.Id));
         Assert.Equal(40, t.Single(x => x.Id == "steelmill").Jobs);
     }
 

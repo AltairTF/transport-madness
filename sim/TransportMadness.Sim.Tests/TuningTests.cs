@@ -28,7 +28,7 @@ public class TuningTests
         Assert.Equal(1938, t.Economy.StartYear);
         Assert.Equal(1000000, t.Economy.StartingMoney);
         Assert.Equal(new[] { "bus", "truck", "heavytruck", "bigbus" }, t.Vehicles.Select(v => v.Id));
-        Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food", "coal", "ore", "steel", "fuel", "oil", "rubber", "engines", "bodies", "tyres", "trucks" }, t.Cargo.Select(c => c.Id));
+        Assert.Equal(new[] { "passengers", "goods", "wood", "planks", "stone", "materials", "grain", "food", "coal", "ore", "steel", "fuel", "oil", "rubber", "engines", "bodies", "tyres", "trucks", "ammunition" }, t.Cargo.Select(c => c.Id));
         Assert.All(t.Vehicles, v => Assert.True(v.Cargo == "freight" || t.Cargo.Any(c => c.Id == v.Cargo)));
         Assert.True(t.Economy.DepotPrice.For(DepotLevel.Complex) > t.Economy.DepotPrice.For(DepotLevel.Simple));
     }
@@ -74,9 +74,9 @@ public class TuningTests
     {
         var t = Tuning.Load().Industries;
 
-        Assert.Equal(new[] { "forest", "quarry", "farm", "sawmill", "cementworks", "foodplant", "factory", "coalmine", "ironmine", "steelmill", "refinery", "engineworks", "bodyworks", "tyreworks", "truckplant", "powerplant" }, t.Types.Select(x => x.Id));
-        Assert.Equal(new[] { "wood", "stone", "grain", "planks", "materials", "food", "goods", "coal", "ore", "steel", "fuel", "engines", "bodies", "tyres", "trucks", "" }, t.Types.Select(x => x.Output));
-        Assert.Equal(new[] { 0, 0, 0, 1, 1, 1, 1, 0, 0, 2, 1, 2, 2, 1, 3, 1 }, t.Types.Select(x => x.Inputs.Count));
+        Assert.Equal(new[] { "forest", "quarry", "farm", "sawmill", "cementworks", "foodplant", "factory", "coalmine", "ironmine", "steelmill", "refinery", "engineworks", "bodyworks", "tyreworks", "truckplant", "powerplant", "antiaircraft" }, t.Types.Select(x => x.Id));
+        Assert.Equal(new[] { "wood", "stone", "grain", "planks", "materials", "food", "goods", "coal", "ore", "steel", "fuel", "engines", "bodies", "tyres", "trucks", "", "" }, t.Types.Select(x => x.Output));
+        Assert.Equal(new[] { 0, 0, 0, 1, 1, 1, 1, 0, 0, 2, 1, 2, 2, 1, 3, 1, 1 }, t.Types.Select(x => x.Inputs.Count));
         Assert.Equal(new[] { "coalmine", "ironmine" }, t.Types.Where(x => x.Deposit).Select(x => x.Id));
         Assert.All(new[] { t.Counts.Few, t.Counts.Normal, t.Counts.Many }, counts => Assert.Equal(t.Types.Count, counts.Count));
     }
@@ -151,6 +151,21 @@ public class TuningTests
         var shipped = Tuning.Load();
 
         Assert.NotEqual(Hash(shipped), Hash(shipped with { Driving = shipped.Driving with { MaxAccel = 3f } }));
+    }
+
+    [Theory]
+    [InlineData("\"type\": \"antiaircraft\"", "\"type\": \"flak\"")]
+    [InlineData("\"price\": 45000", "\"price\": 0")]
+    [InlineData("\"hitChance\": 0.12", "\"hitChance\": 1.5")]
+    [InlineData("\"scatterCap\": 3.0", "\"scatterCap\": 0.5")]
+    [InlineData("\"coverSaturation\": 2.0", "\"coverSaturation\": 0.0")]
+    [InlineData("\"strongCover\": 0.5", "\"strongCover\": 1.5")]
+    public void TheAntiAircraftTuning_IsChecked(string was, string now)
+    {
+        var text = ShippedText();
+        Assert.Contains(was, text);
+
+        Assert.Throws<JsonException>(() => Tuning.FromJson(text.Replace(was, now)));
     }
 
     static string ShippedText()

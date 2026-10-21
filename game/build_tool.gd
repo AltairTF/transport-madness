@@ -21,11 +21,13 @@ signal tool_changed(tool_name: String)
 
 var host: Node3D
 var camera: Camera3D
-var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, downgrade, faster, slower, move, remove, depot, station, line, and the rail tools
+var tool := "pointer" # pointer, road2, road4, curve2, curve4, upgrade, downgrade, faster, slower, move, remove, depot, station, line, battery, and the rail tools
 const LIGHT_TOOLS := ["light", "light_remove"]
 const SIGN_TOOLS := {"sign_priority": 0, "sign_yield": 1, "sign_stop": 2} ## the kind each sign tool puts up, as SimHost.BuildRoadSign takes it
 const RAIL_TOOLS := ["track", "track_curve", "track_remove", "signal_block", "signal_path", "signal_remove", "rail_station", "rail_depot"]
 const RAIL_WIDTH := 4.2
+const RANGE_SEGMENTS := 96 ## the circle of a battery's range is drawn with this many segments
+const RANGE_WIDTH := 3.0
 var _signal_forward := true ## signals face trains going from a track's start toward its end; R turns them round
 
 var _start: Variant = null # Vector3 or null
@@ -74,6 +76,7 @@ func set_tool(tool_name: String) -> void:
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
 		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
 		"line": message.emit("New line: click the stations in order, Enter finishes the line, Esc cancels")
+		"battery": message.emit("Anti-aircraft battery: click level dry ground away from roads and buildings; the circle is its range. It needs people to man it and ammunition from a gateway (from month 20)")
 		"light": message.emit("Traffic light: click a junction of three roads or more; the streets that cross take turns at green")
 		"light_remove": message.emit("Remove light: click a junction with traffic lights")
 		"sign_priority": message.emit("Priority road: click a road next to a junction; the road across it gets the sign too and every other road gives way to them")
@@ -195,6 +198,9 @@ func _click(screen: Vector2) -> void:
 		return
 	if tool == "line":
 		_click_line(target)
+		return
+	if tool == "battery":
+		_click_battery(screen)
 		return
 	if tool == "depot":
 		var level := 1
@@ -320,6 +326,9 @@ func _update_preview(screen: Vector2) -> void:
 		return
 	if tool == "station" or tool == "station_bays":
 		_hover_station(screen)
+		return
+	if tool == "battery":
+		_hover_battery(screen)
 		return
 	if tool == "line":
 		_hover_line(screen)
@@ -556,6 +565,47 @@ func _draw_arc(points: PackedVector3Array, width: float, clear := true) -> void:
 		mesh.surface_add_vertex(points[i] - right + lift)
 		mesh.surface_add_vertex(points[i] + right + lift)
 	mesh.surface_end()
+
+
+## The anti-aircraft tool (C13): a marker where the battery would stand and the circle of its range on the ground, green when it can be built there and red when not.
+func _hover_battery(screen: Vector2) -> void:
+	_preview.visible = false
+	_arc_preview.visible = false
+	var p: Variant = ground_point(screen)
+	if p == null:
+		return
+	var site: Dictionary = host.BatteryPreview(p.x, p.z)
+	_material.albedo_color = ROAD_COLORS["valid"] if site["valid"] else ROAD_COLORS["invalid"]
+	_preview.visible = true
+	_preview.mesh.size = Vector3(site["size"] * 2.0, 6.0, site["size"] * 2.0)
+	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(p.x, site["y"] + 3.0, p.z))
+	var ring := PackedVector3Array()
+	for i in RANGE_SEGMENTS + 1:
+		var angle := TAU * i / RANGE_SEGMENTS
+		var x: float = p.x + cos(angle) * site["range"]
+		var z: float = p.z + sin(angle) * site["range"]
+		ring.append(Vector3(x, host.HeightAt(x, z), z))
+	_draw_arc(ring, RANGE_WIDTH)
+	if not site["available"]:
+		message.emit("Anti-aircraft battery: the guns are available from month %d" % site["from_month"])
+	elif site["why"] != "":
+		message.emit("Anti-aircraft battery: %s" % site["why"])
+	else:
+		message.emit("Anti-aircraft battery: cost %s and %s a month   range %d m (the circle)   needs people to man it and ammunition from a gateway" % [_money(site["price"]), _money(site["upkeep"]), roundi(site["range"])])
+
+
+func _click_battery(screen: Vector2) -> void:
+	var target: Variant = ground_point(screen) # not snapped to a junction: a battery stands clear of the roads
+	if target == null:
+		return
+	var site: Dictionary = host.BatteryPreview(target.x, target.z)
+	if host.BuildBattery(target.x, target.z):
+		message.emit("Anti-aircraft battery built: bring people to it by a road and ammunition by a station that covers it")
+	elif not site["available"]:
+		message.emit("Can't build one yet: the guns are available from month %d" % site["from_month"])
+	else:
+		message.emit("Can't build a battery there: %s" % site["why"])
+	_hover_battery(screen)
 
 
 ## What a road is joined to (C10), as part of a line of text: "   joins the Steel Mill   spur to the Forest 47 m". The cost, when given, tells the spurs' length.

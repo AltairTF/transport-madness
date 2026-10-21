@@ -19,7 +19,7 @@ _Avoid_: House (a Building is not always a home)
 A scarce natural resource, a coal mine or an iron mine: one of each on every Region, within reach of a Town and a fitting distance from the other, so that mining both at home is an investment against importing. Marked in the tuning (`deposit`).
 
 **Imported cargo**:
-A Cargo that no Industry makes (oil, rubber): it can only arrive as an Import shipment through a Gateway, so the Industries that use it idle until there is one.
+A Cargo that no Industry makes (oil, rubber, ammunition): it can only arrive as an Import shipment through a Gateway, so the Industries that use it idle until there is one.
 
 **Industry**:
 A producer or processor of cargo that sits in a chain. Primary industries (forest, quarry, farm, and the two Deposits) produce at a fixed rate; processors (sawmill, cement works, food plant, factory, steel mill, refinery and the military truck's works) turn inputs into outputs at a fixed ratio. Chains: wood → planks, stone → building materials, grain → food, planks → goods, iron ore and coal → steel, imported oil → fuel, and for the military truck steel and fuel → engines, steel and planks → bodies, imported rubber → tyres, then engines, bodies and tyres → trucks. Its output goes to the Stations that cover it, shared evenly; its inputs are filled by deliveries to those Stations. The generator places a processor within reach of a producer of its inputs and of a Town; one that did not fit is reported when a game starts.
@@ -43,7 +43,7 @@ At fixed months the army buys a share of the Company's vehicles and trains (frei
 From 1942 the enemy bombs the Region at random moments. Each raid is a Flight of bombers that comes in from one side of the map, picks a target by value and drops Bombs on it; what a Bomb does is decided where it lands. Industries stop for days, Gateways, Stations and Depots are shut for a time, Vehicles become wrecks, a rail Signal fails, buildings fall and the road gets craters, which the crews clear like wrecks. Casualties are a number only. The frequency option scales how often.
 
 **Flight**:
-A group of 1 to 6 bomber aircraft of a Raid. It enters the map from the side drawn for the game, flies straight at a fixed speed and height over its target (chosen by the value the enemy gives it, less when it is down, idle or defended) and out of the map. Each aircraft drops a stick of Bombs on the way. A flight is a simulated thing: it is stepped, kept in the state hash and drawn from the simulation.
+A group of 1 to 6 bomber aircraft of a Raid. It enters the map from the side drawn for the game, flies straight at a fixed speed and height over its target (chosen by the value the enemy gives it, less when it is down, idle or defended by Batteries) and out of the map. Each aircraft drops a stick of Bombs on the way unless a Battery has brought it down. A flight is a simulated thing: it is stepped, kept in the state hash and drawn from the simulation.
 
 **Bomb**:
 Dropped by an aircraft of a Flight, it falls for a few seconds and lands at an exact point. Its effect is worked out by geometry when it lands: everything inside its Blast radius suffers.
@@ -51,11 +51,20 @@ Dropped by an aircraft of a Flight, it falls for a few seconds and lands at an e
 **Blast radius**:
 How far a Bomb reaches from where it lands (35 m). A building inside it is destroyed with a chance that falls with the distance; an industry inside it stays down longer with every bomb; a gateway, station or depot inside it is shut; every vehicle inside it is a wreck; the nearest signal fails.
 
+**Battery**:
+An anti-aircraft battery: an Industry the Player places by a command (45 000, 3 000 a month) on free level dry ground, from month 20 (September 1939, the Mobilisation phase). It makes nothing; it has Jobs that residents fill (its Staffing) and a stock of Ammunition that trucks deliver like any input. Once a second it fires a salvo at every aircraft of a Flight within its range (700 m) if it has ammunition and is not damaged, and each salvo has a chance, the base chance times its Staffing, to bring the aircraft down. Several batteries add up as one minus the product of what each misses. A bombed battery is damaged like any Industry and stops. The enemy wants a target less the more working batteries cover it (about half at strong cover).
+
+**Ammunition**:
+A Cargo that only a Gateway imports (from month 20; priced and rationed like fuel) and that only a Battery uses. A salvo spends a fixed amount of it. A battery that finds its stock empty with an aircraft in range says so once, until it has some again. Nothing in the Region makes it.
+
+**Fire pressure**:
+The Staffing of the Batteries that are firing at a point of the sky, added up. A Flight under fire has its Bombs scatter more (up to a cap) and let go early, so that they fall short of the target; an aircraft the fire brings down drops no more Bombs and falls, leaving a flash and a crater where it lands.
+
 **Air raid warning**:
 The notice that a Flight has entered the map: how many aircraft, from which side, and how many seconds until they arrive. The target is told only in the last ten seconds.
 
 **Cargo**:
-Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
+Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, the Imported oil and rubber, and ammunition. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 
 **Satisfaction**:
 A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold (50) the Town stops growing. It has no direct effect on money; it stops growth below the threshold, civil Orders raise or lower it, and the average of the Towns counts for 20 % of the final Grade.
@@ -221,7 +230,7 @@ The end of the campaign in December 1945 gives one of four grades (Distinguished
 A road or rail connection on the edge of the Region where goods come in and go out, one of each kind per map. Behaves like an Industry that a Station of its own mode covers: an Import shipment arrives there as stock to be carried inland, and Cargo a vehicle unloads there is exported (it pays like any delivery, and counts toward Orders).
 
 **Import shipment**:
-Cargo the Player asks the Government to send from outside the Region (coal, ore, oil, rubber, fuel), paid at once (from the Budget in the campaign) at a higher price per unit than the same Cargo produced locally. One at a time per Cargo and Gateway, it arrives after a delay as stock at the Gateway.
+Cargo the Player asks the Government to send from outside the Region (coal, ore, oil, rubber, fuel, and from month 20 ammunition), paid at once (from the Budget in the campaign) at a higher price per unit than the same Cargo produced locally. One at a time per Cargo and Gateway, it arrives after a delay as stock at the Gateway.
 
 **Command**:
 A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, rename, close or add bays to a Station, create, edit, rename, colour or delete a Line, buy or sell a vehicle or train, park a vehicle or put it on a Line, set a Maintenance policy or ask for a repair, ask for an Import shipment, accept or decline an Order, set the power purchase, take or repay a loan, add traffic, cause a crash; `SimCommand.cs` has the full list). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
@@ -257,6 +266,7 @@ The line a vehicle follows from one lane through a junction to the next. Vehicle
 - A **Town** needs **Cargo** deliveries to grow, and its **Trip groups** need to reach work and leisure.
 - An **Order** names an **Industry**, **Town** or **Gateway** as source and destination.
 - A **Line** is run by **Company vehicles**, bought at a **Depot**; they earn **Pay** and cost upkeep every **Day**.
+- A **Battery** is staffed by **Trip groups**, supplied with **Ammunition** from a **Gateway** through a **Station** that covers it, and lowers the weight the enemy gives the targets it covers.
 - A **Model year** gates which vehicles the **Company** may buy.
 - A **Maintenance policy** sends a due vehicle to a **Depot** whose level can do the repair; a **Breakdown** is a **Wreck** made by low **Condition**.
 - The **Budget** is fed by **Pay** and the **Allocation**; **Orders** met raise **Standing**, which sets the **Allocation**; **Import shipments** come in at a **Gateway** and are paid from the **Budget**.

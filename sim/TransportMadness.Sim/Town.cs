@@ -152,6 +152,8 @@ public sealed class Industry
     /// <summary>People of trip groups who have reached it to work today so far, and on the last day that closed.</summary>
     public int WorkersToday { get; internal set; }
     public int WorkersYesterday { get; internal set; }
+    /// <summary>For an anti-aircraft battery (C13): it found its stock empty with an aircraft in range and has said so; it says so again only after it has fired again.</summary>
+    public bool OutOfAmmo { get; internal set; }
     /// <summary>What it has made that no station has taken yet.</summary>
     public float Output { get; internal set; }
     /// <summary>Everything it has made so far.</summary>

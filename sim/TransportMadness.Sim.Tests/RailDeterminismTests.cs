@@ -5,8 +5,8 @@ namespace TransportMadness.Sim.Tests;
 /// <summary>Rail runs are as repeatable as road ones: a pinned hash of a scenario built only from commands (like the road golden hash, one value per system).</summary>
 public class RailDeterminismTests
 {
-    const ulong RailGoldenMac = 0x179999302AAEC508UL;
-    const ulong RailGoldenLinux = 0x179999302AAEC508UL;
+    const ulong RailGoldenMac = 0x5684A444B74001F2UL;
+    const ulong RailGoldenLinux = 0x5684A444B74001F2UL;
 
     /// <summary>
     /// A single railway with a passing loop and path signals, a road across it with a level crossing, two trains from opposite ends,

@@ -41,7 +41,7 @@ public sealed partial class Simulation
         var missing = new List<int>();
         foreach (var (cargo, amount) in _industryInputs[industry.Type])
             if (industry.Input[cargo] < amount) missing.Add(cargo);
-        return new IndustryStatus(_industryStations[industry.Id].Length > 0, type.Supply <= 0f && industry.Output >= type.MaxOutput - 0.5f, missing, Math.Max(0L, industry.DamagedUntil - Tick));
+        return new IndustryStatus(_industryStations[industry.Id].Length > 0, type.Supply <= 0f && type.MaxOutput > 0f && industry.Output >= type.MaxOutput - 0.5f, missing, Math.Max(0L, industry.DamagedUntil - Tick));
     }
 
     /// <summary>Changes whenever industries are added (for a renderer).</summary>
@@ -262,6 +262,7 @@ public sealed partial class Simulation
             h = h * 31 + BitConverter.SingleToUInt32Bits(industry.Staffing);
             h = h * 31 + (ulong)industry.WorkersToday;
             h = h * 31 + (ulong)industry.WorkersYesterday;
+            if (industry.Type == _batteryType) h = h * 31 + (industry.OutOfAmmo ? 1UL : 0UL);
         }
         h = h * 31 + BitConverter.SingleToUInt32Bits(_freeGrid) + (ulong)Company.PowerPurchase;
         foreach (var b in _buildings)

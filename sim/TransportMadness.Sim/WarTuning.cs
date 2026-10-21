@@ -9,6 +9,7 @@ public sealed record WarTuning
     public required ConscriptionTuning Conscription { get; init; }
     public required RequisitionTuning Requisition { get; init; }
     public required BombingTuning Bombing { get; init; }
+    public required AntiAircraftTuning AntiAircraft { get; init; }
 
     internal void Validate(Tuning tuning)
     {
@@ -63,7 +64,50 @@ public sealed record WarTuning
             throw new JsonException("war.bombing: shares and chances must be 0 to 1");
         if (b.IndustryDownDays < 0 || b.IndustryMaxDownDays < b.IndustryDownDays || b.GatewayDownDays < 0 || b.StationDownDays < 0 || b.DepotDownDays < 0 || b.CarPeople < 0 || b.TownLossPerBuilding < 0f || b.CraterRadius < 0f)
             throw new JsonException("war.bombing: days, people and radii must not be negative and the most an industry is down must be at least one bomb's worth");
+        var aa = AntiAircraft;
+        if (!types.Contains(aa.Type)) throw new JsonException($"war.antiAircraft: unknown industry type '{aa.Type}'");
+        if (tuning.Industries.Types.First(t => t.Id == aa.Type).Inputs.Count == 0) throw new JsonException("war.antiAircraft: the battery type needs an input, the ammunition it fires");
+        if (aa.FromMonth < 0 || aa.ExpectMonth < 0 || aa.Price <= 0 || aa.UpkeepPerMonth < 0)
+            throw new JsonException("war.antiAircraft: the months must not be negative, the price positive");
+        if (aa.Clearance < 0f || aa.BuildingClearance < 0f || aa.MaxHeightRange < 0f || aa.Range <= 0f || aa.AmmoPerSalvo <= 0f)
+            throw new JsonException("war.antiAircraft: the clearances must not be negative, range and ammoPerSalvo positive");
+        if (aa.HitChance < 0f || aa.HitChance > 1f || aa.FallCarry < 0f || aa.FallCraterChance < 0f || aa.FallCraterChance > 1f || aa.StrongCover < 0f || aa.StrongCover > 1f)
+            throw new JsonException("war.antiAircraft: chances and shares must be 0 to 1");
+        if (aa.ScatterGrowth < 0f || aa.ScatterCap < 1f || aa.EarlyRelease < 0f || aa.CoverSaturation <= 0f)
+            throw new JsonException("war.antiAircraft: scatterGrowth and earlyRelease must not be negative, scatterCap at least 1, coverSaturation positive");
     }
+}
+
+/// <summary>The anti-aircraft batteries (C13): what one costs and where it may stand, how it fires, and what its fire does to the raids.</summary>
+public sealed record AntiAircraftTuning
+{
+    /// <summary>The id of the industry type that is a battery.</summary>
+    public required string Type { get; init; }
+    /// <summary>The month (0 is the first January) from which a battery can be built, and the month the player is told that raids are expected.</summary>
+    public required int FromMonth { get; init; }
+    public required int ExpectMonth { get; init; }
+    public required long Price { get; init; }
+    public required long UpkeepPerMonth { get; init; }
+    /// <summary>Metres a battery's middle must be from the middle of every other industry, gateway and battery, and from the middle of any building.</summary>
+    public required float Clearance { get; init; }
+    public required float BuildingClearance { get; init; }
+    /// <summary>Highest minus lowest ground under it.</summary>
+    public required float MaxHeightRange { get; init; }
+    /// <summary>Metres from the battery within which it fires at an aircraft.</summary>
+    public required float Range { get; init; }
+    /// <summary>The chance per second that a battery with its jobs filled brings down an aircraft in range, and the ammunition a second of firing costs.</summary>
+    public required float HitChance { get; init; }
+    public required float AmmoPerSalvo { get; init; }
+    /// <summary>A downed aircraft goes on this share of the way it would have flown while falling, and leaves a crater with this chance.</summary>
+    public required float FallCarry { get; init; }
+    public required float FallCraterChance { get; init; }
+    /// <summary>Under fire a flight's bombs scatter 1 + <see cref="ScatterGrowth"/> times the fire pressure as much (at most <see cref="ScatterCap"/> times) and are let go <see cref="EarlyRelease"/> metres early at a pressure of 1.</summary>
+    public required float ScatterGrowth { get; init; }
+    public required float ScatterCap { get; init; }
+    public required float EarlyRelease { get; init; }
+    /// <summary>The cover of a place is the staffing of the working batteries that reach it over this, at most 1; the enemy wants a place with full cover <see cref="StrongCover"/> times as much.</summary>
+    public required float CoverSaturation { get; init; }
+    public required float StrongCover { get; init; }
 }
 
 /// <summary>What the Region's imports of some cargo cost and how big a shipment is, in each phase of the war.</summary>

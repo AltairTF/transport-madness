@@ -171,6 +171,9 @@ public readonly record struct LoggedCommand(long Tick, SimCommand Command);
 /// <summary>Asks the government for a shipment of an imported cargo (by its id) at a gateway, paying for it now; it arrives after the shipment time. Result: 1, 0 when refused (see <see cref="Simulation.WhyNotImport"/>).</summary>
 public sealed record RequestImportCommand(int Gateway, string Cargo) : SimCommand;
 
+/// <summary>Builds an anti-aircraft battery (C13) on the ground at (X, Z), from the month the guns are available. Result: the id of the industry that is the battery, -1 when refused (see <see cref="Simulation.WhyNotBattery"/>).</summary>
+public sealed record BuildBatteryCommand(float X, float Z) : SimCommand;
+
 /// <summary>Takes up an order the government has offered (C5); the clock to its deadline starts now. Result: 1, 0 when refused (see <see cref="Simulation.WhyNotAccept"/>).</summary>
 public sealed record AcceptOrderCommand(int Order) : SimCommand;
 

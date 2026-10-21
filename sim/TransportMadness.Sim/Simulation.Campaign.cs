@@ -53,6 +53,7 @@ public sealed partial class Simulation
     {
         if (Company.CampaignOver) return;
         ChargePower();
+        ChargeBatteries();
         long month = MonthIndex; // the month that is ending (Day has not moved on yet, see CloseDay)
         var phase = _campaign.PhaseOf(month);
         float before = Company.Standing;
@@ -78,6 +79,7 @@ public sealed partial class Simulation
             allocation = (long)MathF.Round(_campaign.PhaseOf(month + 1).Allocation * _campaign.AllocationFactor(Company.Standing));
             Earn(allocation, LedgerEntry.Allocation);
             WarNewsForMonth(month + 1);
+            DefenceNewsForMonth(month + 1);
             ConscriptionForMonth(month + 1);
             RequisitionForMonth(month + 1);
             WarnAboutStanding();

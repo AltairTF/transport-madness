@@ -192,7 +192,7 @@
   // twice the change).
   "war": {
     "rationing": {
-      "cargo": ["oil", "fuel", "rubber"],
+      "cargo": ["oil", "fuel", "rubber", "ammunition"],
       "phases": [
         { "phase": "rearmament", "priceFactor": 1.0, "unitsFactor": 1.0 },
         { "phase": "mobilisation", "priceFactor": 1.25, "unitsFactor": 0.85 },
@@ -291,7 +291,8 @@
         { "type": "ironmine", "value": 4 },
         { "type": "cementworks", "value": 3 },
         { "type": "sawmill", "value": 3 },
-        { "type": "foodplant", "value": 3 }
+        { "type": "foodplant", "value": 3 },
+        { "type": "antiaircraft", "value": 8 }
       ],
       "defaultIndustryValue": 2,
       "gatewayValue": 6,
@@ -301,6 +302,36 @@
       "signalValue": 3,
       "damagedFactor": 0.15,
       "idleFactor": 0.4
+    },
+    // Anti-aircraft (C13): from month 'fromMonth' (September 1939) the player can place a battery (the industry type 'type') for 'price' and
+    // 'upkeepPerMonth', on level dry ground at least 'clearance' metres from every other industry, gateway and battery and 'buildingClearance'
+    // from any building, with no road or track under it. A news item announces it then, and another at 'expectMonth' that raids are expected.
+    // A battery fires at every aircraft within 'range' metres, once a second a salvo that costs 'ammoPerSalvo' of its ammunition (none: no
+    // fire); each salvo has a chance 'hitChance' times the battery's staffing to bring the aircraft down, several batteries together
+    // 1 - the product of what each misses. A downed aircraft falls for as long as a bomb takes, carrying on 'fallCarry' of the way it would
+    // have flown meanwhile, and leaves a crater with 'fallCraterChance'. Fire pressure on a flight is the staffing of the batteries that fire at it:
+    // its bombs then scatter (1 + scatterGrowth * pressure) times as much, at most scatterCap times, and are let go 'earlyRelease' metres early
+    // at a pressure of 1 or more, so they fall short. The enemy's wish for a target is multiplied by 1 - (1 - strongCover) * cover, where cover is
+    // the staffing of the working batteries that reach it, over coverSaturation, at most 1.
+    "antiAircraft": {
+      "type": "antiaircraft",
+      "fromMonth": 20,
+      "expectMonth": 40,
+      "price": 45000,
+      "upkeepPerMonth": 3000,
+      "clearance": 120.0,
+      "buildingClearance": 30.0,
+      "maxHeightRange": 3.0,
+      "range": 700.0,
+      "hitChance": 0.12,
+      "ammoPerSalvo": 1.0,
+      "fallCarry": 0.3,
+      "fallCraterChance": 1.0,
+      "scatterGrowth": 1.5,
+      "scatterCap": 3.0,
+      "earlyRelease": 150.0,
+      "coverSaturation": 2.0,
+      "strongCover": 0.5
     }
   },
 
@@ -522,7 +553,9 @@
     { "id": "engines", "name": "Engines", "payPerUnitKm": 45.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 100.0 },
     { "id": "bodies", "name": "Truck bodies", "payPerUnitKm": 38.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 100.0 },
     { "id": "tyres", "name": "Tyres", "payPerUnitKm": 40.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 },
-    { "id": "trucks", "name": "Military trucks", "payPerUnitKm": 70.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 60.0 }
+    { "id": "trucks", "name": "Military trucks", "payPerUnitKm": 70.0, "freeSeconds": 1200.0, "zeroSeconds": 5000.0, "minPayShare": 0.5, "supplyPerDay": 0.0, "maxWaiting": 60.0 },
+    // Ammunition (C13): imported only, for the anti-aircraft batteries; nothing here makes it and nothing exports it.
+    { "id": "ammunition", "name": "Ammunition", "payPerUnitKm": 30.0, "freeSeconds": 900.0, "zeroSeconds": 4000.0, "minPayShare": 0.4, "supplyPerDay": 0.0, "maxWaiting": 200.0 }
   ],
 
 
@@ -682,9 +715,9 @@
     "counts": {
       // One deposit of each and one steel mill, whatever the setting: the second mill would have no deposits within reach.
       // The engine works, body works, tyre works and truck plant are founded by the government's orders (C5), not made with the map.
-      "few":    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
-      "normal": [2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
-      "many":   [3, 2, 3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 1]
+      "few":    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0],
+      "normal": [2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0],
+      "many":   [3, 2, 3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0]
     },
     "types": [
       { "id": "forest", "name": "Forest", "size": 30.0, "height": 8.0, "output": "wood", "deposit": false, "perMonth": 900.0, "maxOutput": 600.0, "inputs": [], "maxInput": 0.0, "jobs": 0, "demand": 0.0, "supply": 0.0, "color": [0.20, 0.45, 0.22] },
@@ -705,7 +738,9 @@
       { "id": "tyreworks", "name": "Tyre works", "size": 20.0, "height": 10.0, "output": "tyres", "deposit": false, "perMonth": 720.0, "maxOutput": 600.0, "inputs": [{ "cargo": "rubber", "amount": 1.0 }], "maxInput": 600.0, "jobs": 0, "demand": 3.0, "supply": 0.0, "color": [0.10, 0.10, 0.12] },
       { "id": "truckplant", "name": "Truck plant", "size": 30.0, "height": 16.0, "output": "trucks", "deposit": false, "perMonth": 180.0, "maxOutput": 200.0, "inputs": [{ "cargo": "engines", "amount": 1.0 }, { "cargo": "bodies", "amount": 1.0 }, { "cargo": "tyres", "amount": 4.0 }], "maxInput": 800.0, "jobs": 60, "demand": 6.0, "supply": 0.0, "color": [0.30, 0.40, 0.24] },
       // Power (C6): a plant burns coal and adds megawatts to the whole region while it has it. It makes no cargo (output "").
-      { "id": "powerplant", "name": "Power plant", "size": 26.0, "height": 22.0, "output": "", "deposit": false, "perMonth": 300.0, "maxOutput": 0.0, "inputs": [{ "cargo": "coal", "amount": 1.0 }], "maxInput": 600.0, "jobs": 20, "demand": 0.0, "supply": 20.0, "color": [0.62, 0.58, 0.30] }
+      { "id": "powerplant", "name": "Power plant", "size": 26.0, "height": 22.0, "output": "", "deposit": false, "perMonth": 300.0, "maxOutput": 0.0, "inputs": [{ "cargo": "coal", "amount": 1.0 }], "maxInput": 600.0, "jobs": 20, "demand": 0.0, "supply": 20.0, "color": [0.62, 0.58, 0.30] },
+      // Anti-aircraft (C13): a battery the player places (see war.antiAircraft). It makes nothing; its input is the ammunition it fires, its jobs are filled by residents.
+      { "id": "antiaircraft", "name": "Anti-aircraft battery", "size": 14.0, "height": 6.0, "output": "", "deposit": false, "perMonth": 0.0, "maxOutput": 0.0, "inputs": [{ "cargo": "ammunition", "amount": 1.0 }], "maxInput": 120.0, "jobs": 20, "demand": 0.0, "supply": 0.0, "color": [0.34, 0.38, 0.30] }
     ]
   },
 
@@ -732,11 +767,12 @@
     // What can be imported, the units of one shipment and the price per unit, dearer than making it here (the pay for hauling a
     // unit a few kilometres is 40 to 60). Oil and rubber are not made in the Region at all.
     "imports": [
-      { "cargo": "coal",   "units": 200, "pricePerUnit": 60 },
-      { "cargo": "ore",    "units": 200, "pricePerUnit": 60 },
-      { "cargo": "oil",    "units": 100, "pricePerUnit": 80 },
-      { "cargo": "rubber", "units": 100, "pricePerUnit": 110 },
-      { "cargo": "fuel",   "units": 100, "pricePerUnit": 100 }
+      { "cargo": "coal",   "units": 200, "pricePerUnit": 60, "fromMonth": 0 },
+      { "cargo": "ore",    "units": 200, "pricePerUnit": 60, "fromMonth": 0 },
+      { "cargo": "oil",    "units": 100, "pricePerUnit": 80, "fromMonth": 0 },
+      { "cargo": "rubber", "units": 100, "pricePerUnit": 110, "fromMonth": 0 },
+      { "cargo": "fuel",   "units": 100, "pricePerUnit": 100, "fromMonth": 0 },
+      { "cargo": "ammunition", "units": 60, "pricePerUnit": 90, "fromMonth": 20 }
     ],
     // What a gateway takes from the Region's vehicles (cargo it accepts at a station that covers it).
     "exports": ["wood", "planks", "stone", "materials", "grain", "food", "goods", "coal", "ore", "steel", "fuel", "engines", "bodies", "tyres", "trucks"]

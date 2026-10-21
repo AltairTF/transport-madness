@@ -10,11 +10,12 @@ namespace TransportMadness;
 /// respected. Aircraft are small low-poly models moved along their straight path (<see cref="Simulation.AircraftPoint"/>), each bomb falls from the
 /// flying height to its exact impact point over the simulation's own time (<see cref="Simulation.BombPoint"/>), and a bomb that has landed leaves a
 /// flash and a dark scar. What the bomb did (a dark industry, a shut gateway, destroyed buildings, wrecks, craters) is drawn from the state as
-/// before; this is the picture of the flight, with no people in it.
+/// before; this is the picture of the flight, with no people in it. An aircraft the anti-aircraft brings down (C13) is hidden from its formation, a puff
+/// of smoke marks where it was hit, and it falls as a tumbling model along <see cref="Simulation.FallPoint"/> until it lands in a flash.
 /// </summary>
 public partial class SimHost
 {
-    const float FlashSeconds = 1.2f, ScarSeconds = 90f;
+    const float FlashSeconds = 1.2f, ScarSeconds = 90f, PuffSeconds = 3f;
 
     sealed class FlightNodes
     {
@@ -23,14 +24,16 @@ public partial class SimHost
 
     readonly Dictionary<int, FlightNodes> _flightNodes = new();
     readonly Dictionary<int, MeshInstance3D> _bombNodes = new();
+    readonly Dictionary<int, Node3D> _fallNodes = new();
+    readonly List<(MeshInstance3D Puff, double Age)> _puffs = new();
     readonly List<(MeshInstance3D Flash, double Age)> _flashes = new();
     readonly List<(MeshInstance3D Scar, double Age)> _scars = new();
     Node3D? _raidRoot;
     int _impactsSeen;
     Mesh? _fuselageMesh, _wingMesh, _tailMesh;
-    SphereMesh? _bombMesh, _flashMesh;
+    SphereMesh? _bombMesh, _flashMesh, _puffMesh;
     CylinderMesh? _scarMesh;
-    StandardMaterial3D? _aircraftMaterial, _bombMaterial, _flashMaterial, _scarMaterial;
+    StandardMaterial3D? _aircraftMaterial, _bombMaterial, _flashMaterial, _scarMaterial, _puffMaterial;
 
     /// <summary>
     /// The flights in the air, for the HUD's warning: for each {id, aircraft, direction ("north-east"), seconds (until the first is over the target, 0 once
@@ -62,7 +65,28 @@ public partial class SimHost
         _bombMaterial = new StandardMaterial3D { AlbedoColor = new Color(0.1f, 0.1f, 0.12f) };
         _flashMaterial = new StandardMaterial3D { AlbedoColor = new Color(1f, 0.65f, 0.2f), EmissionEnabled = true, Emission = new Color(1f, 0.55f, 0.15f), EmissionEnergyMultiplier = 3f };
         _scarMaterial = new StandardMaterial3D { AlbedoColor = new Color(0.08f, 0.07f, 0.06f) };
+        _puffMesh = new SphereMesh { Radius = 3f, Height = 6f };
+        _puffMaterial = new StandardMaterial3D { AlbedoColor = new Color(0.35f, 0.35f, 0.37f, 0.8f), Transparency = BaseMaterial3D.TransparencyEnum.Alpha };
     }
+
+    /// <summary>
+    /// What a click would do with the anti-aircraft tool (C13): {valid, why (what is wrong, "" when nothing), x, y, z, size (half the side of the square it stands on), price, upkeep (a month), range (metres),
+    /// affordable, available (the guns can be built yet), from_month}.
+    /// </summary>
+    public Godot.Collections.Dictionary BatteryPreview(float x, float z)
+    {
+        var a = Sim.AntiAircraft;
+        string? why = Sim.WhyNotBattery(x, z);
+        return new Godot.Collections.Dictionary
+        {
+            ["valid"] = why == null, ["why"] = why ?? "", ["x"] = x, ["y"] = HeightAt(x, z), ["z"] = z, ["size"] = Sim.IndustryTuning.Types[Sim.BatteryType].Size,
+            ["price"] = a.Price, ["upkeep"] = a.UpkeepPerMonth, ["range"] = a.Range, ["affordable"] = Sim.CanAfford(a.Price),
+            ["available"] = Sim.MonthIndex >= a.FromMonth, ["from_month"] = a.FromMonth,
+        };
+    }
+
+    /// <summary>Builds an anti-aircraft battery at a place; false when refused, and <see cref="BatteryPreview"/> says why.</summary>
+    public bool BuildBattery(float x, float z) => Sim.Execute(new BuildBatteryCommand(x, z)) >= 0;
 
     Node3D NewAircraft()
     {
@@ -106,6 +130,7 @@ public partial class SimHost
                 var (x, z) = Sim.AircraftPoint(flight, a, stepFraction);
                 nodes.Aircraft[a].Position = new Vector3(x, GroundAt(x, z) + flight.Altitude, z);
                 nodes.Aircraft[a].Rotation = new Vector3(0f, -flight.Heading, 0f);
+                nodes.Aircraft[a].Visible = !flight.IsDown(a); // one the anti-aircraft brought down has left the formation
             }
         }
         if (_flightNodes.Count > Sim.Flights.Count)
@@ -122,6 +147,44 @@ public partial class SimHost
                 foreach (var plane in _flightNodes[id].Aircraft) plane.QueueFree();
                 _flightNodes.Remove(id);
             }
+        }
+
+        // The aircraft the anti-aircraft has hit: a puff where it was, then it falls, tumbling, to the ground.
+        var coming = new HashSet<int>();
+        foreach (var fall in Sim.FallingAircraft)
+        {
+            coming.Add(fall.Id);
+            if (!_fallNodes.TryGetValue(fall.Id, out var plane))
+            {
+                plane = NewAircraft();
+                _raidRoot.AddChild(plane);
+                _fallNodes[fall.Id] = plane;
+                var puff = new MeshInstance3D { Mesh = _puffMesh, MaterialOverride = _puffMaterial, Position = new Vector3(fall.FromX, GroundAt(fall.FromX, fall.FromZ) + fall.Altitude, fall.FromZ) };
+                _raidRoot.AddChild(puff);
+                _puffs.Add((puff, 0));
+            }
+            var (fx, height, fz) = Sim.FallPoint(fall, stepFraction);
+            float spent = (Sim.Tick + stepFraction - fall.HitTick) / (float)(fall.LandTick - fall.HitTick);
+            plane.Position = new Vector3(fx, GroundAt(fx, fz) + height, fz);
+            plane.Basis = new Basis(Vector3.Up, -fall.Heading) * new Basis(Vector3.Back, -0.2f - 0.9f * spent) * new Basis(Vector3.Right, spent * 9f);
+        }
+        if (_fallNodes.Count > coming.Count)
+        {
+            var landed = new List<int>();
+            foreach (var id in _fallNodes.Keys) if (!coming.Contains(id)) landed.Add(id);
+            foreach (int id in landed)
+            {
+                _fallNodes[id].QueueFree();
+                _fallNodes.Remove(id);
+            }
+        }
+        for (int k = _puffs.Count - 1; k >= 0; k--)
+        {
+            var (puff, age) = _puffs[k];
+            age += aging;
+            if (age >= PuffSeconds) { puff.QueueFree(); _puffs.RemoveAt(k); continue; }
+            puff.Scale = Vector3.One * (1f + 5f * (float)(age / PuffSeconds));
+            _puffs[k] = (puff, age);
         }
 
         // The bombs in the air: each from where it was let go to where it will land, on the simulation's time.

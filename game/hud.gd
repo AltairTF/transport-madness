@@ -83,6 +83,8 @@ const TOOL_CATEGORIES := [
 		["Station", "station", "Build a station on a road."],
 		["Station with bays", "station_bays", "Build a station where loading vehicles pull out of the lane, so they do not hold up the road. Costs more to build and keep."],
 		["New line", "line", "Click stations in order, then press Enter."]]},
+	{"name": "Defence", "tools": [
+		["Anti-aircraft", "battery", "Build an anti-aircraft battery on free level ground. It needs people to man it and ammunition from a gateway, and fires at aircraft within its range. From month 20."]]},
 ]
 ## Windows opened from the top bar. A page of null text is built by its own code (Company, Lines).
 const WINDOWS := [
@@ -1086,7 +1088,9 @@ func show_industries(industries: Array) -> void:
 			title += "   (deposit)"
 		var text := "%s\nmakes %s   %d of %d waiting for a truck   %d made so far" % [
 			title, industry["output"], industry["stock"], industry["max_output"], industry["produced"]]
-		if industry.get("supply", 0.0) > 0.0:
+		if industry.get("battery", false):
+			text = "%s\nfires at aircraft within %d m   ammunition for %d seconds of fire" % [title, roundi(industry["range"]), roundi(industry["fire_seconds"])]
+		elif industry.get("supply", 0.0) > 0.0:
 			text = "%s\ngives %d MW to the region while it has coal (now %d MW)   %d coal burned so far" % [
 				title, roundi(industry["supply"]), roundi(industry["supply"] * industry["load"]), industry["produced"]]
 		elif industry.get("demand", 0.0) > 0.0:

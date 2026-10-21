@@ -28,6 +28,7 @@ public sealed class Flight
         BombsEach = bombsEach;
         Next = new int[aircraft];
         Aim = new float[aircraft];
+        Down = new bool[aircraft];
     }
 
     public int Id { get; }
@@ -35,8 +36,11 @@ public sealed class Flight
     /// <summary>How many aircraft fly.</summary>
     public int Aircraft { get; }
     public int BombsEach { get; }
-    /// <summary>Bombs the flight will drop in all and bombs it has dropped so far.</summary>
-    public int BombsPlanned => Aircraft * BombsEach;
+    /// <summary>Bombs the flight will drop in all (less the ones an aircraft shot down never let go of) and bombs it has dropped so far.</summary>
+    public int BombsPlanned => Aircraft * BombsEach - BombsLost;
+    /// <summary>Aircraft the anti-aircraft has brought down so far (C13), and whether the aircraft at an index is one of them.</summary>
+    public int ShotDown { get; internal set; }
+    public bool IsDown(int aircraft) => Down[aircraft];
     public int BombsDropped { get; internal set; }
     public FlightPhase Phase => BombsDropped == 0 ? FlightPhase.Approaching : BombsDropped < BombsPlanned ? FlightPhase.Over : FlightPhase.Leaving;
     /// <summary>Metres per second and metres above the ground.</summary>
@@ -70,6 +74,8 @@ public sealed class Flight
     internal float Lead;
     internal readonly int[] Next;
     internal readonly float[] Aim;
+    internal readonly bool[] Down;
+    internal int BombsLost;
     internal SimRandom Rng = null!;
     internal int InFlight;
     internal int Buildings, Wrecks, Craters, IndustriesHit, GatewaysHit, StationsShut, DepotsShut, SignalsFailed;
@@ -105,8 +111,42 @@ public sealed class Bomb
     public float Altitude { get; }
 }
 
-/// <summary>A bomb that has landed, for the picture of the flash and the scar (the effect on the world is already in the state).</summary>
+/// <summary>A bomb that has landed (or an aircraft that has crashed), for the picture of the flash and the scar (the effect on the world is already in the state).</summary>
 public readonly record struct Impact(int Id, long Tick, float X, float Z, int Flight);
+
+/// <summary>An aircraft the anti-aircraft has brought down (C13), on its way to the ground.</summary>
+public sealed class FallingAircraft
+{
+    internal FallingAircraft(int id, int flight, int aircraft, long hitTick, long landTick, float fromX, float fromZ, float toX, float toZ, float altitude, float heading)
+    {
+        Id = id;
+        Flight = flight;
+        Aircraft = aircraft;
+        HitTick = hitTick;
+        LandTick = landTick;
+        FromX = fromX;
+        FromZ = fromZ;
+        ToX = toX;
+        ToZ = toZ;
+        Altitude = altitude;
+        Heading = heading;
+    }
+
+    public int Id { get; }
+    public int Flight { get; }
+    /// <summary>Its index in the flight.</summary>
+    public int Aircraft { get; }
+    public long HitTick { get; }
+    public long LandTick { get; }
+    /// <summary>Where it was hit and where it will come down.</summary>
+    public float FromX { get; }
+    public float FromZ { get; }
+    public float ToX { get; }
+    public float ToZ { get; }
+    /// <summary>The height it was hit at, and the way it was heading.</summary>
+    public float Altitude { get; }
+    public float Heading { get; }
+}
 
 /// <summary>
 /// Raids (C9d, made into flights in C12): from the winter of 1942 enemy bombers come in from one side of the map at random moments. A flight picks
@@ -134,6 +174,7 @@ public sealed partial class Simulation
     readonly List<Bomb> _bombs = new();
     readonly List<Impact> _impacts = new();
     int _impactBase;
+    readonly List<FallingAircraft> _falling = new();
 
     /// <summary>Flights launched so far.</summary>
     public int Raids => _raids;
@@ -151,6 +192,8 @@ public sealed partial class Simulation
     public IReadOnlyList<Impact> Impacts => _impacts;
     public int ImpactCount => _impactBase + _impacts.Count;
     public int ImpactsDropped => _impactBase;
+    /// <summary>The aircraft the anti-aircraft has brought down that are still falling, in the order they were hit.</summary>
+    public IReadOnlyList<FallingAircraft> FallingAircraft => _falling;
     /// <summary>The side of the map the aircraft come from in this game, 0 (north) to 7 (north-west) clockwise, and its name. North is toward negative z, east toward positive x.</summary>
     public int RaidDirection => _raidDirection;
     public static string DirectionName(int direction) => Directions[direction];
@@ -254,12 +297,6 @@ public sealed partial class Simulation
 
     readonly record struct RaidCandidate(RaidTargetKind Kind, int Id, float X, float Z, float Weight, string Name);
 
-    /// <summary>
-    /// How much the anti-aircraft cover of a place lowers the enemy's wish to bomb it, as a factor to multiply the weight by (C13). 1 for now:
-    /// nothing defends anything.
-    /// </summary>
-    float DefenceFactor(float x, float z) => 1f;
-
     /// <summary>Everything a flight could go for, in a fixed order, with the weight the enemy gives it: its value, less when it is down already or idle.</summary>
     List<RaidCandidate> RaidCandidates()
     {
@@ -274,9 +311,10 @@ public sealed partial class Simulation
         foreach (var industry in _industries)
         {
             var type = _industryTuning.Types[industry.Type];
-            bool idle = false;
-            foreach (var (cargo, amount) in _industryInputs[industry.Type])
-                if (industry.Input[cargo] < amount) idle = true;
+            bool idle = false; // a battery without ammunition is not idle to the enemy, which cannot see its stock
+            if (industry.Type != _batteryType)
+                foreach (var (cargo, amount) in _industryInputs[industry.Type])
+                    if (industry.Input[cargo] < amount) idle = true;
             Add(RaidTargetKind.Industry, industry.Id, industry.X, industry.Z, b.ValueOf(type.Id), industry.DamagedUntil > Tick, idle, type.Name);
         }
         foreach (var gateway in _gateways)
@@ -379,7 +417,7 @@ public sealed partial class Simulation
     /// <summary>One step of the bombing: the bombs that land now do what they do, then the aircraft fly on and let go of the bombs whose time it is.</summary>
     void StepFlights()
     {
-        if (_flights.Count == 0 && _bombs.Count == 0) return;
+        if (_flights.Count == 0 && _bombs.Count == 0 && _falling.Count == 0) return;
         while (_bombs.Count > 0 && _bombs[0].ImpactTick <= Tick)
         {
             var bomb = _bombs[0];
@@ -388,7 +426,9 @@ public sealed partial class Simulation
             owner.InFlight--;
             Land(owner, bomb.ImpactX, bomb.ImpactZ);
         }
+        while (_falling.Count > 0 && _falling[0].LandTick <= Tick) Crash(_falling[0]);
         var b = _war.Bombing;
+        var batteries = Batteries();
         for (int f = 0; f < _flights.Count; f++)
         {
             var flight = _flights[f];
@@ -399,8 +439,9 @@ public sealed partial class Simulation
                 AddEvent(SimEventKind.Raid, EventSeverity.Serious, flight.TargetX, flight.TargetZ, flight.Id,
                     $"Air raid: the aircraft are heading for the {flight.TargetName.ToLowerInvariant()}, over it in {flight.SecondsToTarget:0} s");
             }
+            if (batteries.Count > 0) Defend(flight, batteries);
             ReleaseBombs(flight);
-            bool gone = flight.Travelled - (flight.Aircraft - 1) * b.TrailSpacing >= flight.Length;
+            bool gone = flight.Travelled - (flight.Aircraft - 1) * b.TrailSpacing >= flight.Length || flight.ShotDown == flight.Aircraft;
             if (gone && flight.BombsDropped == flight.BombsPlanned && flight.InFlight == 0)
             {
                 EndFlight(flight);
@@ -416,16 +457,20 @@ public sealed partial class Simulation
         long fall = FallTicks();
         for (int a = 0; a < flight.Aircraft; a++)
         {
+            if (flight.Down[a] || flight.Next[a] >= flight.BombsEach) continue;
             float along = flight.Travelled - a * b.TrailSpacing;
+            var (fx, fz) = AircraftPoint(flight, a);
+            // Under fire the bombs scatter more and are let go early, so that they fall short (C13); without batteries both are nothing.
+            float pressure = FirePressure(fx, fz);
+            float scatter = ScatterFactor(pressure), early = EarlyRelease(pressure);
             while (flight.Next[a] < flight.BombsEach)
             {
                 int k = flight.Next[a];
                 float place = (k - (flight.BombsEach - 1) * 0.5f) * b.BombSpacing;
-                if (along < flight.TargetDistance + place - flight.Lead) break;
+                if (along < flight.TargetDistance + place - flight.Lead - early) break;
                 flight.Next[a]++;
-                float across = WingOffset(a) + flight.Aim[a] + (flight.Rng.NextFloat() * 2f - 1f) * b.Scatter;
-                float ahead = flight.TargetDistance + place + (flight.Rng.NextFloat() * 2f - 1f) * b.ScatterAlong;
-                var (fx, fz) = AircraftPoint(flight, a);
+                float across = WingOffset(a) + flight.Aim[a] + (flight.Rng.NextFloat() * 2f - 1f) * b.Scatter * scatter;
+                float ahead = flight.TargetDistance + place - early + (flight.Rng.NextFloat() * 2f - 1f) * b.ScatterAlong * scatter;
                 var bomb = new Bomb(_bombsDropped++, flight.Id, Tick, Tick + fall, fx, fz,
                     flight.EntryX + flight.DirX * ahead - flight.DirZ * across, flight.EntryZ + flight.DirZ * ahead + flight.DirX * across, flight.Altitude);
                 _bombs.Add(bomb);
@@ -444,6 +489,7 @@ public sealed partial class Simulation
         if (flight.GatewaysHit > 0) parts.Add($"{flight.GatewaysHit} gateways hit");
         if (flight.StationsShut > 0) parts.Add($"{flight.StationsShut} stations shut");
         if (flight.DepotsShut > 0) parts.Add($"{flight.DepotsShut} depots shut");
+        if (flight.ShotDown > 0) parts.Add($"{flight.ShotDown} aircraft shot down");
         if (flight.Wrecks > 0) parts.Add($"{flight.Wrecks} vehicles lost");
         if (flight.SignalsFailed > 0) parts.Add($"{flight.SignalsFailed} signals failed");
         if (flight.Craters > 0) parts.Add($"{flight.Craters} craters in the roads");
@@ -457,12 +503,7 @@ public sealed partial class Simulation
     void Land(Flight flight, float x, float z)
     {
         float radius = _war.Bombing.BlastRadius;
-        _impacts.Add(new Impact(ImpactCount, Tick, x, z, flight.Id));
-        if (_impacts.Count > ImpactsKept + 50)
-        {
-            _impacts.RemoveRange(0, 50);
-            _impactBase += 50;
-        }
+        AddImpact(x, z, flight.Id);
         BlastBuildings(flight, x, z, radius);
         BlastIndustries(flight, x, z, radius);
         BlastGateways(flight, x, z, radius);
@@ -470,7 +511,17 @@ public sealed partial class Simulation
         BlastDepots(flight, x, z, radius);
         BlastSignal(flight, x, z, radius);
         BlastVehicles(flight, x, z, radius);
-        Crater(flight, x, z);
+        if (Crater(flight.Rng, x, z, _war.Bombing.CraterChance)) flight.Craters++;
+    }
+
+    void AddImpact(float x, float z, int flight)
+    {
+        _impacts.Add(new Impact(ImpactCount, Tick, x, z, flight));
+        if (_impacts.Count > ImpactsKept + 50)
+        {
+            _impacts.RemoveRange(0, 50);
+            _impactBase += 50;
+        }
     }
 
     /// <summary>For tests: a bomb of a flight of its own lands at a place at once. Returns the flight, which holds the tallies of what the bomb did.</summary>
@@ -653,20 +704,20 @@ public sealed partial class Simulation
         }
     }
 
-    /// <summary>With a chance the nearest road within reach gets a crater: debris across a lane that blocks it until a crew has cleared it, like a wreck.</summary>
-    void Crater(Flight flight, float x, float z)
+    /// <summary>With a chance the nearest road within reach gets a crater: debris across a lane that blocks it until a crew has cleared it, like a wreck. Whether it did.</summary>
+    bool Crater(SimRandom rng, float x, float z, float chance)
     {
         var b = _war.Bombing;
-        if (flight.Rng.NextFloat() >= b.CraterChance) return;
-        if (_net.RoadAt(x, z, b.CraterRadius) is not { } roadId) return;
+        if (rng.NextFloat() >= chance) return false;
+        if (_net.RoadAt(x, z, b.CraterRadius) is not { } roadId) return false;
         var road = _net.GetRoad(roadId);
-        bool back = flight.Rng.NextFloat() < 0.5f;
+        bool back = rng.NextFloat() < 0.5f;
         int lane = (back ? road.BackwardLanes : road.ForwardLanes)[0].Value;
         float length = _net.GetLane(new LaneId(lane)).Length;
-        if (length < 2f * _traffic.SpawnClearance) return;
+        if (length < 2f * _traffic.SpawnClearance) return false;
         float along = Math.Clamp(road.Geometry.NearestAlong(x, z) / MathF.Max(road.Length, 0.01f) * length, _traffic.SpawnClearance, length - _traffic.SpawnClearance);
         NewIncidentAt(IncidentKind.Bombing, lane, back ? length - along : along);
-        flight.Craters++;
+        return true;
     }
 
     ulong RaidHash()
@@ -701,6 +752,11 @@ public sealed partial class Simulation
                 h = h * 31 + (ulong)flight.Next[a];
                 MixF(flight.Aim[a]);
             }
+            if (flight.ShotDown > 0)
+            {
+                for (int a = 0; a < flight.Aircraft; a++) h = h * 31 + (flight.Down[a] ? 1UL : 0UL);
+                h = h * 31 + (ulong)flight.BombsLost;
+            }
             var (f0, f1, f2, f3) = flight.Rng.State;
             h ^= f0 ^ (f1 << 1) ^ (f2 << 2) ^ (f3 << 3);
         }
@@ -713,6 +769,7 @@ public sealed partial class Simulation
             MixF(bomb.ImpactX);
             MixF(bomb.ImpactZ);
         }
+        if (_defenceDraws > 0) h = h * 31 + DefenceHash();
         var (a0, b0, c0, d0) = _raidRng.State;
         return h ^ a0 ^ (b0 << 1) ^ (c0 << 2) ^ (d0 << 3);
     }

@@ -70,6 +70,7 @@ public sealed partial class Simulation
         int c = FindCargo(_net.Tuning, cargo);
         var offer = c < 0 ? null : _gatewayTuning.Imports.FirstOrDefault(i => i.Cargo == cargo);
         if (offer == null) return "The government does not send that";
+        if (MonthIndex < offer.FromMonth) return $"The government sends that from month {offer.FromMonth}";
         var g = _gateways[gateway];
         if (g.ArrivesAt[c] >= 0) return "A shipment is already on its way";
         if (Tick < g.AvailableAt[c]) return "Asked for too recently";

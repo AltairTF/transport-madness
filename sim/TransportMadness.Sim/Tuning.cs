@@ -470,6 +470,8 @@ public sealed record ImportTuning
     public required string Cargo { get; init; }
     public required int Units { get; init; }
     public required int PricePerUnit { get; init; }
+    /// <summary>The month (0 is the first January) from which the government sends it.</summary>
+    public required int FromMonth { get; init; }
 }
 
 public sealed record IndustriesTuning
