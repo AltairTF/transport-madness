@@ -32,3 +32,5 @@ Status: built (2026-10-20). Done when (game-plan.md): a mixed rail and road netw
 - Timetables (out of scope in the game plan), electrification, depots with servicing (M5), eras of locomotives (M6).
 - Double-track as a single object: two parallel tracks with crossovers do it.
 - Trains do not wear; no maintenance until M5.
+
+Note, 2026-10-21: depots with servicing and trains' wear were built in M5 (`m5-plan.md`, status 5.24), signal errors as a cause of incidents too, and the eras of locomotives were dropped for model years (ADR 0006: the steam locomotive of 1938 and the diesel of 1942, C8).

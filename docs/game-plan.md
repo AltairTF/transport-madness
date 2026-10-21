@@ -35,7 +35,7 @@ Procedural map from a seed: terrain, rivers, towns, industries. Small to medium 
 ### Construction
 Roads and rail as straight segments and circular arcs with angle and node snapping on a graph. Terrain adjusts automatically with a cost for cut and fill. No manual terraforming in the MVP. The lane graph is lane-level from day one even though early content has few road types.
 
-Road types: dirt, 2-lane paved, 2x2 avenue, with simple on-ramps. Later: highway, roundabout. Junction control: yield, stop, traffic light. Level crossings between rail and road are in the MVP. Per-road speed limits.
+Road types: dirt, 2-lane paved, 2x2 avenue, with simple on-ramps (as built: 2-lane paved and 2x2 avenue; dirt roads and on-ramps do not exist). Later: highway, roundabout. Junction control: yield, stop, traffic light. Level crossings between rail and road are in the MVP. Per-road speed limits.
 
 ### Vehicles and movement (ADR 0002)
 Kinematic microsimulation on the lane graph: car-following (IDM-style), lane changes, overtaking via the oncoming lane when it looks free, box-overlap collisions. Driver traits (patience, aggression, attention) make failed overtaking a natural outcome. Trains have consists with real length, acceleration and braking, curve and grade speed limits, block and path signals, and deadlock detection with a warning. No timetables in the MVP. As built (M4, ADR 0004): trains hold the track they run on and cannot hit each other, the signals decide who waits; trains are push-pull and turn round in stations. Jolt is used only to animate accident scenes.
@@ -60,7 +60,7 @@ Chains such as forest to sawmill to shop. Cargo types have different delay toler
 - Prices and tuning live in data files, not code.
 
 ### Maintenance and repair
-Vehicles and road sections have Condition (0-100). Vehicles lose Condition by distance and load; roads by traffic and weather. Low Condition raises breakdown and accident risk (bad brakes, potholes). The player sets a maintenance policy for the whole company, for a line or for one vehicle (visit a depot every X days or below a Condition, and which repair) or risks it; see `m5-plan.md`.
+Vehicles and road sections have Condition (0-100). Vehicles lose Condition by distance and load; roads by traffic (and weather, which is not built: M6 at the earliest). Low Condition raises breakdown and accident risk (bad brakes, potholes). The player sets a maintenance policy for the whole company, for a line or for one vehicle (visit a depot every X days or below a Condition, and which repair) or risks it; see `m5-plan.md`.
 
 Repairs:
 - Patch: cheap, fast, small gain, leaves a "patched" mark that wears faster. Any depot, or a road crew.
@@ -80,7 +80,7 @@ The three eras of 1900 to 2020 of the first plan are dropped (ADR 0006). Each ve
 Transport Fever style: Godot Control UI with mouse and keyboard, free orbit camera. Build toolbar, line window (stations, vehicles, stats), vehicle window, event panel (incidents). Map overlays for traffic density, incident risk, road Condition and station coverage.
 
 ### Art and audio
-Greybox with colors per category until M5, then asset packs plus AI-generated models for final visuals. Audio (engines, horns, crashes, ambience, music) at M6 from free libraries and/or generated audio, curated by the developer.
+Greybox with colors per category until M6 (art comes with it), then asset packs plus AI-generated models for final visuals. Audio (engines, horns, crashes, ambience, music) at M6 from free libraries and/or generated audio, curated by the developer.
 
 ### Save and load
 Snapshot of full simulation state plus seed.
@@ -91,7 +91,7 @@ Snapshot of full simulation state plus seed.
 - Data-oriented layout in hot loops (arrays of structs or parallel arrays, spatial grid, no allocation per step).
 - Multithreading only where it can be partitioned and ordered to stay deterministic.
 - Headless tests: same seed, same actions, same result across runs.
-- Content (vehicles, road types, prices, eras) in data files.
+- Content (vehicles with their model year, road types, prices) in data files.
 
 ## Milestones
 
@@ -120,4 +120,4 @@ Only after M0 passes do terrain, towns and economy start.
 Multiplayer, AI competitors, employee management (drivers, strikes), ships and aircraft (as vehicles to run), manual terraforming, timetables, stocks, a sandbox mode (the campaign is the only mode for now), weather (M6 at the earliest).
 
 ## Open items to decide at their milestone
-Starting money and difficulty presets, map size options, exact vehicle roster per era, scenario goals, tuning numbers (all in data files), tick rate fine-tuning after profiling.
+Starting money and difficulty presets, map size options, exact vehicle roster per model year, scenario goals, tuning numbers (all in data files), tick rate fine-tuning after profiling.

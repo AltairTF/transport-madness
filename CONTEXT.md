@@ -5,7 +5,7 @@ A 3D transport management game in the lineage of Transport Tycoon and Transport 
 ## Language
 
 **Company**:
-The player's transport business. Owns vehicles, stations and the money.
+The player's transport business. Owns vehicles, stations and the money. In the campaign the Player chairs the development committee of the Region and the Company is the transport business that committee runs.
 
 **Town**:
 A settlement made of buildings along a grid of streets that generate and consume passengers and goods. Grows when well served. Has a name and a Satisfaction.
@@ -40,10 +40,10 @@ At fixed months the army buys a share of the Company's vehicles and trains (frei
 From 1942 enemy aircraft bomb the Region at random moments: they stop an Industry for a few days, shut a Gateway, fail a rail Signal, destroy buildings of a Town and leave craters in the roads, which the crews clear like wrecks. Casualties are a number only. The frequency option scales how often.
 
 **Cargo**:
-Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
+Anything that is not people and is moved between industries and towns: wood, planks, stone, building materials, grain, food, goods, coal, iron ore, steel, fuel, engines, truck bodies, tyres, military trucks, and the Imported oil and rubber. Workers (people on their way to the jobs of a big Industry) are also a Cargo, carried only by workers' buses. A Station accepts a Cargo only when a Building or Industry in its radius uses it.
 
 **Satisfaction**:
-A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold (50) the Town stops growing. Has no effect on money before M5.
+A number from 0 to 100 for a Town. Falls when buildings are demolished for the Company's roads, when buildings are abandoned, and when the Sustain needs of its buildings go unmet. Below a threshold (50) the Town stops growing. It has no direct effect on money; it stops growth below the threshold, civil Orders raise or lower it, and the average of the Towns counts for 20 % of the final Grade.
 
 **Sustain stock / Construction stock**:
 What a Building holds of delivered Cargo. Sustain (food, goods, planks) is used up every month to meet its needs. Construction (building materials, planks) is spent to upgrade the Building or to found a new one next to it. Deliveries go to the Buildings within the coverage radius of the unloading Station, split by need.
@@ -181,7 +181,7 @@ A Signal that shows red for some minutes whatever the track beyond it, until a R
 **Frequency option**:
 Off, low, normal or high: scales the random breakdowns, signal failures and, in the campaign, random events and raids. It does not scale the incidents that come out of the driving (failed overtaking, junction crashes).
 
-**Campaign** (planned, ADR 0006):
+**Campaign** (ADR 0006):
 The game's one mode for now: the Player chairs the development committee of a Region of a fictional country at war, from January 1938 to December 1945, managing its military and civil industrialisation.
 
 **Country**:
@@ -191,34 +191,28 @@ Veldmar, the fictional republic that goes to war. Its neighbours are never named
 The map: a small part of the country (the Marren Valley), with Towns and Industries, joined to the rest of the world only by Gateways.
 
 **Phase**:
-A stretch of the campaign (Rearmament to August 1939, Mobilisation to December 1941, Total war 1942 to 1944, The end 1945) that sets the size of the Allocation and what the Government expects to be delivered, and (from C5) the mix of Orders.
+A stretch of the campaign (Rearmament to August 1939, Mobilisation to December 1941, Total war 1942 to 1944, The end 1945) that sets the size of the Allocation and what the Government expects to be delivered, and the mix of Orders.
 
 **Budget / Allocation / Advance**:
-The money the Player spends. Fares and cargo pay earn it; at the turn of every Month the Government adds an Allocation, the Phase's amount times a factor of the Standing (half at a Standing of 0, double at 100); the Advance (the old Loan) is borrowed from the ministry. Imports are paid from it, and it can go below zero, which costs Standing.
+The money the Player spends. Fares and cargo pay earn it; at the turn of every Month the Government adds an Allocation, the Phase's amount times a factor of the Standing (half at a Standing of 0, 1.0 at 50, one and a half at 100); the Advance (the old Loan) is borrowed from the ministry. Imports are paid from it, and it can go below zero, which costs Standing.
 
 **Standing**:
-A number from 0 to 100 for how the Government sees the Player, 60 at the start. Each Month it moves by what was delivered to the Gateways against what the Phase expects, falls for a deficit and for fines (and, from C5, rises with Orders met and falls with Orders failed). Under 20 for six Months in a row the Player is **dismissed** and the game ends. Competes with the Satisfaction of the Towns.
+A number from 0 to 100 for how the Government sees the Player, 60 at the start. Each Month it moves by what was delivered to the Gateways against what the Phase expects, falls for a deficit and for fines (and rises with Orders met and falls with Orders failed). Under 20 for six Months in a row the Player is **dismissed** and the game ends. Competes with the Satisfaction of the Towns.
 
 **Grade**:
 The end of the campaign in December 1945 gives one of four grades (Distinguished, Creditable, Adequate or Unsatisfactory service) from a score: half the Standing, 30 % the value delivered to the Gateways and 20 % the average Satisfaction of the Towns. Dismissal gives none.
 
 **Gateway**:
-A road or rail connection on the edge of the Region where goods come in and go out, one of each kind per map. Behaves like an Industry that a Station of its own mode covers: an Import shipment arrives there as stock to be carried inland, and Cargo a vehicle unloads there is exported (it pays like any delivery, and counts toward Orders from C5).
+A road or rail connection on the edge of the Region where goods come in and go out, one of each kind per map. Behaves like an Industry that a Station of its own mode covers: an Import shipment arrives there as stock to be carried inland, and Cargo a vehicle unloads there is exported (it pays like any delivery, and counts toward Orders).
 
 **Import shipment**:
 Cargo the Player asks the Government to send from outside the Region (coal, ore, oil, rubber, fuel), paid at once (from the Budget in the campaign) at a higher price per unit than the same Cargo produced locally. One at a time per Cargo and Gateway, it arrives after a delay as stock at the Gateway.
 
-**Power grid** (planned, C6):
-The Region's electricity as one capacity, not a Cargo and not a network of cables: power plants that are supplied with coal add megawatts, each Industry has a demand, a shortage lowers all outputs in proportion, and the Government sells power from outside by the month.
-
-**Staffing** (planned, C7):
-The share of the jobs of a big Industry that are filled by residents, who get there on foot, by car or by the Company's Lines. Output follows it.
-
 **Command**:
-A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, rename, close or add bays to a Station, create, edit, rename, colour or delete a Line, buy or sell a vehicle, take or repay a loan, add traffic, cause a crash). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
+A Player action applied to the simulation between steps (build, remove, upgrade, downgrade, re-sign or move a road, place a Depot or a Station, rename, close or add bays to a Station, create, edit, rename, colour or delete a Line, buy or sell a vehicle or train, park a vehicle or put it on a Line, set a Maintenance policy or ask for a repair, ask for an Import shipment, accept or decline an Order, set the power purchase, take or repay a loan, add traffic, cause a crash; `SimCommand.cs` has the full list). Each is recorded with the tick it ran at in the command log, so a run can be replayed from its seed and that log.
 
 **Company vehicle**:
-A bus or truck the Company owns, bought at a Depot for a Line. A bus takes passengers; a truck takes whichever freight Cargo is waiting at a stop and wanted at the next one. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.
+A bus or truck the Company owns, bought at a Depot for a Line. A bus takes passengers (a workers' bus, workers); a heavy truck and a large bus come on sale later in the campaign; a truck takes whichever freight Cargo is waiting at a stop and wanted at the next one. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.
 _Avoid_: "player vehicle" (ambiguous with the camera), "fleet car"
 
 **Pay**:

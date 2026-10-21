@@ -67,3 +67,5 @@ M3 is built in four vertical slices; each leaves a playable, tested game. Number
 - Slice order is fixed: real trips (M3c) come before growth (M3d) so growth is built on real connectivity.
 - Update `project-status.md` and `CONTEXT.md` at the end of each slice; keep the golden hashes honest (record why each change).
 - Not in M3: town decline, transfers between lines, service-based production boosts, generated roads between towns, money effects of satisfaction, pedestrians drawn (visual only, later).
+
+Note, 2026-10-21: this plan is history. The campaign's first slice (C1) rescaled the time: the day is 1200 s and a month is 3 days (96 months from January 1938), not the 600 s day and 30-day month written above, and every per-day and per-month number was re-derived. The cargo, the industries (16 types) and the trip groups also grew in C2 and C7 (workers are a cargo). See `campaign-plan.md` and sections 5.23, 5.25 and 5.30 of `project-status.md`.

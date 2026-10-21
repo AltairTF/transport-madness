@@ -1,6 +1,6 @@
 # M4 review: what was built, decisions, weak points, what is left
 
-Status on 2026-10-21 (open points applied the same day: sections 3.1, 3.2, 3.9 and 4 say what was done and what remains). Covers all of M4 (rail, signals, level crossings, traffic lights), the terrain and depot follow-ups from the first play-test, and the garage (5.21). Nothing here is committed yet. Part descriptions are in `project-status.md` sections 5.19 to 5.21, decisions in `m4-plan.md` and ADR 0004, vocabulary in `CONTEXT.md`. This file is the single place for what is still open.
+Status on 2026-10-21 (open points applied the same day: sections 3.1, 3.2, 3.9 and 4 say what was done and what remains). Covers all of M4 (rail, signals, level crossings, traffic lights), the terrain and depot follow-ups from the first play-test, and the garage (5.21). Committed in 551eedc (M4) and 5de050a (follow-ups, signs, benchmark job). Part descriptions are in `project-status.md` sections 5.19 to 5.21, decisions in `m4-plan.md` and ADR 0004, vocabulary in `CONTEXT.md`. This file is the single place for what is still open.
 
 ## 1. What was built
 
@@ -19,7 +19,7 @@ Status on 2026-10-21 (open points applied the same day: sections 3.1, 3.2, 3.9 a
 | Ghosts (5.21) | A vehicle leaving a busy depot drives out without being held, then becomes ordinary. Trains bought together wait inside the depot. | `Simulation.Fleet.cs` (`StepGhosts`), `Simulation.Trains.cs` |
 | Game layer | Track, curved track, block and path signal, remove signal, remove track, rail station, rail depot tools; traffic light tools; drawing of all of it; Vehicles window with the garage; Lines window buy buttons | `SimHostRail.cs`, `SimHostLights.cs`, `SimHostGarage.cs`, `build_tool.gd`, `hud.gd`, `main.gd` |
 
-Tests: 426 xUnit tests pass on macOS and in the Linux container (Release, x64). The rail golden hash `0x24A1F669E8A6208C` is unchanged on both systems, so none of the garage or ghost changes moved an existing run.
+Tests: 426 xUnit tests passed at the time on macOS and in the Linux container (Release, x64); the suite has 663 on 2026-10-21. The rail golden hash `0x24A1F669E8A6208C` was unchanged then (the current value is `0x5684A444B74001F2`, see 5.30 of the status) on both systems, so none of the garage or ghost changes moved an existing run.
 
 ## 2. Decisions taken
 
@@ -28,7 +28,7 @@ These come from the review and the play-test. They are settled unless the user c
 1. **Ghosts only matter at a depot exit.** Cars do not need to stop for a ghost. The requirement is that a ghost enters the road correctly: never placed inside another vehicle, and never driving into one. Done (4.1).
 2. **Parked vehicles pay 10 % of their upkeep.** A vehicle or train waiting in the garage still counts as kept in working order, so it pays upkeep, but at a tenth of its daily rate (road model upkeep, or locomotive plus wagons for a train). Done: `economy.parkedUpkeepShare` (0.1), charged by `ChargeGarageUpkeep`. See 4.2.
 3. **Minimum block between level crossings stays at 48 m** (24 m from each junction or road end). Accepted; the player will meet it.
-4. **One commit for all of M4**, when the user asks for it. Nothing is committed yet.
+4. **One commit for all of M4**, when the user asks for it. Done: 551eedc.
 
 ## 3. Weak points, by area
 
@@ -120,7 +120,7 @@ These come from the review and the play-test. They are settled unless the user c
 
 ### 4.4 Commit (when the user asks)
 
-One commit for all of M4 (decision 4), with a `Co-Authored-By` line. Push only when asked. The working tree holds the rail, traffic light, garage and game-layer files, the tests and the docs. Not committed.
+One commit for all of M4 (decision 4), with a `Co-Authored-By` line. Push only when asked. The working tree held the rail, traffic light, garage and game-layer files, the tests and the docs. Committed in 551eedc and 5de050a.
 
 ## What is still open
 
@@ -150,3 +150,5 @@ The 3D play-test (section 5), the rail balance and the items in section 6.
 - Platform length, and trains longer than a station.
 - Split the shared planning code of the road and rail networks.
 - Split `SimHost` further.
+
+Note, 2026-10-21: this review is history. Since it was written the signs (5.22), maintenance, trains' wear and signal failures (M5, 5.24) and the whole campaign (C1 to C9) were built, and the developer played the 3D side, which works; the current state and the open points are in `project-status.md` and `campaign-plan.md`.
