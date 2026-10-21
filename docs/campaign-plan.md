@@ -50,10 +50,45 @@ A deposit of coal or iron ore is one per map in every setting, within 2200 m of 
 
 Phases start at months 0, 20, 48 and 84 (Rearmament to August 1939, Mobilisation to December 1941, Total war 1942 to 1944, The end 1945). The allocation is 45 000, 60 000, 80 000 and 50 000 a month at a standing of 50, times 0.5 + standing/100. Standing starts at 60 and each month moves by deliveries to the gateways against what the phase expects (within 3 points), minus 2 for a deficit, minus a point per 2 000 of fines (at most 5). Under 20 for 6 months is dismissal. The grade score is half the standing, 30 % the value delivered against 600 000 and 20 % the towns' satisfaction, with thresholds 75, 55 and 35. All of it is in the `campaign` section of the tuning and is a first guess to be balanced once the orders (C5) exist.
 
+## Decided while building C5 to C9 (2026-10-21)
+
+These were taken without the developer seeing them; each is described in the section of `project-status.md` named. Any of them can be reversed by tuning or a small change.
+
+- **Orders (5.28).** Cargo counts for an order whatever its source (the plan asked for loading at a station covering the source); the producer check stays at acceptance. A quota names one gateway, so road and rail gateways are asked for in turn. At the deadline half delivered is *late* (paid in proportion, no penalty), under half is *failed* (fine of a quarter of the reward, standing falls by 1.5 times the gain). Orders add standing directly; the monthly delivery term of C4 was not turned down. A state work is offered once, in Mobilisation, and founds the truck plant and its three feeder works near a town when accepted.
+- **Electricity (5.29).** The free grid is sized from the industries that stand at the start (times 1.1), so the first game runs at full power and only later works need a plant or bought power. A power plant is part of the map, not an order. Demand is constant, working or not. Towns use no power.
+- **Workers (5.30).** Workers are a cargo carried by a workers' bus, not trip groups (an industry is not a building). The people's own movement staffs part of an industry by its distance to the nearest town. Trains do not carry workers. On a map without towns staffing is 1.
+- **Fleet by year (5.31).** Steam locomotive 1938, diesel 1942, heavy truck 1940, large bus 1941. An old model is only dearer to repair (12 % a year after three years, at most 60 %); there is no permanent wear. Owned models are never taken away when a year passes.
+- **Rationing (5.32).** Oil, fuel and rubber only; price and shipment size are fixed when a shipment is asked for. The frequency option scales the change.
+- **Call-up (5.33).** Fixed waves of 6 to 10 % of the people of every trip group, for good; a workforce gap that cuts output (70 % of the gap) and closes by 1.2 points a month. Not scaled by the frequency option. The towns' building capacity (`StatsOf`) is not lowered.
+- **Requisition (5.34).** The army takes freight first, then the biggest, garage included, at 80 % of the price new whatever the Condition, with a month's notice; the player cannot refuse.
+- **Raids (5.35).** From January 1942, at gaps of the phase scaled by the frequency option; an industry stops for three days, a gateway is shut for two, a rail raid fails a signal (and needs a signal to exist), a town loses two buildings with 35 % of their people counted as casualties; craters on the nearest roads. Nothing is rebuilt by the state.
+
 ## Open
 
-- How import prices rise with rationing (the base prices, the shipment size and the interval are in the tuning since C3).
-- The numbers of electricity (megawatts of a plant, demand of each industry) and of staffing, and how the people's own commuting is measured against the jobs.
-- How conscription, requisition and raids are scheduled and how large they are; whether a raid can be hit by a defence the player builds.
-- The Orders, Budget and Gateway windows and the war's look in 3D; the model choice for vehicles.
-- What changes of the trip schedule in a day of 1200 s with shifts at factories.
+Items marked *needs play* cannot be settled in the headless simulation.
+
+**Balance (needs play, then tuning in `data/tuning.json`)**
+- The standing against the orders. An idle committee is dismissed around month 55 and a company that only runs buses, breaks down without maintenance and is fined, around month 28. How much a good player earns from orders against the monthly delivery term, and whether that term should be turned down, is unmeasured; so are the allocation, the rewards (60 to 170 a unit, 1 400 to 1 500 for a truck), the fines, the grade thresholds and the pace of offers.
+- Electricity: megawatts of a plant (20), the demand of each industry, the price of bought power (1 500 a megawatt and month).
+- Workers: how much a workers' bus must carry to keep a mill staffed (a 30-seat bus a day gives about 75 % with the town's own 30 %), the own-staff reach and share.
+- The war: the rationing factors, the size and months of the call-up and requisition waves, the gap and damage of raids. None of it was played.
+- Import prices and shipment sizes (first guesses since C3).
+
+**Design not done**
+- A defence the player can build against raids (anti-aircraft, shelters), and raids on stations, depots or single vehicles.
+- Rebuilding what a raid destroys, and what happens to a town that loses all its buildings.
+- Trains carrying workers; a wage for workers; shifts at factories and what a day of 1200 s does to the trip schedule.
+- Buying back requisitioned vehicles; letting the player choose what the army takes.
+- Lowering the towns' building capacity with the call-up, and the return of anyone.
+- A standing graph (the history is kept); an orders history beyond the last five.
+- Sandbox mode (every `fromYear` at the start) and the wider choice of vehicle models.
+
+**Play-test and presentation (needs play)**
+- The 3D side of everything from M5 on was compiled and the HUD run headless with made-up data, never played: the Orders, Gateways and Industries windows, the power panel, the lines in the Company window, the boxes of founded works, dark damaged industries and gateways, the bombs falling, and the buy buttons that change with the year.
+- Event feed entries without a place (orders, call-ups, requisitions) take the camera to the origin when clicked.
+- Whether the number of buttons and windows is too much, and the look of the war in general.
+
+**Technical**
+- Save and load must carry the new state: orders, the order, raid and war random streams, damage timers, the workforce gap, called-up people per group, the requisition and call-up wave indices, the power purchase, and staff stocks (M6).
+- The hash of a trip group does not include its people unless a call-up has fired; keep that in mind if groups ever change size by other means.
+- Tests that run into Total war need raids switched off (`War.Bombing.FromMonth`), tests that buy trains or new models need `Worlds.Late`, and trip tests need a day of at least 300 s.

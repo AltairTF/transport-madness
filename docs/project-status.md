@@ -652,6 +652,8 @@ Engineering:
 
 ## 11. What comes next
 
+The campaign slices C1 to C9 and M5 are built. Before M6 the decisions taken without the developer and the open points (balance, design not done, play-test, what save and load must carry) are listed in `docs/campaign-plan.md` under "Decided while building C5 to C9" and "Open"; the old backlog below is from before M4.
+
 ### Backlog to close M0 to M3 before M4 (analysis of 2026-10-19)
 
 What is still open from M0 to M3, sorted by what can be done now (no dependency on M4, checkable in the headless simulation) and what waits. Items 1 to 5 were done on 2026-10-19 (5.16) and items 6 to 8 the same day (5.17); what is left is under "Later".
