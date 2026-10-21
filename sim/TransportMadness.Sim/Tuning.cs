@@ -32,6 +32,7 @@ public sealed record Tuning
     public required IndustriesTuning Industries { get; init; }
     public required GatewaysTuning Gateways { get; init; }
     public required CampaignTuning Campaign { get; init; }
+    public required OrderTuning Orders { get; init; }
     public required TripsTuning Trips { get; init; }
     public required RailTuning Rail { get; init; }
     public required MaintenanceTuning Maintenance { get; init; }
@@ -54,6 +55,7 @@ public sealed record Tuning
         tuning.Industries.Validate();
         tuning.Gateways.Validate();
         tuning.Campaign.Validate();
+        tuning.Orders.Validate(tuning);
         tuning.Trips.Validate();
         tuning.Maintenance.Validate();
         return tuning;

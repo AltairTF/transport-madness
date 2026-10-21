@@ -1,7 +1,7 @@
 namespace TransportMadness.Sim;
 
 /// <summary>Where money came from or went to; the company keeps a running total for each.</summary>
-public enum LedgerEntry { Construction, Stations, Depots, Vehicles, Income, Upkeep, Interest, Demolition, Maintenance, Compensation, Fines, Imports, Allocation }
+public enum LedgerEntry { Construction, Stations, Depots, Vehicles, Income, Upkeep, Interest, Demolition, Maintenance, Compensation, Fines, Imports, Allocation, Orders }
 
 /// <summary>The player's transport business: money, loan and how it has been spent.</summary>
 public sealed class Company
@@ -30,6 +30,10 @@ public sealed class Company
     public float Score { get; internal set; }
     /// <summary>The value of everything delivered to the gateways so far (units times the cargo's pay per unit and km).</summary>
     public double DeliveredValue { get; internal set; }
+    /// <summary>Orders of the government met in full, paid late in proportion, and failed so far.</summary>
+    public int OrdersMet { get; internal set; }
+    public int OrdersLate { get; internal set; }
+    public int OrdersFailed { get; internal set; }
     /// <summary>People hurt in crashes of the company's vehicles so far (each was paid compensation).</summary>
     public long Injured { get; internal set; }
 

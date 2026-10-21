@@ -95,7 +95,7 @@ A Company vehicle leaving a Depot whose doorway is busy: it waits inside until t
 **Garage**:
 The Company vehicles and trains standing in a Depot on no Line: bought without one, or sent back from a Line. They pay a tenth of their upkeep while they wait; each can be put on a Line of its kind, or sold.
 
-**Order** (planned, campaign C5; replaces the Contract of the first plan):
+**Order** (replaces the Contract of the first plan):
 A request from the Government with a deadline: a production quota (deliver an amount of a Cargo to the state at a Gateway), a state work (a factory the state founds on the map, to be supplied and connected, with an output target) or a civil need. Offered at random times inside the Phase of the war, accepted or ignored by the Player, rewarded with Budget and Standing when met and penalised when failed.
 
 **Model year** (planned, campaign C8; replaces the Era of the first plan):

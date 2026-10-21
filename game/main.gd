@@ -94,6 +94,14 @@ func _ready() -> void:
 			hud.show_message("Shipment asked for")
 		else:
 			hud.show_message(host.WhyNotImport(gateway, cargo)))
+	hud.order_answered.connect(func(order: int, accept: bool) -> void:
+		if not accept:
+			host.DeclineOrder(order)
+			hud.show_message("Order declined")
+		elif host.AcceptOrder(order):
+			hud.show_message("Order accepted: the clock is running")
+		else:
+			hud.show_message(host.WhyNotAccept(order)))
 	hud.campaign_left.connect(_leave_to_menu)
 	hud.town_focus.connect(rig.focus_on)
 	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
@@ -152,6 +160,7 @@ func _process(delta: float) -> void:
 		hud.show_towns(host.GetTowns())
 		hud.show_industries(host.GetIndustries())
 		hud.show_gateways(host.GetGateways())
+		hud.show_orders(host.GetOrders(), company["orders_open"])
 		hud.show_stations(host.GetStations())
 		var vehicles: Array = host.GetVehicles()
 		hud.show_vehicles(vehicles)

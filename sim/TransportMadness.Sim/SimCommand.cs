@@ -170,3 +170,9 @@ public readonly record struct LoggedCommand(long Tick, SimCommand Command);
 
 /// <summary>Asks the government for a shipment of an imported cargo (by its id) at a gateway, paying for it now; it arrives after the shipment time. Result: 1, 0 when refused (see <see cref="Simulation.WhyNotImport"/>).</summary>
 public sealed record RequestImportCommand(int Gateway, string Cargo) : SimCommand;
+
+/// <summary>Takes up an order the government has offered (C5); the clock to its deadline starts now. Result: 1, 0 when refused (see <see cref="Simulation.WhyNotAccept"/>).</summary>
+public sealed record AcceptOrderCommand(int Order) : SimCommand;
+
+/// <summary>Turns an order that has been offered down, with no penalty. Result: 1, 0 when it is not on offer.</summary>
+public sealed record DeclineOrderCommand(int Order) : SimCommand;

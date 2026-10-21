@@ -18,6 +18,8 @@ public enum SimEventKind : byte
     ShipmentArrived,
     /// <summary>The government's standing is low, the committee was dismissed, or the campaign is over.</summary>
     Standing,
+    /// <summary>The government offered an order, or one was met, paid late, failed or lapsed.</summary>
+    Order,
 }
 
 public enum EventSeverity : byte { Info, Warning, Serious }

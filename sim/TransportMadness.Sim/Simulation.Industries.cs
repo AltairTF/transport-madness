@@ -175,7 +175,11 @@ public sealed partial class Simulation
             given = (int)MathF.Min(units, MathF.Ceiling(total));
             float share = given >= total ? 1f : given / total;
             for (int k = 0; k < buildings.Length; k++)
-                if (roomB[k] > 0f) GiveToBuilding(_buildings[buildings[k]], cargo, roomB[k] * share);
+                if (roomB[k] > 0f)
+                {
+                    GiveToBuilding(_buildings[buildings[k]], cargo, roomB[k] * share);
+                    if (_liveOrders.Count > 0) NoteOrderCivil(cargo, _buildings[buildings[k]].Town, roomB[k] * share);
+                }
             for (int k = 0; k < industries.Length; k++)
                 if (roomI[k] > 0f) _industries[industries[k]].Input[cargo] += roomI[k] * share;
         }

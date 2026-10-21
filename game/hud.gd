@@ -37,6 +37,8 @@ signal menu_requested
 signal campaign_left
 ## The Towns window asks the camera to go to a town.
 signal import_requested(gateway: int, cargo: String)
+## Accept (true) or decline an order the government offered.
+signal order_answered(order: int, accept: bool)
 
 signal town_focus(x: float, z: float)
 ## The Towns window turns the connectivity view of the map on or off.
@@ -91,6 +93,7 @@ const WINDOWS := [
 	["Towns", "towns", ""],
 	["Industries", "industries", ""],
 	["Gateways", "gateways", ""],
+	["Orders", "orders", ""],
 ]
 const MESSAGE_SECONDS := 8.0
 
@@ -134,6 +137,9 @@ var _parked_rows: Dictionary = {} # garage id -> {"row", "separator", "label", "
 var _vehicle_rows: Dictionary = {} # vehicle id -> {"row": Control, "label": Label, "separator": Control}
 var _industries_box: VBoxContainer
 var _industries_empty: Label
+var _orders_box: VBoxContainer
+var _orders_empty: Label
+var _order_rows: Dictionary = {} # order id -> {"row", "title", "status", "buttons", "accept", "decline", "go", "separator", "state"}
 var _gateways_box: VBoxContainer
 var _gateways_empty: Label
 var _gateway_rows: Dictionary = {} # gateway id -> {"row": Control, "title": Label, "offers": Dictionary cargo id -> {"label": Label, "button": Button}, "exports": Label, "separator": Control}
@@ -313,6 +319,8 @@ func _build_window_panel() -> void:
 				page = _build_industries_page()
 			"gateways":
 				page = _build_gateways_page()
+			"orders":
+				page = _build_orders_page()
 			"stations":
 				page = _build_stations_page()
 			"vehicles":
@@ -365,6 +373,20 @@ func _build_towns_page() -> Control:
 	_towns_empty.text = "There are no towns on this map. Start a new game on the Towns map."
 	_towns_box.add_child(_towns_empty)
 	return _towns_box
+
+
+func _build_orders_page() -> Control:
+	_orders_box = VBoxContainer.new()
+	var note := Label.new()
+	note.theme_type_variation = "Dim"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.text = "What the government asks of the committee. An order can be accepted once stations already cover the place the cargo comes from and where it goes; the clock starts when you accept. Meeting it pays its reward and raises the standing; failing costs a fine and standing."
+	_orders_box.add_child(note)
+	_orders_empty = Label.new()
+	_orders_empty.theme_type_variation = "Dim"
+	_orders_empty.text = "The government has asked for nothing yet."
+	_orders_box.add_child(_orders_empty)
+	return _orders_box
 
 
 func _build_gateways_page() -> Control:
@@ -796,6 +818,7 @@ func show_company(company: Dictionary) -> void:
 	if company["months_to_dismissal"] > 0:
 		text += "\nUnder %d: %d more months and the committee is dismissed" % [roundi(company["dismiss_below"]), company["months_to_dismissal"]]
 	text += "\nNext allocation   %s" % _money_text(company["next_allocation"])
+	text += "\nOrders   %d met, %d late, %d failed   (%d under way, %d on offer)   rewards so far %s" % [company["orders_met"], company["orders_late"], company["orders_failed"], company["orders_active"], company["orders_open"], _money_text(company["orders_income"])]
 	text += "\nDelivered to the gateways this month   %s  (the phase expects %s)" % [_money_text(company["export_value"]), _money_text(company["expected_value"])]
 	var last: Dictionary = company["last"]
 	if not last.is_empty():
@@ -830,6 +853,80 @@ func _date_text(company: Dictionary) -> String:
 
 func set_cargo_names(names: Array) -> void:
 	_cargo_names = names
+
+
+## One block per order on offer or under way, then the last few that were closed.
+func show_orders(orders: Array, open_offers: int) -> void:
+	var seen := {}
+	for order in orders:
+		var id: int = order["id"]
+		seen[id] = true
+		if not _order_rows.has(id):
+			_add_order_row(id, order)
+		var row: Dictionary = _order_rows[id]
+		var state: String = order["state"]
+		row["title"].text = "%s\n%s" % [order["title"], _order_terms(order)]
+		var open: bool = state == "Offered" or state == "Active"
+		var status := ""
+		match state:
+			"Offered":
+				status = "Offered: %d days to accept it.   %s" % [ceili(order["days_left"]), "" if order["can"] else order["why"]]
+			"Active":
+				status = "Under way: %d of %d delivered, %d days left" % [order["progress"], order["units"], ceili(order["days_left"])]
+			"Met":
+				status = "Met. %s paid." % _money_text(order["paid"])
+			"Late":
+				status = "Late: %d of %d delivered, %s paid." % [order["progress"], order["units"], _money_text(order["paid"])]
+			"Failed":
+				status = "Failed: %d of %d delivered, net %s." % [order["progress"], order["units"], _money_text(order["paid"])]
+			_:
+				status = state
+		row["status"].text = status
+		row["status"].theme_type_variation = "" if open else "Dim"
+		row["buttons"].visible = state == "Offered"
+		row["accept"].disabled = not order["can"]
+		row["state"] = state
+	for id in _order_rows.keys():
+		if not seen.has(id):
+			_order_rows[id]["row"].queue_free()
+			_order_rows[id]["separator"].queue_free()
+			_order_rows.erase(id)
+	_orders_empty.visible = _order_rows.is_empty()
+	if _window_buttons.has("orders"):
+		_window_buttons["orders"].text = "Orders (%d)" % open_offers if open_offers > 0 else "Orders"
+
+
+func _order_terms(order: Dictionary) -> String:
+	return "Reward %s   standing +%s   %d days to deliver" % [_money_text(order["reward"]), str(snappedf(order["standing"], 0.1)), order["days"]]
+
+
+func _add_order_row(id: int, order: Dictionary) -> void:
+	var row := VBoxContainer.new()
+	var title := Label.new()
+	title.theme_type_variation = "Heading"
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(title)
+	var status := Label.new()
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	row.add_child(status)
+	var buttons := HBoxContainer.new()
+	row.add_child(buttons)
+	var accept := Button.new()
+	accept.text = "Accept"
+	accept.pressed.connect(func() -> void: order_answered.emit(id, true))
+	buttons.add_child(accept)
+	var decline := Button.new()
+	decline.text = "Decline"
+	decline.pressed.connect(func() -> void: order_answered.emit(id, false))
+	buttons.add_child(decline)
+	var go := Button.new()
+	go.text = "Go to"
+	go.pressed.connect(func() -> void: town_focus.emit(order["x"], order["z"]))
+	buttons.add_child(go)
+	var separator := HSeparator.new()
+	_orders_box.add_child(row)
+	_orders_box.add_child(separator)
+	_order_rows[id] = {"row": row, "title": title, "status": status, "buttons": buttons, "accept": accept, "decline": decline, "go": go, "separator": separator, "state": ""}
 
 
 ## One block per gateway: whether a station reaches it, one row per import with its price and a button to ask for a shipment, and what has been exported.

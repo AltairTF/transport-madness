@@ -158,6 +158,8 @@ public sealed partial class Simulation
         _ticksPerDay = (long)MathF.Round(_economy.DayLength / StepSeconds);
         _productionPerTick = 1.0 / (_ticksPerDay * _economy.DaysPerMonth);
         _campaign = tuning.Campaign;
+        _orderTuning = tuning.Orders;
+        _orderRng = new SimRandom(seed ^ OrderSeedMix);
         Company = new Company(_economy.StartingMoney) { Standing = tuning.Campaign.StartStanding };
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;
@@ -256,6 +258,7 @@ public sealed partial class Simulation
         if (_buildings.Count > 0) Mix(TownHash());
         if (_industries.Count > 0 || _buildings.Count > 0) Mix(IndustryHash());
         if (_gateways.Count > 0) Mix(GatewayHash());
+        if (_gateways.Count > 0) Mix(OrderHash());
         if (_groups.Count > 0) Mix(TripHash());
         Mix(FleetHash());
         if (_lines.Count > 0 || _roadWorks.Count > 0 || _resurfaced > 0) Mix(RoadWearHash());
@@ -398,6 +401,7 @@ public sealed partial class Simulation
         GenerateCargo();
         UpdateIndustries();
         UpdateGateways();
+        StepOrders();
         UpdateTrips();
         UpdateFleet();
         StepRepairs();
