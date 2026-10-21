@@ -3,28 +3,35 @@ namespace TransportMadness.Sim;
 /// <summary>An industry or a road gateway, as the thing a road is joined to (C10).</summary>
 public readonly record struct AccessRef(bool Gateway, int Id);
 
-/// <summary>A short road of the type being built from a point of the new road to an access point it passes (C10), with what it is estimated to cost.</summary>
-public readonly record struct AccessSpur(AccessRef Target, float FromX, float FromZ, float ToX, float ToZ, float Money, int Demolished, long DemolitionPrice);
+/// <summary>
+/// The stone road of type <see cref="RoadType.Path"/> from a point of the road being built to an access point within reach (M6e), with what it is
+/// estimated to cost. A connection that cannot be built (<see cref="Buildable"/> false) costs nothing and is shown as such in the preview;
+/// <see cref="Cost"/> has its length and earthworks.
+/// </summary>
+public readonly record struct AccessSpur(AccessRef Target, float FromX, float FromZ, float ToX, float ToZ, float Money, int Demolished, long DemolitionPrice, bool Buildable = true, RoadCost? Cost = null);
 
 /// <summary>
-/// How a road being built is joined to the industries and gateways near it (C10): the road with its ends drawn to the access points within reach,
-/// and the spurs to the access points it passes. <see cref="Start"/> and <see cref="End"/> say which access point an end was drawn to.
+/// How a road being built is joined to the industries and gateways near it (M6e): the road itself is never moved; each access point within reach that
+/// no road reaches yet gets a connection of its own. The ends are those given.
 /// </summary>
-public sealed record RoadJoin(float X0, float Z0, float X1, float Z1, AccessRef? Start, AccessRef? End, IReadOnlyList<AccessSpur> Spurs)
+public sealed record RoadJoin(float X0, float Z0, float X1, float Z1, IReadOnlyList<AccessSpur> Spurs)
 {
-    /// <summary>The price of the spurs, their demolitions included.</summary>
-    public float SpurMoney => Spurs.Sum(s => s.Money + s.DemolitionPrice);
+    /// <summary>The price of the connections that can be built, their demolitions included.</summary>
+    public float SpurMoney => Spurs.Where(s => s.Buildable).Sum(s => s.Money + s.DemolitionPrice);
 }
 
 /// <summary>
-/// Access points (C10). An industry, and a gateway of the road network, meets the roads at a point on the edge of its square that faces the nearest town.
-/// A road built with an end within <c>access.snapRadius</c> of the point is drawn to it, and a road that passes within that distance gets a spur of
-/// its own type to it. The point becomes a node of the road network when a road reaches it; nothing about it is kept apart from the network, so it is
-/// found again from the position. Stations and depots stand on nodes already; what a station covers does not depend on any of this.
+/// Access points (C10, M6e). An industry, and a gateway of the road network, meets the roads at a point on the edge of its square that faces the nearest
+/// town. A road is built exactly where it is put; one that passes within <c>access.snapRadius</c> of a point no road reaches yet gets a connection of
+/// type <see cref="RoadType.Path"/> from the nearest point of it to the access point. The point becomes a node of the road network when the connection
+/// is built; nothing about it is kept apart from the network, so it is found again from the position. Stations and depots stand on nodes already; what a
+/// station covers does not depend on any of this.
 /// </summary>
 public sealed partial class Simulation
 {
     readonly AccessTuning _accessTuning;
+    /// <summary>How far outside the wall of its square an access point is.</summary>
+    public float AccessEdgeMargin => _accessTuning.EdgeMargin;
     const float AccessOnNode = 0.5f; // an end this close to a node is on it (the network's own tolerance)
 
     /// <summary>Works out where an industry meets the roads, once it stands.</summary>
@@ -82,81 +89,66 @@ public sealed partial class Simulation
 
     /// <summary>
     /// How a road from (x0, z0) to (x1, z1) would be joined to the industries and gateways near it, by the rule <see cref="BuildRoadCommand"/> applies:
-    /// an end that is not on a node and lies within <c>access.snapRadius</c> of an access point is moved onto it (the nearer end when both would go to the
-    /// same point), and the road gets a spur of its type to every other access point within that distance of it. A spur starts where the road is nearest to
-    /// the point, and is left out when that is within a road piece's minimum length of a junction or an end of the road, when the road already passes
-    /// that close to the point, or when it cannot be built. An end is only moved when the road can still be built; the spur prices are estimates
-    /// against the network as it is now.
+    /// the road is never moved, and every access point within <c>access.snapRadius</c> of it that no road reaches yet gets a connection of type
+    /// <see cref="RoadType.Path"/> from where the road is nearest to the point. Where that is within a road piece's minimum length of a junction or an end
+    /// of the road the connection starts there instead, and it never starts inside a bridge or a tunnel (it starts at the end of it nearest the point).
+    /// An access point the road passes closer than a piece's minimum length gets none. A connection that cannot be built is listed as not buildable.
+    /// The prices are estimates against the network as it is now.
     /// </summary>
     public RoadJoin JoinRoad(float x0, float z0, float x1, float z1, RoadType type, float sweep = 0f)
     {
-        var points = AccessPoints().ToList();
-        if (points.Count == 0) return new RoadJoin(x0, z0, x1, z1, null, null, Array.Empty<AccessSpur>());
-        var start = NearestAccess(points, x0, z0);
-        var end = NearestAccess(points, x1, z1);
-        if (start is { } s && end is { } e && s.Ref == e.Ref)
-        {
-            if (Dist2(s.X, s.Z, x0, z0) <= Dist2(e.X, e.Z, x1, z1)) end = null; else start = null;
-        }
-        // The first of these that can be built; the plain road is the last.
-        var tries = new List<((AccessRef Ref, float X, float Z)? Start, (AccessRef Ref, float X, float Z)? End)>();
-        if (start != null && end != null) tries.Add((start, end));
-        if (start != null) tries.Add((start, null));
-        if (end != null) tries.Add((null, end));
-        foreach (var (a, b) in tries)
-        {
-            float ax = a?.X ?? x0, az = a?.Z ?? z0, bx = b?.X ?? x1, bz = b?.Z ?? z1;
-            if (_net.EstimateCost(ax, az, bx, bz, type, sweep) == null) continue;
-            return new RoadJoin(ax, az, bx, bz, a?.Ref, b?.Ref, SpursOf(points, ax, az, bx, bz, type, sweep, a?.Ref, b?.Ref));
-        }
-        return new RoadJoin(x0, z0, x1, z1, null, null, SpursOf(points, x0, z0, x1, z1, type, sweep, null, null));
-    }
-
-    /// <summary>The access point within reach of an end of a road, unless the end is on a node already.</summary>
-    (AccessRef Ref, float X, float Z)? NearestAccess(List<(AccessRef Ref, float X, float Z)> points, float x, float z)
-    {
-        if (_net.FindNodeNear(x, z, AccessOnNode) >= 0) return null;
-        (AccessRef Ref, float X, float Z)? best = null;
-        float bestDistance = _accessTuning.SnapRadius * _accessTuning.SnapRadius;
-        foreach (var p in points)
-        {
-            float d = Dist2(p.X, p.Z, x, z);
-            if (d <= bestDistance) { best = p; bestDistance = d; }
-        }
-        return best;
+        var spurs = SpursOf(x0, z0, x1, z1, sweep);
+        return new RoadJoin(x0, z0, x1, z1, spurs);
     }
 
     static float Dist2(float ax, float az, float bx, float bz) => (ax - bx) * (ax - bx) + (az - bz) * (az - bz);
 
-    List<AccessSpur> SpursOf(List<(AccessRef Ref, float X, float Z)> points, float x0, float z0, float x1, float z1, RoadType type, float sweep, AccessRef? start, AccessRef? end)
+    List<AccessSpur> SpursOf(float x0, float z0, float x1, float z1, float sweep)
     {
         var spurs = new List<AccessSpur>();
+        var points = AccessPoints().ToList();
+        if (points.Count == 0) return spurs;
+        var plan = _net.PlannedRuns(x0, z0, x1, z1, sweep);
+        if (plan == null) return spurs;
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
-        var meetings = _net.PlannedPoints(x0, z0, x1, z1, sweep);
-        if (meetings == null) return spurs;
         float minimum = RoadNetwork.MinRoadLength;
         foreach (var p in points)
         {
-            if (p.Ref == start || p.Ref == end) continue;
+            if (AccessNodeOf(p.Ref) >= 0) continue; // a road reaches it already
             float along = geometry.NearestAlong(p.X, p.Z);
-            var (fx, fz) = geometry.PointAt(along);
+            var (fx, fz) = ConnectionStart(plan, geometry, along, p.X, p.Z, minimum);
             float distance = MathF.Sqrt(Dist2(fx, fz, p.X, p.Z));
             if (distance > _accessTuning.SnapRadius || distance < minimum) continue;
-            if (along < minimum || along > geometry.Length - minimum) continue;
-            bool nearMeeting = false;
-            foreach (var m in meetings)
-                if (MathF.Abs(m.Along - along) < minimum) nearMeeting = true;
-            if (nearMeeting || _net.EstimateCost(fx, fz, p.X, p.Z, type) is not { } cost) continue;
+            const RoadType type = RoadType.Path;
+            if (_net.EstimateCost(fx, fz, p.X, p.Z, type) is not { } cost)
+            {
+                spurs.Add(new AccessSpur(p.Ref, fx, fz, p.X, p.Z, 0f, 0, 0, Buildable: false));
+                continue;
+            }
             var demolition = EstimateRoadDemolition(fx, fz, p.X, p.Z, type);
-            spurs.Add(new AccessSpur(p.Ref, fx, fz, p.X, p.Z, cost.Money, demolition.Count, demolition.Price));
+            spurs.Add(new AccessSpur(p.Ref, fx, fz, p.X, p.Z, cost.Money, demolition.Count, demolition.Price, true, cost));
         }
         return spurs;
     }
 
+    /// <summary>Where a connection to (px, pz) starts on a planned road: the nearest point of it, moved to the meeting beside it when that is closer than a piece's minimum length, and out of any structure.</summary>
+    static (float X, float Z) ConnectionStart(IReadOnlyList<(float Along, float X, float Z, float Y, bool Junction, RoadStructure After)> plan, RoadGeometry geometry, float along, float px, float pz, float minimum)
+    {
+        int i = 0;
+        while (i + 2 < plan.Count && plan[i + 1].Along < along) i++;
+        var a = plan[i];
+        var b = plan[Math.Min(i + 1, plan.Count - 1)];
+        if (a.After != RoadStructure.None)
+            return Dist2(a.X, a.Z, px, pz) <= Dist2(b.X, b.Z, px, pz) ? (a.X, a.Z) : (b.X, b.Z);
+        if (along - a.Along < minimum) return (a.X, a.Z);
+        if (b.Along - along < minimum) return (b.X, b.Z);
+        return geometry.PointAt(along);
+    }
+
     /// <summary>
-    /// <see cref="BuildRoadCommand"/>: the road as <see cref="JoinRoad"/> draws it, then its spurs. The road must be affordable together with the spurs
-    /// as estimated; a spur that has become unaffordable or impossible by the time its turn comes is left out and the road stays. The result counts the
-    /// pieces of the road itself.
+    /// <see cref="BuildRoadCommand"/>: the road exactly as given, then the connections <see cref="JoinRoad"/> lists. The road must be affordable together
+    /// with the connections as estimated; one that has become unaffordable or impossible by the time its turn comes is left out and the road stays. The
+    /// result counts the pieces of the road itself.
     /// </summary>
     int BuildRoadWithAccess(BuildRoadCommand c)
     {
@@ -164,7 +156,7 @@ public sealed partial class Simulation
         int built = BuildRoadPiece(join.X0, join.Z0, join.X1, join.Z1, c.Type, c.SpeedLimit, c.Sweep, join.SpurMoney);
         if (built == 0) return 0;
         foreach (var spur in join.Spurs)
-            BuildRoadPiece(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, c.Type, c.SpeedLimit, 0f, 0f);
+            if (spur.Buildable) BuildRoadPiece(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, RoadType.Path, _net.Tuning.Roads.Path.SpeedLimit, 0f, 0f);
         return built;
     }
 

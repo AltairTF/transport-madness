@@ -2,7 +2,7 @@ using TransportMadness.Sim;
 
 namespace TransportMadness.Sim.Tests;
 
-/// <summary>Access points (C10): where an industry or a gateway meets the roads, how a road is drawn to it or given a spur, and what that costs.</summary>
+/// <summary>Access points (C10, M6e): where an industry or a gateway meets the roads, how a road passing it is given a Path connection (the road itself is never moved), and what that costs.</summary>
 public class AccessPointTests
 {
     const int Forest = 0; // size 30, so its access point is 33 m from its middle toward the town
@@ -87,16 +87,19 @@ public class AccessPointTests
     // ---- A road that ends near the point --------------------------------------------------------------------------------
 
     [Fact]
-    public void ARoadEndingWithinReach_IsDrawnToTheAccessPoint()
+    public void ARoadEndingWithinReach_IsNotMoved_AndGetsAConnectionFromItsEnd()
     {
         var sim = World();
-        Assert.Equal(1, Build(sim, 0, 340, 470, 340)); // ends 30 m short of the point, 7 m south of its line
+        Assert.Equal(1, Build(sim, 0, 340, 470, 340)); // ends 31 m short of the point, 7 m south of its line
+        Assert.NotEqual(-1, sim.Network.FindNodeNear(470, 340, 0.5f, withRoadsOnly: true));
         int node = sim.AccessNodeOf(sim.Industries[0]);
         Assert.True(node >= 0);
-        var (x, z) = sim.Network.GetNode(node);
-        Assert.Equal((500f, 333f), (x, z));
-        Assert.Equal(1, LiveRoads(sim));
-        Assert.Single(sim.Network.RoadsAt(node));
+        Assert.Equal((500f, 333f), sim.Network.GetNode(node));
+        var connection = sim.Network.GetRoad(Assert.Single(sim.Network.RoadsAt(node)));
+        Assert.Equal(RoadType.Path, connection.Type);
+        int end = connection.From == node ? connection.To : connection.From;
+        Assert.Equal((470f, 340f), sim.Network.GetNode(end)); // it leaves the road at its own end
+        Assert.Equal(2, LiveRoads(sim));
     }
 
     [Fact]
@@ -106,6 +109,7 @@ public class AccessPointTests
         Assert.Equal(1, Build(sim, 0, 340, 430, 340)); // 70 m from the point
         Assert.Equal(-1, sim.AccessNodeOf(sim.Industries[0]));
         Assert.NotEqual(-1, sim.Network.FindNodeNear(430, 340, 0.5f));
+        Assert.Equal(1, LiveRoads(sim));
     }
 
     [Fact]
@@ -116,38 +120,40 @@ public class AccessPointTests
         sim.Company.Money = 10_000_000;
         Assert.Equal(1, Build(sim, 450, 320, 450, 100));
         sim.AddTowns(new WorldPlan(1, new[] { Town(500, 1000) }, new[] { new IndustryPlan(Forest, 500, 300, 0f) }));
-        Assert.Null(sim.JoinRoad(450, 320, 450, 600, RoadType.TwoLane).Start);
+        var join = sim.JoinRoad(450, 320, 450, 600, RoadType.TwoLane);
+        Assert.Equal((450f, 320f, 450f, 600f), (join.X0, join.Z0, join.X1, join.Z1));
         int before = LiveRoads(sim);
-        Assert.Equal(1, Build(sim, 450, 320, 450, 600)); // starts on that node: not drawn to the point, and it passes 50 m from it, so it gets a spur
+        Assert.Equal(1, Build(sim, 450, 320, 450, 600)); // starts on that node and passes 50 m from the point, so it gets a connection
         Assert.NotEqual(-1, sim.Network.FindNodeNear(450, 320, 0.5f, withRoadsOnly: true));
-        Assert.Equal(before + 2 + 1, LiveRoads(sim)); // the road is cut where the spur leaves it
+        Assert.Equal(before + 2 + 1, LiveRoads(sim)); // the road is cut where the connection leaves it
         Assert.True(sim.AccessNodeOf(sim.Industries[0]) >= 0);
     }
 
     [Fact]
-    public void WhenBothEndsAreNearTheSamePoint_OnlyTheNearerIsDrawnToIt()
+    public void ARoadWithBothEndsNearAPoint_StaysWhereItIs_AndGetsNoConnectionShorterThanAPiece()
     {
         var sim = World();
-        var join = sim.JoinRoad(480, 333, 520, 333, RoadType.TwoLane);
-        Assert.Equal(new AccessRef(false, 0), join.Start);
-        Assert.Null(join.End);
-        Assert.Equal((500f, 333f), (join.X0, join.Z0));
-        Assert.Equal((520f, 333f), (join.X1, join.Z1));
+        var join = sim.JoinRoad(480, 340, 520, 340, RoadType.TwoLane); // passes 7 m from the point
+        Assert.Equal((480f, 340f, 520f, 340f), (join.X0, join.Z0, join.X1, join.Z1));
+        Assert.Empty(join.Spurs);
     }
 
     [Fact]
-    public void AnEndIsNotMoved_WhenTheRoadWouldNoLongerBeBuildable()
+    public void AConnectionThatCannotBeBuilt_IsListedAsSuch_AndTheRoadIsStillBuilt()
     {
-        // A wall of rock stands at the point: a road drawn up to it would climb far too steeply, so the road is built as it was asked.
+        // A wall of rock stands at the point: a path up to it would climb far too steeply.
         var net = new RoadNetwork(Terrain.Create(512, 8f, (x, z) => MathF.Abs(x - 500) < 20 && MathF.Abs(z - 333) < 20 ? 60f : 5f));
         var sim = new Simulation(net, 7, IncidentFrequency.Off);
         sim.AddTowns(new WorldPlan(1, new[] { Town(500, 1000) }, new[] { new IndustryPlan(Forest, 500, 300, 0f) }));
         sim.Company.Money = 10_000_000;
         var join = sim.JoinRoad(500, 450, 500, 385, RoadType.TwoLane);
-        Assert.Null(join.End);
-        Assert.Equal((500f, 385f), (join.X1, join.Z1));
+        Assert.Equal((500f, 450f, 500f, 385f), (join.X0, join.Z0, join.X1, join.Z1));
+        var spur = Assert.Single(join.Spurs);
+        Assert.False(spur.Buildable);
+        Assert.Equal(0f, join.SpurMoney);
         Assert.Equal(1, Build(sim, 500, 450, 500, 385));
         Assert.Equal(-1, sim.AccessNodeOf(sim.Industries[0]));
+        Assert.Equal(1, LiveRoads(sim));
     }
 
     // ---- A road that passes the point ---------------------------------------------------------------------------------------
@@ -169,13 +175,13 @@ public class AccessPointTests
     }
 
     [Fact]
-    public void TheSpurHasTheTypeAndSpeedOfTheRoad()
+    public void TheConnectionIsAPath_WhateverTheTypeOfTheRoad()
     {
         var sim = World();
         Assert.Equal(1, Build(sim, 0, 380, 1000, 380, RoadType.Avenue2x2));
         var spur = sim.Network.GetRoad(sim.Network.RoadsAt(sim.AccessNodeOf(sim.Industries[0]))[0]);
-        Assert.Equal(RoadType.Avenue2x2, spur.Type);
-        Assert.Equal(14f, spur.SpeedLimit);
+        Assert.Equal(RoadType.Path, spur.Type);
+        Assert.Equal(sim.Network.Tuning.Roads.Path.SpeedLimit, spur.SpeedLimit);
     }
 
     [Fact]
@@ -197,12 +203,18 @@ public class AccessPointTests
     }
 
     [Fact]
-    public void ARoadThatPassesTheEndOfItself_GetsNoSpurWhereNoJunctionFits()
+    public void ARoadThatPassesNearItsOwnEnd_GetsTheConnectionAtThatEnd()
     {
         var sim = World();
-        // The nearest point of the road to the access point is 5 m from its end: too near for a junction.
+        // The nearest point of the road to the access point is 5 m from its start: too near for a junction, so the connection leaves from the start.
         Assert.Equal(1, Build(sim, 495, 380, 900, 380));
-        Assert.Equal(1, LiveRoads(sim));
+        Assert.Equal(2, LiveRoads(sim));
+        int node = sim.AccessNodeOf(sim.Industries[0]);
+        Assert.True(node >= 0);
+        var spur = sim.Network.GetRoad(Assert.Single(sim.Network.RoadsAt(node)));
+        int start = spur.From == node ? spur.To : spur.From;
+        Assert.Equal((495f, 380f), sim.Network.GetNode(start));
+        Assert.Equal(2, sim.Network.RoadsAt(start).Count);
     }
 
     [Fact]
@@ -229,6 +241,20 @@ public class AccessPointTests
         Assert.Equal(node, sim.AccessNodeOf(sim.Industries[0]));
     }
 
+    [Fact]
+    public void APath_IsNarrow_HasOneLanePerDirection_AndCannotBeUpgraded()
+    {
+        var sim = World();
+        Assert.Equal(1, Build(sim, 0, 380, 1000, 380));
+        var road = sim.Network.GetRoad(sim.Network.RoadsAt(sim.AccessNodeOf(sim.Industries[0]))[0]);
+        Assert.Equal(RoadType.Path, road.Type);
+        Assert.Single(road.ForwardLanes);
+        Assert.Single(road.BackwardLanes);
+        Assert.True(RoadNetwork.HalfWidth(RoadType.Path) < RoadNetwork.HalfWidth(RoadType.TwoLane));
+        Assert.False(sim.Network.CanUpgrade(road.Id));
+        Assert.False(sim.Network.CanDowngrade(road.Id));
+    }
+
     // ---- Price -------------------------------------------------------------------------------------------------------------
 
     [Fact]
@@ -238,10 +264,10 @@ public class AccessPointTests
         var join = sim.JoinRoad(0, 380, 1000, 380, RoadType.TwoLane);
         var spur = Assert.Single(join.Spurs);
         Assert.Equal(new AccessRef(false, 0), spur.Target);
-        Assert.Equal(47f * 40f, spur.Money, 1f); // two-lane price per metre on level ground
+        Assert.Equal(47f * 15f, spur.Money, 1f); // the Path price per metre on level ground
         long before = sim.Company.Money;
         Assert.Equal(1, Build(sim, 0, 380, 1000, 380));
-        Assert.Equal(1000 * 40 + 47 * 40, before - sim.Company.Money);
+        Assert.Equal(1000 * 40 + 47 * 15, before - sim.Company.Money);
     }
 
     [Fact]
@@ -268,7 +294,7 @@ public class AccessPointTests
         float reach = 22f / MathF.Max(MathF.Abs(dx), MathF.Abs(dz)) + 3f;
         Assert.Equal(1500f + dx * reach, g.AccessX, 2);
         Assert.Equal(600f + dz * reach, g.AccessZ, 2);
-        Assert.Equal(1, Build(sim, 1200, 900, g.AccessX + 20, g.AccessZ + 20)); // ends 28 m from the point
+        Assert.Equal(1, Build(sim, 1200, 900, g.AccessX + 20, g.AccessZ + 20)); // ends 28 m from the point, and stays there
         Assert.True(sim.AccessNodeOf(g) >= 0);
     }
 
@@ -326,9 +352,14 @@ public class AccessPointTests
     {
         var sim = World();
         var join = sim.JoinRoad(0, 400, 480, 345, RoadType.TwoLane);
-        Assert.Equal(new AccessRef(false, 0), join.End);
+        var spur = Assert.Single(join.Spurs);
+        Assert.True(spur.Buildable);
+        Assert.Equal((0f, 400f, 480f, 345f), (join.X0, join.Z0, join.X1, join.Z1));
+        long before = sim.Company.Money;
+        float road = sim.Network.EstimateCost(0, 400, 480, 345, RoadType.TwoLane)!.Value.Money;
         Assert.Equal(1, Build(sim, 0, 400, 480, 345));
-        Assert.NotEqual(-1, sim.Network.FindNodeNear(join.X1, join.Z1, 0.5f, withRoadsOnly: true));
-        Assert.Equal(sim.AccessNodeOf(sim.Industries[0]), sim.Network.FindNodeNear(join.X1, join.Z1, 0.5f));
+        Assert.NotEqual(-1, sim.Network.FindNodeNear(spur.FromX, spur.FromZ, 0.5f, withRoadsOnly: true));
+        Assert.True(sim.AccessNodeOf(sim.Industries[0]) >= 0);
+        Assert.Equal(spur.Money, before - sim.Company.Money - road, 1f);
     }
 }

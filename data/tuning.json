@@ -107,6 +107,7 @@
   "roads": {
     "twoLane": { "speedLimit": 14.0, "costPerMetre": 40.0 },
     "avenue": { "speedLimit": 19.0, "costPerMetre": 90.0 },
+    "path": { "speedLimit": 8.0, "costPerMetre": 15.0 }, // the stone road that joins an access point to the roads (M6e); never chosen by the player
     "cutCostPerCubicMetre": 6.0,
     "fillCostPerCubicMetre": 9.0,
     "earthworkSlope": 1.5,          // horizontal metres per metre of height at the edge of a cut or fill

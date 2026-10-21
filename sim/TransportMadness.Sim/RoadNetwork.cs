@@ -6,6 +6,8 @@ public enum RoadType
     TwoLane,
     /// <summary>Two lanes per direction on a separated carriageway; free lane choice, no overtaking via the oncoming side.</summary>
     Avenue2x2,
+    /// <summary>A narrow, slow, cheap road: one lane per direction like a two-lane road. Only made as the connection of an access point; not offered to build, nor upgradable.</summary>
+    Path,
 }
 
 /// <summary>How a road piece is carried over or through the ground.</summary>
@@ -566,7 +568,7 @@ public sealed class RoadNetwork
     float GroundHeight(float x, float z) => Terrain?.HeightAt(x, z) ?? 0f;
 
     /// <summary>Half the width of the paved road including any median.</summary>
-    public static float HalfWidth(RoadType type) => type == RoadType.Avenue2x2 ? 8f : 3.5f;
+    public static float HalfWidth(RoadType type) => type switch { RoadType.Avenue2x2 => 8f, RoadType.Path => 2.5f, _ => 3.5f };
 
     /// <summary>
     /// What a road would cost, or null if it cannot be built. Earthworks are the volume between the ground and the
@@ -631,6 +633,20 @@ public sealed class RoadNetwork
         if (plan == null) return null;
         var list = new List<(float, float, float, float, bool)>(plan.Count);
         foreach (var m in plan) list.Add((m.Along, m.X, m.Z, m.Y, m.Node >= 0 || m.Road.Value >= 0));
+        return list;
+    }
+
+    /// <summary>
+    /// The planned road as runs: each point is a meeting (an end, a junction, a place where the road changes between ground, bridge and tunnel) with
+    /// the road surface height there, and <c>After</c> says what the road is from that point to the next (the last one's is ground). Null when it
+    /// cannot be built. The build preview draws earthworks and structures from this, and the access connections join the road at these points.
+    /// </summary>
+    public IReadOnlyList<(float Along, float X, float Z, float Y, bool Junction, RoadStructure After)>? PlannedRuns(float x0, float z0, float x1, float z1, float sweep = 0f)
+    {
+        var plan = Plan(x0, z0, x1, z1, sweep);
+        if (plan == null) return null;
+        var list = new List<(float, float, float, float, bool, RoadStructure)>(plan.Count);
+        foreach (var m in plan) list.Add((m.Along, m.X, m.Z, m.Y, m.Node >= 0 || m.Road.Value >= 0, m.After));
         return list;
     }
 
@@ -1282,12 +1298,12 @@ public sealed class RoadNetwork
         if (!(speedLimit > 0f)) throw new ArgumentOutOfRangeException(nameof(speedLimit), "Speed limit must be positive.");
 
         var id = new RoadId(_roads.Count);
-        int perDirection = type == RoadType.TwoLane ? 1 : 2;
+        int perDirection = type == RoadType.Avenue2x2 ? 2 : 1;
         float rise = _nodeHeights[to] - _nodeHeights[from];
         float curveLimit = geometry.IsStraight ? float.PositiveInfinity : MathF.Sqrt(ComfortLateralAcceleration * geometry.Radius);
         var forward = NewCarriageway(id, type, perDirection, speedLimit, curveLimit, from, to, geometry, rise / length);
         var backward = NewCarriageway(id, type, perDirection, speedLimit, curveLimit, to, from, geometry.Reversed(), -rise / length);
-        if (type == RoadType.TwoLane)
+        if (type != RoadType.Avenue2x2)
         {
             _lanes[forward[0].Value].Oncoming = backward[0];
             _lanes[backward[0].Value].Oncoming = forward[0];

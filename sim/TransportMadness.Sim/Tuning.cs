@@ -194,6 +194,7 @@ public sealed record RoadTuning
 {
     public required RoadTypeTuning TwoLane { get; init; }
     public required RoadTypeTuning Avenue { get; init; }
+    public required RoadTypeTuning Path { get; init; }
     public required float CutCostPerCubicMetre { get; init; }
     public required float FillCostPerCubicMetre { get; init; }
     public required float EarthworkSlope { get; init; }
@@ -215,7 +216,7 @@ public sealed record RoadTuning
     public float StructureCostPerMetre(RoadStructure structure, RoadType type) =>
         (structure == RoadStructure.Tunnel ? TunnelCostPerMetre : BridgeCostPerMetre) * (type == RoadType.Avenue2x2 ? AvenueStructureFactor : 1f);
 
-    public RoadTypeTuning Of(RoadType type) => type == RoadType.Avenue2x2 ? Avenue : TwoLane;
+    public RoadTypeTuning Of(RoadType type) => type switch { RoadType.Avenue2x2 => Avenue, RoadType.Path => Path, _ => TwoLane };
 }
 
 /// <summary>Traffic lights at road junctions: two groups of approaches take turns.</summary>
