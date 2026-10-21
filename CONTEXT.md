@@ -37,7 +37,10 @@ How many of its Jobs an Industry has filled, 0 to 1: the share filled by the Tri
 A wave of the war in which a share of the people of every Town leave for good, at fixed months. They are only a number. The workforce is then short by a gap that closes slowly, and every Industry makes less in proportion to it.
 
 **Requisition**:
-At fixed months the army buys a share of the Company's vehicles and trains (freight first, the biggest first, the garage too) at a table price, whatever their Condition. The Player is told a month ahead and cannot refuse.
+At fixed months the army buys a share of the Company's vehicles and trains (freight first, the biggest first, the garage too) at a table price, whatever their Condition. The Player is told a month ahead and cannot refuse, but in that month of notice chooses the **Requisition rule** of the wave.
+
+**Requisition rule**:
+The order in which the army picks the vehicles of one Requisition wave (C15b): freight first and the biggest (the default), the oldest model first, or passengers first. It is chosen in the month of notice, with a command and the buttons of the Company window, cannot be changed once the wave has fired, and goes back to the default after each wave. The price (80 % of new) does not depend on it.
 
 **Raid**:
 From 1942 the enemy bombs the Region at random moments. Each raid is a Flight of bombers that comes in from one side of the map, picks a target by value and drops Bombs on it; what a Bomb does is decided where it lands. Industries stop for days, Gateways, Stations and Depots are shut for a time, Vehicles become wrecks, a rail Signal fails, buildings fall and the road gets craters, which the crews clear like wrecks. People are hurt too: see Casualty, Siren and Cover. The frequency option scales how often.

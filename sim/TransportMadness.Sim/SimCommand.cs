@@ -182,3 +182,6 @@ public sealed record DeclineOrderCommand(int Order) : SimCommand;
 
 /// <summary>Sets the megawatts bought from outside for every month from now on (0 to the limit in the tuning), charged at the turn of the month. Result: 1, 0 when refused.</summary>
 public sealed record SetPowerPurchaseCommand(int Megawatts) : SimCommand;
+
+/// <summary>Chooses the rule by which the army will pick vehicles in the requisition wave that is announced (C15b): possible only from the month of notice until the wave comes. Result: 1, 0 when refused.</summary>
+public sealed record SetRequisitionRuleCommand(RequisitionRule Rule) : SimCommand;

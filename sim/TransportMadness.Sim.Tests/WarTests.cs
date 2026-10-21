@@ -324,7 +324,7 @@ public class ConscriptionTests
 /// <summary>The army's requisitions (C9c).</summary>
 public class RequisitionTests
 {
-    static Tuning Quick(Func<RequisitionTuning, RequisitionTuning>? change = null)
+    internal static Tuning Quick(Func<RequisitionTuning, RequisitionTuning>? change = null)
     {
         var t = Tuning.Load();
         t = Worlds.Late(t);
@@ -332,11 +332,11 @@ public class RequisitionTests
         return change == null ? t : t with { War = t.War with { Requisition = change(t.War.Requisition) } };
     }
 
-    static RequisitionTuning Waves(RequisitionTuning r, params (int Month, float Share)[] waves) =>
+    internal static RequisitionTuning Waves(RequisitionTuning r, params (int Month, float Share)[] waves) =>
         r with { Waves = waves.Select(w => new WarWave { Month = w.Month, Share = w.Share }).ToList() };
 
     /// <summary>A road with a depot, two stations and a line, six buses and four trucks; a rail depot with a train; one parked bus.</summary>
-    static (Simulation Sim, int Depot, int Line) Fleet(Tuning tuning, int buses = 6, int trucks = 4)
+    internal static (Simulation Sim, int Depot, int Line) Fleet(Tuning tuning, int buses = 6, int trucks = 4)
     {
         var sim = new Simulation(new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning), 5, IncidentFrequency.Off);
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, 1200, 0, RoadType.TwoLane, 14f)));
@@ -350,13 +350,13 @@ public class RequisitionTests
         return (sim, depot, line);
     }
 
-    static void RunDays(Simulation sim, double days)
+    internal static void RunDays(Simulation sim, double days)
     {
         long ticks = (long)Math.Round(days * sim.DayLengthSeconds / Simulation.StepSeconds);
         for (long t = 0; t < ticks; t++) sim.Step();
     }
 
-    static int Count(Simulation sim) => Enumerable.Range(0, sim.VehicleCount).Count(sim.IsCompanyVehicle);
+    internal static int Count(Simulation sim) => Enumerable.Range(0, sim.VehicleCount).Count(sim.IsCompanyVehicle);
 
     [Fact]
     public void BeforeTheFirstWave_NothingIsTaken_AndItIsAnnouncedAMonthAhead()

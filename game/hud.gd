@@ -41,6 +41,8 @@ signal import_requested(gateway: int, cargo: String)
 signal order_answered(order: int, accept: bool)
 ## The megawatts to buy from outside each month.
 signal power_purchase_set(megawatts: int)
+## The rule for the army's next requisition: 0 freight first, 1 the oldest first, 2 passengers first.
+signal requisition_rule_set(rule: int)
 
 signal town_focus(x: float, z: float)
 ## The Towns window turns the connectivity view of the map on or off.
@@ -115,6 +117,8 @@ var _campaign_end: Control
 var _campaign_end_title: Label
 var _campaign_end_text: Label
 var _company_details: Label
+var _rule_row: HBoxContainer
+var _rule_buttons: Array[Button] = []
 var _window_buttons: Dictionary = {}
 var _window_panel: PanelContainer
 var _window_title: Label
@@ -352,6 +356,21 @@ func _build_company_page() -> Control:
 	var column := VBoxContainer.new()
 	_company_details = Label.new()
 	column.add_child(_company_details)
+	# Shown only in the month of notice of a requisition wave.
+	_rule_row = HBoxContainer.new()
+	_rule_row.visible = false
+	column.add_child(_rule_row)
+	var rule_label := Label.new()
+	rule_label.text = "The army takes:"
+	_rule_row.add_child(rule_label)
+	var rule_names := ["Freight first", "The oldest first", "Passengers first"]
+	for rule in rule_names.size():
+		var rule_button := Button.new()
+		rule_button.text = rule_names[rule]
+		rule_button.toggle_mode = true
+		rule_button.pressed.connect(func() -> void: requisition_rule_set.emit(rule))
+		_rule_row.add_child(rule_button)
+		_rule_buttons.append(rule_button)
 	var buttons := HBoxContainer.new()
 	column.add_child(buttons)
 	for entry in [["Ask the ministry for an advance of 100k", "loan"], ["Repay 100k", "repay"]]:
@@ -884,8 +903,11 @@ func show_company(company: Dictionary) -> void:
 	if company["requisitioned"] > 0 or company["next_requisition_month"] >= 0:
 		text += "\nRequisition   the army has taken %d vehicles and trains (paid %s)" % [company["requisitioned"], _money_text(company["requisition_income"])]
 		if company["next_requisition_month"] >= 0:
-			text += "   next in %s %d: %d%% of the fleet, about %d now" % [MONTHS[company["next_requisition_month"] % 12],
-				company["year"] - floori(company["phase_month"] / 12.0) + floori(company["next_requisition_month"] / 12.0), roundi(company["next_requisition_share"] * 100.0), company["expected_requisition"]]
+			text += "   next in %s %d: %d%% of the fleet, about %d now, %s" % [MONTHS[company["next_requisition_month"] % 12],
+				company["year"] - floori(company["phase_month"] / 12.0) + floori(company["next_requisition_month"] / 12.0), roundi(company["next_requisition_share"] * 100.0), company["expected_requisition"], company["requisition_rule_text"]]
+	_rule_row.visible = company["can_choose_rule"]
+	for rule in _rule_buttons.size():
+		_rule_buttons[rule].set_pressed_no_signal(rule == company["requisition_rule"])
 	text += "\nDelivered to the gateways this month   %s  (the phase expects %s)" % [_money_text(company["export_value"]), _money_text(company["expected_value"])]
 	var last: Dictionary = company["last"]
 	if not last.is_empty():

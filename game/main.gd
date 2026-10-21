@@ -104,6 +104,8 @@ func _ready() -> void:
 			hud.show_message(host.WhyNotAccept(order)))
 	hud.power_purchase_set.connect(func(megawatts: int) -> void:
 		hud.show_message("Power bought from outside: %d MW a month" % megawatts if host.SetPowerPurchase(megawatts) else "That can't be set"))
+	hud.requisition_rule_set.connect(func(rule: int) -> void:
+		hud.show_message("The army will take: %s" % ["freight first, the biggest first", "the oldest first", "passengers first"][rule] if host.SetRequisitionRule(rule) else "That can't be set now"))
 	hud.campaign_left.connect(_leave_to_menu)
 	hud.town_focus.connect(rig.focus_on)
 	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))

@@ -95,6 +95,8 @@ public sealed partial class Simulation
                 return BuildBattery(c.X, c.Z);
             case SetPowerPurchaseCommand c:
                 return SetPowerPurchase(c.Megawatts);
+            case SetRequisitionRuleCommand c:
+                return SetRequisitionRule(c.Rule);
             case AcceptOrderCommand c:
                 return AcceptOrder(c.Order);
             case DeclineOrderCommand c:

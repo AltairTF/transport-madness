@@ -27,4 +27,7 @@ public partial class SimHost
 
     /// <summary>Sets the megawatts bought from outside for each month; false when out of range.</summary>
     public bool SetPowerPurchase(int megawatts) => Sim.Execute(new SetPowerPurchaseCommand(megawatts)) == 1;
+
+    /// <summary>Chooses the rule by which the army takes vehicles in the announced wave (0 freight first, 1 the oldest first, 2 passengers first); false outside the month of notice (C15b).</summary>
+    public bool SetRequisitionRule(int rule) => Sim.Execute(new SetRequisitionRuleCommand((RequisitionRule)rule)) == 1;
 }
