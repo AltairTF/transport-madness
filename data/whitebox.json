@@ -1,0 +1,8 @@
+{
+  "depot": { "size": [22, 6, 22], "offset": [26, 26], "color": [0.85, 0.25, 0.2] },
+  "station": { "size": [14, 4, 10], "offset": [-24, -24], "color": [0.2, 0.45, 0.85] },
+  "railDepot": { "size": [16, 5, 12], "offset": [16, 16], "color": [0.72, 0.28, 0.22] },
+  "gateway": { "road": [0.30, 0.55, 0.85], "rail": [0.80, 0.55, 0.25] },
+  "buildings": { "home": [0.80, 0.64, 0.46], "commerce": [0.38, 0.58, 0.86], "industry": [0.62, 0.62, 0.66] },
+  "access": { "padSize": 7.0, "padColor": [0.5, 0.44, 0.34], "doorWidth": 9.0, "doorHeight": 4.0, "doorColor": [0.1, 0.1, 0.12], "markerHeight": 5.0, "markerColor": [0.95, 0.78, 0.45] }
+}

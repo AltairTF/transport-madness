@@ -47,7 +47,7 @@ public partial class SimHost : Node3D
     Terrain _terrain = null!, _terrainSource = null!;
     MeshInstance3D _water = null!;
     StandardMaterial3D _waterMaterial = null!, _deckMaterial = null!, _tunnelMaterial = null!, _tunnelHintMaterial = null!;
-    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!;
+    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!, _pathMaterial = null!;
 
     // Per-lane drawing data: start point, unit direction and sideways offset of the lane centre (to the driver's right).
     float[] _laneX = Array.Empty<float>(), _laneZ = Array.Empty<float>();
@@ -56,16 +56,24 @@ public partial class SimHost : Node3D
     float[] _laneSweep = Array.Empty<float>(), _laneH0 = Array.Empty<float>(), _laneSinH0 = Array.Empty<float>(), _laneCosH0 = Array.Empty<float>();
     float[] _laneY = Array.Empty<float>(), _laneGrade = Array.Empty<float>();
 
+    Whitebox _whitebox = new();
+    StandardMaterial3D _padMaterial = null!, _doorMaterial = null!, _markerMaterial = null!;
+
     public override void _Ready()
     {
+        _whitebox = Whitebox.Load();
         _roadRoot = new Node3D { Name = "Roads" };
         AddChild(_roadRoot);
         _stationRoot = new Node3D { Name = "Stations" };
         AddChild(_stationRoot);
         _roadMaterial = Flat(new Color(0.23f, 0.24f, 0.26f));
+        _pathMaterial = Flat(new Color(0.5f, 0.44f, 0.34f)); // the stone road of an access connection (M6e)
         _medianMaterial = Flat(new Color(0.35f, 0.5f, 0.3f));
-        _depotMaterial = Flat(new Color(0.85f, 0.25f, 0.2f));
-        _stationMaterial = Flat(new Color(0.2f, 0.45f, 0.85f));
+        _depotMaterial = Flat(_whitebox.Depot.Color);
+        _stationMaterial = Flat(_whitebox.Station.Color);
+        _padMaterial = Flat(_whitebox.PadColor);
+        _doorMaterial = Flat(_whitebox.DoorColor);
+        _markerMaterial = Flat(_whitebox.MarkerColor);
         _lineMaterial = Flat(new Color(0.8f, 0.78f, 0.6f));
         _deckMaterial = Flat(new Color(0.55f, 0.55f, 0.58f));
         _tunnelMaterial = Flat(new Color(0.32f, 0.3f, 0.3f));
@@ -203,43 +211,104 @@ public partial class SimHost : Node3D
         EstimateCurveCost(x0, z0, x1, z1, type, 0f);
 
     /// <summary>
-    /// What a road bending by <paramref name="sweep"/> radians would cost, as <see cref="BuildCurve"/> would build it (its ends drawn to the access points near them, with the
-    /// spurs to the ones it passes, C10): see <see cref="EstimateRoadCost"/>. The money and the demolition include the spurs; {spurs} is how many there are.
+    /// What a road bending by <paramref name="sweep"/> radians would cost, as <see cref="BuildCurve"/> would build it: see <see cref="EstimateRoadCost"/>. The road is exactly
+    /// as given (M6e); the money and the demolition include its access connections that can be built ({spurs}, with {spur_length} and {spur_money}), {spurs_blocked}
+    /// counts those that cannot. {max_fill} and {max_cut} are the highest embankment and the deepest cutting along the road and the connections, in metres.
     /// </summary>
     public Godot.Collections.Dictionary EstimateCurveCost(float x0, float z0, float x1, float z1, int type, float sweep)
     {
         var join = Sim.JoinRoad(x0, z0, x1, z1, RoadTypeOf(type), sweep);
-        var cost = Sim.Network.EstimateCost(join.X0, join.Z0, join.X1, join.Z1, RoadTypeOf(type), sweep);
+        var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep);
         if (cost is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
-        var demolition = Sim.EstimateRoadDemolition(join.X0, join.Z0, join.X1, join.Z1, RoadTypeOf(type), sweep);
-        int demolished = demolition.Count + join.Spurs.Sum(s => s.Demolished);
-        long demolitionPrice = demolition.Price + join.Spurs.Sum(s => s.DemolitionPrice);
-        float spurMoney = join.Spurs.Sum(s => s.Money), spurLength = join.Spurs.Sum(s => MathF.Sqrt((s.ToX - s.FromX) * (s.ToX - s.FromX) + (s.ToZ - s.FromZ) * (s.ToZ - s.FromZ)));
+        var demolition = Sim.EstimateRoadDemolition(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        var built = join.Spurs.Where(s => s.Buildable).ToList();
+        int demolished = demolition.Count + built.Sum(s => s.Demolished);
+        long demolitionPrice = demolition.Price + built.Sum(s => s.DemolitionPrice);
+        float spurMoney = built.Sum(s => s.Money), spurLength = built.Sum(s => s.Cost?.Length ?? 0f);
+        float maxFill = 0f, maxCut = 0f;
+        Extremes(RoadRunData(x0, z0, x1, z1, sweep, RoadTypeOf(type)), ref maxFill, ref maxCut);
+        foreach (var spur in built) Extremes(RoadRunData(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, 0f, RoadType.Path), ref maxFill, ref maxCut);
         return new Godot.Collections.Dictionary
         {
             ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money + spurMoney,
-            ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength,
+            ["bridge"] = c.BridgeLength + built.Sum(s => s.Cost?.BridgeLength ?? 0f), ["tunnel"] = c.TunnelLength + built.Sum(s => s.Cost?.TunnelLength ?? 0f),
+            ["max_fill"] = maxFill, ["max_cut"] = maxCut,
             ["demolished"] = demolished, ["demolition_price"] = demolitionPrice,
-            ["spurs"] = join.Spurs.Count, ["spur_length"] = spurLength, ["spur_money"] = spurMoney,
+            ["spurs"] = built.Count, ["spurs_blocked"] = join.Spurs.Count - built.Count, ["spur_length"] = spurLength, ["spur_money"] = spurMoney,
             ["affordable"] = Sim.CanAfford(c.Money + spurMoney + demolitionPrice),
         };
     }
 
     /// <summary>
-    /// How a road would be joined to the industries and gateways near it (C10), for the build preview: {x0, z0, x1, z1} are its ends once drawn to the access points
-    /// (the same as given when not), {start, end} name what an end was drawn to ("" when to nothing), and {spurs} lists {name, points, money} for each spur (points lie on the ground).
+    /// What a road would be joined to, for the build preview (M6e): the road is never moved, and {spurs} lists the access connections it would get, each {name, points, money, buildable, runs}
+    /// (points lie on the ground; runs are as <see cref="RoadRuns"/> gives them, empty when the connection cannot be built).
     /// </summary>
     public Godot.Collections.Dictionary RoadJoin(float x0, float z0, float x1, float z1, int type, float sweep)
     {
         var join = Sim.JoinRoad(x0, z0, x1, z1, RoadTypeOf(type), sweep);
         var spurs = new Godot.Collections.Array<Godot.Collections.Dictionary>();
         foreach (var spur in join.Spurs)
-            spurs.Add(new Godot.Collections.Dictionary { ["name"] = AccessName(spur.Target), ["points"] = CurvePoints(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, 0f), ["money"] = spur.Money + spur.DemolitionPrice });
-        return new Godot.Collections.Dictionary
+            spurs.Add(new Godot.Collections.Dictionary
+            {
+                ["name"] = AccessName(spur.Target), ["points"] = CurvePoints(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, 0f), ["money"] = spur.Money + spur.DemolitionPrice,
+                ["buildable"] = spur.Buildable, ["runs"] = spur.Buildable ? RoadRuns(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, 0f, 2) : new Godot.Collections.Array<Godot.Collections.Dictionary>(),
+            });
+        return new Godot.Collections.Dictionary { ["x0"] = join.X0, ["z0"] = join.Z0, ["x1"] = join.X1, ["z1"] = join.Z1, ["spurs"] = spurs };
+    }
+
+    /// <summary>One stretch of a planned road for the preview: what carries it, the road surface and the ground under it at the same points, how far the earthworks reach from its middle at each, and the road height above the ground there (positive is fill).</summary>
+    sealed record RunData(RoadStructure Kind, Vector3[] Road, Vector3[] Ground, float[] Half, float[] Height);
+
+    List<RunData> RoadRunData(float x0, float z0, float x1, float z1, float sweep, RoadType type)
+    {
+        var runs = new List<RunData>();
+        var plan = Sim.Network.PlannedRuns(x0, z0, x1, z1, sweep);
+        if (plan == null) return runs;
+        var g = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
+        float half = RoadNetwork.HalfWidth(type), slope = Sim.Network.Tuning.Roads.EarthworkSlope;
+        for (int i = 0; i + 1 < plan.Count; i++)
         {
-            ["x0"] = join.X0, ["z0"] = join.Z0, ["x1"] = join.X1, ["z1"] = join.Z1,
-            ["start"] = join.Start is { } a ? AccessName(a) : "", ["end"] = join.End is { } b ? AccessName(b) : "", ["spurs"] = spurs,
-        };
+            var a = plan[i];
+            var b = plan[i + 1];
+            int steps = Math.Max(1, (int)MathF.Ceiling((b.Along - a.Along) / 4f));
+            var road = new Vector3[steps + 1];
+            var ground = new Vector3[steps + 1];
+            var reach = new float[steps + 1];
+            var height = new float[steps + 1];
+            for (int k = 0; k <= steps; k++)
+            {
+                float t = k / (float)steps;
+                var (x, z) = g.PointAt(a.Along + (b.Along - a.Along) * t);
+                float y = a.Y + (b.Y - a.Y) * t, ground0 = HeightAt(x, z);
+                road[k] = new Vector3(x, y, z);
+                ground[k] = new Vector3(x, ground0, z);
+                height[k] = y - ground0;
+                reach[k] = half + (a.After == RoadStructure.None ? slope * MathF.Abs(height[k]) : 0f);
+            }
+            runs.Add(new RunData(a.After, road, ground, reach, height));
+        }
+        return runs;
+    }
+
+    static void Extremes(List<RunData> runs, ref float maxFill, ref float maxCut)
+    {
+        foreach (var run in runs)
+        {
+            if (run.Kind != RoadStructure.None) continue;
+            foreach (float h in run.Height) { maxFill = MathF.Max(maxFill, h); maxCut = MathF.Max(maxCut, -h); }
+        }
+    }
+
+    /// <summary>
+    /// A planned road as stretches for the build preview (M6e): each {kind (0 ground, 1 bridge, 2 tunnel), road (the surface), ground (the terrain under it), half (how far the earthworks reach from the
+    /// middle at each point), height (the road above the terrain there; positive is fill, negative is cut)}. Empty when it cannot be built. The same plan the price and the build use.
+    /// </summary>
+    public Godot.Collections.Array<Godot.Collections.Dictionary> RoadRuns(float x0, float z0, float x1, float z1, float sweep, int type)
+    {
+        var list = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var run in RoadRunData(x0, z0, x1, z1, sweep, RoadTypeOf(type)))
+            list.Add(new Godot.Collections.Dictionary { ["kind"] = (int)run.Kind, ["road"] = run.Road, ["ground"] = run.Ground, ["half"] = run.Half, ["height"] = run.Height });
+        return list;
     }
 
     /// <summary>What an access point belongs to, for the build preview: the industry's type or the gateway's name.</summary>
@@ -259,7 +328,7 @@ public partial class SimHost : Node3D
         return points;
     }
 
-    static RoadType RoadTypeOf(int type) => type == 1 ? RoadType.Avenue2x2 : RoadType.TwoLane;
+    static RoadType RoadTypeOf(int type) => type switch { 1 => RoadType.Avenue2x2, 2 => RoadType.Path, _ => RoadType.TwoLane };
 
     /// <summary>Builds a straight road. Type 0 is 2-lane, 1 is the 2x2 avenue.</summary>
     public bool BuildRoad(float x0, float z0, float x1, float z1, int type) => BuildCurve(x0, z0, x1, z1, type, 0f);
@@ -1217,7 +1286,9 @@ public partial class SimHost : Node3D
             float y0 = net.GetNodeHeight(road.From), y1 = net.GetNodeHeight(road.To);
             bool avenue = road.Type == RoadType.Avenue2x2;
             float median = avenue ? RoadNetwork.MedianWidth : 0f;
-            float width = (avenue ? 4 : 2) * Simulation.LaneWidth + median;
+            bool path = road.Type == RoadType.Path;
+            float width = path ? RoadNetwork.HalfWidth(RoadType.Path) * 2f : (avenue ? 4 : 2) * Simulation.LaneWidth + median;
+            var surface = path ? _pathMaterial : _roadMaterial;
 
             // Tables for every road: retired lanes may still be referred to by finished incidents.
             SetLaneTable(net, road.ForwardLanes, y0);
@@ -1233,13 +1304,13 @@ public partial class SimHost : Node3D
                 var (x1, z1) = net.GetNode(road.To);
                 float dx = (x1 - x0) / g.Length, dz = (z1 - z0) / g.Length;
                 var middle = new Vector3((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, (z0 + z1) * 0.5f);
-                AddRoadBox(middle, g.Length, y1 - y0, dx, dz, width, RoadHeight, 0f, _roadMaterial);
-                AddRoadBox(middle, g.Length, y1 - y0, dx, dz, avenue ? median : 0.25f, 0.04f, RoadHeight * 0.5f + 0.01f, avenue ? _medianMaterial : _lineMaterial);
+                AddRoadBox(middle, g.Length, y1 - y0, dx, dz, width, RoadHeight, 0f, surface);
+                if (!path) AddRoadBox(middle, g.Length, y1 - y0, dx, dz, avenue ? median : 0.25f, 0.04f, RoadHeight * 0.5f + 0.01f, avenue ? _medianMaterial : _lineMaterial);
             }
             else
             {
-                AddRoadRibbon(g, y0, y1, width, RoadHeight * 0.5f, _roadMaterial);
-                AddRoadRibbon(g, y0, y1, avenue ? median : 0.25f, RoadHeight * 0.5f + 0.05f, avenue ? _medianMaterial : _lineMaterial);
+                AddRoadRibbon(g, y0, y1, width, RoadHeight * 0.5f, surface);
+                if (!path) AddRoadRibbon(g, y0, y1, avenue ? median : 0.25f, RoadHeight * 0.5f + 0.05f, avenue ? _medianMaterial : _lineMaterial);
             }
         }
 
@@ -1258,10 +1329,12 @@ public partial class SimHost : Node3D
         {
             if (!depot.Active) continue;
             var (x, z) = net.GetNode(depot.Node);
-            var building = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(22f, 6f, 22f) }, MaterialOverride = _depotMaterial };
-            building.Position = new Vector3(x + 26f, _terrain.HeightAt(x + 26f, z + 26f) + 3f, z + 26f);
+            var block = _whitebox.Depot;
+            var building = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _depotMaterial };
+            building.Position = new Vector3(x + block.Offset.X, _terrain.HeightAt(x + block.Offset.X, z + block.Offset.Y) + block.Size.Y * 0.5f, z + block.Offset.Y);
             _roadRoot.AddChild(building);
         }
+        AddAccessMarks();
         RebuildBuildings();
     }
 
@@ -1274,8 +1347,9 @@ public partial class SimHost : Node3D
         {
             if (!station.Active || station.Mode != StationMode.Road) continue;
             var (x, z) = net.GetNode(station.Node);
-            var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(14f, 4f, 10f) }, MaterialOverride = _stationMaterial };
-            platform.Position = new Vector3(x - 24f, _terrain.HeightAt(x - 24f, z - 24f) + 2f, z - 24f);
+            var block = _whitebox.Station;
+            var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _stationMaterial };
+            platform.Position = new Vector3(x + block.Offset.X, _terrain.HeightAt(x + block.Offset.X, z + block.Offset.Y) + block.Size.Y * 0.5f, z + block.Offset.Y);
             _stationRoot.AddChild(platform);
             foreach (var (laneId, position) in Sim.BayLanes(station))
             {
@@ -1298,14 +1372,40 @@ public partial class SimHost : Node3D
 
     static readonly Color ReachedColour = new(0.25f, 0.85f, 0.35f), CutOffColour = new(0.92f, 0.22f, 0.20f), DimmedColour = new(0.30f, 0.32f, 0.36f);
 
-    static readonly Color GatewayRoadColour = new(0.30f, 0.55f, 0.85f), GatewayRailColour = new(0.80f, 0.55f, 0.25f);
+    Color GatewayRoadColour => _whitebox.GatewayRoad;
+    Color GatewayRailColour => _whitebox.GatewayRail;
 
-    static readonly Color[] BuildingColors =
+    Color[] BuildingColors => _whitebox.Buildings; // home, commerce, industry
+
+    /// <summary>
+    /// The marks of every access point (M6e): a stone pad where the road reaches it, a post to find it by, and a dark door on the wall of the industry or gateway
+    /// that faces it. They stand where the simulation puts the point, so the connection that leads to it ends at the pad.
+    /// </summary>
+    void AddAccessMarks()
     {
-        new(0.80f, 0.64f, 0.46f), // home
-        new(0.38f, 0.58f, 0.86f), // commerce
-        new(0.62f, 0.62f, 0.66f), // industry
-    };
+        foreach (var industry in Sim.Industries)
+            AddAccessMark(industry.X, industry.Z, industry.AccessX, industry.AccessZ);
+        foreach (var gateway in Sim.Gateways)
+            if (gateway.Kind == GatewayKind.Road) AddAccessMark(gateway.X, gateway.Z, gateway.AccessX, gateway.AccessZ);
+    }
+
+    void AddAccessMark(float cx, float cz, float ax, float az)
+    {
+        float dx = ax - cx, dz = az - cz, length = MathF.Sqrt(dx * dx + dz * dz);
+        if (length < 1e-3f) return;
+        dx /= length; dz /= length;
+        var pad = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(_whitebox.PadSize, 0.3f, _whitebox.PadSize) }, MaterialOverride = _padMaterial };
+        pad.Position = new Vector3(ax, HeightAt(ax, az) + 0.15f, az);
+        _roadRoot.AddChild(pad);
+        var post = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.6f, _whitebox.MarkerHeight, 0.6f) }, MaterialOverride = _markerMaterial };
+        post.Position = new Vector3(ax - dz * _whitebox.PadSize * 0.5f, HeightAt(ax, az) + _whitebox.MarkerHeight * 0.5f, az + dx * _whitebox.PadSize * 0.5f);
+        _roadRoot.AddChild(post);
+        float wallX = ax - dx * Sim.AccessEdgeMargin, wallZ = az - dz * Sim.AccessEdgeMargin;
+        var door = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.8f, _whitebox.DoorHeight, _whitebox.DoorWidth) }, MaterialOverride = _doorMaterial };
+        door.Position = new Vector3(wallX, HeightAt(wallX, wallZ) + _whitebox.DoorHeight * 0.5f, wallZ);
+        door.Rotation = new Vector3(0f, MathF.Atan2(-dz, dx), 0f); // the box's x axis runs from the building toward the point
+        _roadRoot.AddChild(door);
+    }
 
     /// <summary>Redraws every building that stands (one box each, coloured by kind and state) and the town names.</summary>
     void RebuildBuildings()

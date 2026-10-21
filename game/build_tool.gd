@@ -1,8 +1,10 @@
 extends Node
 ## Turns mouse input into build commands on the simulation host. Straight roads snap to existing nodes
 ## (that is how junctions are made); otherwise the road follows the mouse in any direction, pulled onto a 15 degree
-## step when within 1.5 degrees of one (Shift forces the step), with 5 m lengths. A road end within reach of an industry or gateway is drawn to its
-## access point, and a road that passes one gets a spur to it (the preview shows both, the price includes the spur). Curves take three
+## step when within 1.5 degrees of one (Shift forces the step), with 5 m lengths. A road is built exactly where it is put: an industry or gateway
+## within reach that no road reaches yet gets a stone path from the nearest point of the road (the preview shows it, the price includes it, and
+## it is red when it cannot be built). The preview also marks where the road fills (green) or cuts (orange) the ground and where it is a bridge (blue)
+## or a tunnel (purple), from the same plan the price uses. Curves take three
 ## clicks: start, a point on the curve, end. Road tools (upgrade, downgrade, remove, speed limit) act on the road
 ## piece under the mouse; Move takes two clicks: the junction to pick up, then where to put it. Station builds on the
 ## road under the mouse (splitting it); New line takes stations one click at a time and Enter finishes the line.
@@ -15,6 +17,14 @@ const PICK_RADIUS := 24.0
 const STATION_PICK_RADIUS := 40.0
 const SPEED_STEP := 10.0 / 3.6 # one click on a speed tool changes the limit by 10 km/h
 const ROAD_COLORS := {"valid": Color(0.3, 0.9, 0.4, 0.7), "invalid": Color(0.95, 0.3, 0.3, 0.7)}
+const FILL_COLOR := Color(0.3, 0.85, 0.3)     ## embankment: the road is above the ground
+const CUT_COLOR := Color(1.0, 0.55, 0.15)     ## cutting: the road is below the ground
+const BRIDGE_COLOR := Color(0.35, 0.6, 1.0, 0.85)
+const TUNNEL_COLOR := Color(0.7, 0.45, 1.0, 0.85)
+const PATH_COLOR := Color(0.95, 0.78, 0.45, 0.85)   ## a stone path to an access point
+const PATH_BLOCKED_COLOR := Color(0.95, 0.25, 0.25, 0.85)
+const PATH_WIDTH := 5.0
+const EARTH_FULL_AT := 2.0 ## metres of fill or cut at which the earthwork strip is at full strength
 
 signal message(text: String)
 signal tool_changed(tool_name: String)
@@ -38,6 +48,7 @@ var _picked_node := -1     # move tool: the node being dragged, with _start at i
 var _line_stations: Array = [] # line tool: station ids picked so far, in order
 var _preview: MeshInstance3D
 var _arc_preview: MeshInstance3D
+var _earth_preview: MeshInstance3D ## child of _arc_preview (shown with it): earthworks, structures and paths, in vertex colours
 var _hover_road := -1
 var _material := StandardMaterial3D.new()
 
@@ -57,6 +68,15 @@ func setup(sim_host: Node3D, cam: Camera3D) -> void:
 	_arc_preview.material_override = _material
 	_arc_preview.visible = false
 	add_child(_arc_preview)
+	var earth_material := StandardMaterial3D.new()
+	earth_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	earth_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	earth_material.vertex_color_use_as_albedo = true
+	earth_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_earth_preview = MeshInstance3D.new()
+	_earth_preview.mesh = ImmediateMesh.new()
+	_earth_preview.material_override = earth_material
+	_arc_preview.add_child(_earth_preview)
 
 
 func set_tool(tool_name: String) -> void:
@@ -218,13 +238,13 @@ func _click(screen: Vector2) -> void:
 	var sweep := 0.0
 	if _is_curve():
 		sweep = host.SweepThrough(_start.x, _start.z, _mid.x, _mid.z, target.x, target.z)
-	var join: Dictionary = {} # a road is joined to the access points near it (C10); the next road goes on from where this one ended
+	var join: Dictionary = {} # the access points the road gets a path to (M6e); the road itself is where it was put
 	if not _is_rail_tool():
 		join = host.RoadJoin(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	var built: bool = host.BuildTrack(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.BuildCurve(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	if built:
 		message.emit("Track laid" if _is_rail_tool() else "Road built" + _join_text(join))
-		_start = target if join.is_empty() else _ground(join["x1"], join["z1"]) # keep drawing from the new end
+		_start = target # keep drawing from the new end
 		_mid = null
 		_arc_preview.visible = false
 	else:
@@ -359,25 +379,26 @@ func _update_preview(screen: Vector2) -> void:
 	var offset: Vector3 = target - _start
 	if _is_curve() and _mid != null:
 		sweep = host.SweepThrough(_start.x, _start.z, _mid.x, _mid.z, target.x, target.z)
-	var join: Dictionary = {} # the road as the simulation will build it: its ends drawn to the access points near them (C10)
+	var join: Dictionary = {} # the paths the simulation will add to the access points near the road (M6e)
 	var origin: Vector3 = _start
-	var aimed: Vector3 = target
+	var runs: Array = []
 	if not _is_rail_tool():
 		join = host.RoadJoin(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
-		origin = _ground(join["x0"], join["z0"])
-		target = _ground(join["x1"], join["z1"])
-		offset = target - origin
-	var cost: Dictionary = host.EstimateTrackCost(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.EstimateCurveCost(_start.x, _start.z, aimed.x, aimed.z, _road_type(), sweep)
+		runs = host.RoadRuns(_start.x, _start.z, target.x, target.z, sweep, _road_type())
+	var cost: Dictionary = host.EstimateTrackCost(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.EstimateCurveCost(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	var valid: bool = cost["valid"]
 	var width := RAIL_WIDTH if _is_rail_tool() else (16.0 if _road_type() == 1 else 7.0)
 	_material.albedo_color = ROAD_COLORS["valid"] if valid and cost["affordable"] else ROAD_COLORS["invalid"]
 
 	var spurs: Array = [] if join.is_empty() else join["spurs"]
-	if absf(sweep) > 0.0001 or not spurs.is_empty():
+	if not runs.is_empty():
+		_preview.visible = false
+		_draw_runs(runs, width)
+		for spur in spurs:
+			_draw_spur(spur)
+	elif absf(sweep) > 0.0001:
 		_preview.visible = false
 		_draw_arc(host.CurvePoints(origin.x, origin.z, target.x, target.z, sweep), width)
-		for spur in spurs: # drawn like the road: the road's own style, its own type
-			_draw_arc(spur["points"], width, false)
 	else:
 		_arc_preview.visible = false
 		_preview.visible = true
@@ -394,6 +415,11 @@ func _update_preview(screen: Vector2) -> void:
 			text += "   bridge %d m" % cost["bridge"]
 		if cost["tunnel"] > 0.0:
 			text += "   tunnel %d m" % cost["tunnel"]
+		if not _is_rail_tool():
+			if cost["max_fill"] >= 0.5:
+				text += "   embankment up to %.1f m" % cost["max_fill"]
+			if cost["max_cut"] >= 0.5:
+				text += "   cutting up to %.1f m" % cost["max_cut"]
 		if _is_rail_tool() and cost["crossings"] > 0:
 			text += "   %d level %s" % [cost["crossings"], "crossing" if cost["crossings"] == 1 else "crossings"]
 		text += _join_text(join, cost)
@@ -552,6 +578,7 @@ func _draw_arc(points: PackedVector3Array, width: float, clear := true) -> void:
 	var mesh: ImmediateMesh = _arc_preview.mesh
 	if clear:
 		mesh.clear_surfaces()
+		_earth_preview.mesh.clear_surfaces()
 	_arc_preview.visible = true
 	if points.size() < 2:
 		return
@@ -567,6 +594,81 @@ func _draw_arc(points: PackedVector3Array, width: float, clear := true) -> void:
 		mesh.surface_add_vertex(points[i] - right + lift)
 		mesh.surface_add_vertex(points[i] + right + lift)
 	mesh.surface_end()
+
+
+## A planned road from the simulation's stretches (RoadRuns): the road surface in the usual colour, with the earthworks, bridges and tunnels marked.
+func _draw_runs(runs: Array, width: float) -> void:
+	var surface := PackedVector3Array()
+	for run in runs:
+		var road: PackedVector3Array = run["road"]
+		for i in road.size():
+			if i == 0 and not surface.is_empty():
+				continue
+			surface.append(road[i])
+	_draw_arc(surface, width)
+	var mesh: ImmediateMesh = _earth_preview.mesh
+	for run in runs:
+		var road: PackedVector3Array = run["road"]
+		var ground: PackedVector3Array = run["ground"]
+		var half: PackedFloat32Array = run["half"]
+		var height: PackedFloat32Array = run["height"]
+		if run["kind"] == 0:
+			mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in ground.size():
+				var h: float = height[i]
+				var color := (FILL_COLOR if h > 0.0 else CUT_COLOR)
+				color.a = 0.55 * clampf(absf(h) / EARTH_FULL_AT, 0.0, 1.0)
+				var side := _side(ground, i) * half[i]
+				mesh.surface_set_color(color)
+				mesh.surface_add_vertex(ground[i] - side + Vector3(0, 0.3, 0))
+				mesh.surface_set_color(color)
+				mesh.surface_add_vertex(ground[i] + side + Vector3(0, 0.3, 0))
+			mesh.surface_end()
+		else:
+			var bridge: bool = run["kind"] == 1
+			mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+			for i in road.size():
+				var side := _side(road, i) * (width * 0.5 + 1.5)
+				var base: Vector3 = road[i] if bridge else ground[i] # a tunnel is marked on the ground above it
+				var color := BRIDGE_COLOR if bridge else TUNNEL_COLOR
+				mesh.surface_set_color(color)
+				mesh.surface_add_vertex(base - side + Vector3(0, 0.2 if bridge else 0.5, 0))
+				mesh.surface_set_color(color)
+				mesh.surface_add_vertex(base + side + Vector3(0, 0.2 if bridge else 0.5, 0))
+			mesh.surface_end()
+
+
+## An access path (M6e) on top of what is drawn: stone coloured, and red when it cannot be built.
+func _draw_spur(spur: Dictionary) -> void:
+	var points := PackedVector3Array()
+	var color := PATH_COLOR
+	if spur["buildable"]:
+		for run in spur["runs"]:
+			var road: PackedVector3Array = run["road"]
+			for i in road.size():
+				if i == 0 and not points.is_empty():
+					continue
+				points.append(road[i])
+	else:
+		points = spur["points"]
+		color = PATH_BLOCKED_COLOR
+	var mesh: ImmediateMesh = _earth_preview.mesh
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for i in points.size():
+		var side := _side(points, i) * PATH_WIDTH * 0.5
+		mesh.surface_set_color(color)
+		mesh.surface_add_vertex(points[i] - side + Vector3(0, 0.5, 0))
+		mesh.surface_set_color(color)
+		mesh.surface_add_vertex(points[i] + side + Vector3(0, 0.5, 0))
+	mesh.surface_end()
+
+
+## Horizontal unit vector to the right of the line at point i.
+func _side(points: PackedVector3Array, i: int) -> Vector3:
+	var forward := points[mini(i + 1, points.size() - 1)] - points[maxi(i - 1, 0)]
+	forward.y = 0.0
+	forward = forward.normalized()
+	return Vector3(-forward.z, 0.0, forward.x)
 
 
 ## The anti-aircraft tool (C13): a marker where the battery would stand and the circle of its range on the ground, green when it can be built there and red when not.
@@ -610,16 +712,16 @@ func _click_battery(screen: Vector2) -> void:
 	_hover_battery(screen)
 
 
-## What a road is joined to (C10), as part of a line of text: "   joins the Steel Mill   spur to the Forest 47 m". The cost, when given, tells the spurs' length.
+## The paths a road gets to the industries and gateways near it (M6e), as part of a line of text: "   path to the Forest   (47 m, 705)". The cost, when given, tells their length and price.
 func _join_text(join: Dictionary, cost := {}) -> String:
 	if join.is_empty():
 		return ""
 	var text := ""
-	for end in ["start", "end"]:
-		if join[end] != "":
-			text += "   joins the %s" % join[end]
 	for spur in join["spurs"]:
-		text += "   spur to the %s" % spur["name"]
+		if spur["buildable"]:
+			text += "   path to the %s" % spur["name"]
+		else:
+			text += "   no path to the %s can be built (too steep or blocked)" % spur["name"]
 	if not cost.is_empty() and cost["spurs"] > 0:
 		text += " (%d m, %s)" % [cost["spur_length"], _money(cost["spur_money"])]
 	return text

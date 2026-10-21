@@ -40,7 +40,7 @@ public partial class SimHost
         _bedMaterial = Flat(new Color(0.36f, 0.33f, 0.30f));
         _railMaterial = Flat(new Color(0.78f, 0.78f, 0.82f));
         _railStationMaterial = Flat(new Color(0.25f, 0.62f, 0.78f));
-        _railDepotMaterial = Flat(new Color(0.72f, 0.28f, 0.22f));
+        _railDepotMaterial = Flat(_whitebox.RailDepot.Color);
         _postMaterial = Flat(new Color(0.15f, 0.15f, 0.17f));
         _trainCars = new MultiMesh
         {
@@ -370,8 +370,9 @@ public partial class SimHost
         {
             if (!depot.Active) continue;
             var (x, z) = rail.GetNode(depot.Node);
-            var building = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(16f, 5f, 12f) }, MaterialOverride = _railDepotMaterial };
-            building.Position = new Vector3(x + 16f, rail.GetNodeHeight(depot.Node) + 2.5f, z + 16f);
+            var block = _whitebox.RailDepot;
+            var building = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _railDepotMaterial };
+            building.Position = new Vector3(x + block.Offset.X, rail.GetNodeHeight(depot.Node) + block.Size.Y * 0.5f, z + block.Offset.Y);
             _railRoot.AddChild(building);
         }
         foreach (var signal in rail.Signals)

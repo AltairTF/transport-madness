@@ -61,7 +61,7 @@ public partial class SimHost
     {
         if (Sim.Network.RoadAt(x, z, 14f) is not { } id) return new Godot.Collections.Dictionary { ["found"] = false };
         var road = Sim.Network.GetRoad(id);
-        return new Godot.Collections.Dictionary { ["found"] = true, ["road"] = id.Value, ["type"] = road.Type == RoadType.Avenue2x2 ? 1 : 0, ["length"] = road.Length, ["structure"] = (int)road.Structure, ["condition"] = Sim.RoadConditionOf(id.Value) };
+        return new Godot.Collections.Dictionary { ["found"] = true, ["road"] = id.Value, ["type"] = road.Type switch { RoadType.Avenue2x2 => 1, RoadType.Path => 2, _ => 0 }, ["length"] = road.Length, ["structure"] = (int)road.Structure, ["condition"] = Sim.RoadConditionOf(id.Value) };
     }
 
     /// <summary>The junction or road end nearest a point within <paramref name="radius"/>: {found, node, x, y, z}.</summary>
