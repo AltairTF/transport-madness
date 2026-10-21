@@ -80,10 +80,10 @@ The three eras of 1900 to 2020 of the first plan are dropped (ADR 0006). Each ve
 Transport Fever style: Godot Control UI with mouse and keyboard, free orbit camera. Build toolbar, line window (stations, vehicles, stats), vehicle window, event panel (incidents). Map overlays for traffic density, incident risk, road Condition and station coverage.
 
 ### Art and audio
-Greybox with colors per category until M6 (art comes with it), then asset packs plus AI-generated models for final visuals. Audio (engines, horns, crashes, ambience, music) at M6 from free libraries and/or generated audio, curated by the developer.
+Greybox with colors per category until M7 (art and audio were moved out of M6 on 2026-10-21, `m6-plan.md`): low-poly and stylised in the look of the late 1930s and 1940s, CC0 asset packs first and AI-generated models where nothing fits, curated by the developer. Audio (engines, horns, crashes, the siren, bombs, ambience, music of the period) at M7 from CC0 libraries and/or generated audio, curated by the developer.
 
 ### Save and load
-Snapshot of full simulation state plus seed.
+A full binary snapshot of the simulation state with the tuning it was started with (M6a, `m6-plan.md`); not a replay of the command log.
 
 ## Technical principles
 
@@ -105,7 +105,9 @@ Snapshot of full simulation state plus seed.
 | C1 | The campaign's time scale (day 1200 s, month 3 days, 1938 calendar), retune | A run of 96 months with the numbers re-derived |
 | M5 | Maintenance, depot capability, full incidents (`m5-plan.md`) | A fleet wears, breaks down and is serviced by the player's policy |
 | C2 to C9 | The chain, gateways, budget and standing, orders, electricity, workers, fleet by year, the war (`campaign-plan.md`) | The campaign is playable from 1938 to 1945 |
-| M6 | Save/load, final overlays, balancing, art, audio | A complete, polished loop |
+| C10 to C15 | Access points, residents as workers, dynamic raids, anti-aircraft, civilians, rebuilding, the requisition rule, call-up capacity (`campaign-plan.md`) | The war is dynamic |
+| M6 | Save/load, overlays, balancing, the interface (`m6-plan.md`) | A complete loop: a campaign can be saved, read on the map and is balanced |
+| M7 | Art and audio (`m6-plan.md`) | The greybox is replaced |
 
 ### M0 exit criteria
 1. Flat terrain, build road segments (2-lane and 2x2) with junctions.
@@ -117,7 +119,7 @@ Snapshot of full simulation state plus seed.
 Only after M0 passes do terrain, towns and economy start.
 
 ## Out of scope for now
-Multiplayer, AI competitors, employee management (drivers, strikes), ships and aircraft (as vehicles to run), manual terraforming, timetables, stocks, a sandbox mode (the campaign is the only mode for now), weather (M6 at the earliest).
+Multiplayer, AI competitors, employee management (drivers, strikes), ships and aircraft (as vehicles to run), manual terraforming, timetables, stocks, a sandbox mode (the campaign is the only mode for now), weather (after M6).
 
 ## Open items to decide at their milestone
 Starting money and difficulty presets, map size options, exact vehicle roster per model year, scenario goals, tuning numbers (all in data files), tick rate fine-tuning after profiling.

@@ -32,7 +32,8 @@ Last updated: 2026-10-21, after C15c (call-up capacity); the work before M6 is f
 | C15a Rebuilding | Done (sim and tests; nothing in the game layer): what a raid destroys becomes a free lot again and the town founds it anew through its growth, from the construction stock the player delivers, with no command and no cost to the state; a raid never destroys the last standing building of a town (section 5.41) |
 | C15b Requisition rule | Done (sim, tests, the Company window; the 3D side unplayed): during the month of notice of a requisition wave the player chooses the rule for that wave: freight first and the biggest (the default), the oldest first, or passengers first; the price stays 80 % of new (section 5.42) |
 | C15c Call-up capacity | Done (sim, tests, a line in the Towns window; the 3D side unplayed): each call-up wave lowers for good the room of the buildings of every town for people and jobs (a per-town capacity factor on `StatsOf`, the needs, the jobs as workplaces and the people growth creates; industry jobs are not scaled), and growth cannot refill it (section 5.43). This closes C15 and the work before M6 |
-| M6 Save/load, overlays, balancing, art, audio | Not started |
+| M6 Save/load, overlays, balancing, the interface | Planned (`docs/m6-plan.md`, 2026-10-21): M6a save and load, M6b overlays, M6c balance, M6d the interface |
+| M7 Art and audio | Planned (`docs/m6-plan.md`), after M6 |
 
 What has been played. The developer played M0 to M5 and the campaign slices C2 to C9 in the 3D game on 2026-10-21 and found them working; the interface is awkward and hard to reach (many buttons and windows) and is to be dealt with after the features are done. Not played: the road signs and sign tools (5.22) and the presentation of raids (section 11). Remarks in section 5 and in section 10 that a slice was "not played" describe the state when it was written. Nothing in this environment can run the 3D game: the Godot available here has no .NET support (section 3).
 
@@ -844,7 +845,7 @@ Built in this order. Each has its tests and its hashes and is one commit and pus
 - ~~**C15b Requisition rule.**~~ Built (5.42): the player picks the rule of each requisition wave in its month of notice.
 - ~~**C15c Call-up capacity.**~~ Built (5.43): each wave lowers for good the room of the buildings of every town for people and jobs, and growth cannot refill it.
 
-The work before M6 is finished. M6 (save and load, overlays, balancing, art, audio) is the only thing left.
+The work before M6 is finished. M6 (save and load, overlays, balancing, the interface) was planned with the developer on 2026-10-21 in `docs/m6-plan.md`; art and audio moved to M7.
 
 ### After M6 (left out on purpose)
 
@@ -855,7 +856,7 @@ The work before M6 is finished. M6 (save and load, overlays, balancing, art, aud
 
 ### M6 scope
 
-Save and load (a snapshot plus the seed), overlays, balancing, art and audio. Save and load must carry the state added since M5: orders, the order, raid and war random streams, damage timers, the workforce gap, called-up people per group, the requisition and call-up wave indices, the power purchase, and staff stocks. The Continue and Load buttons of the menus are disabled placeholders until then. The hash of a trip group does not include its people unless a call-up has fired; keep that in mind if groups ever change size by other means. Greybox boxes are replaced by art here.
+See `docs/m6-plan.md`: M6a save and load (a full binary snapshot with the tuning embedded), M6b overlays, M6c balance by headless bots, M6d the interface; art and audio are M7. Save and load must carry the state added since M5: orders, the order, raid and war random streams, damage timers, the workforce gap, called-up people per group, the requisition and call-up wave indices, the power purchase, and staff stocks. The Continue and Load buttons of the menus are disabled placeholders until then. The hash of a trip group does not include its people unless a call-up has fired; keep that in mind if groups ever change size by other means. Greybox boxes are replaced by art here.
 
 ### Balance not yet measured
 

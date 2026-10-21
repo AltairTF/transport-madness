@@ -39,7 +39,7 @@ Status: C1 to C15 done on 2026-10-21 (sections 5.23, 5.25 to 5.43 of `project-st
 | C15a (done) | Rebuilding: what a raid destroys becomes a free lot and the town founds it again through its growth; a raid never destroys the last standing building (section 5.41 of project-status). |
 | C15b (done) | Requisition rule: in the month of notice the player chooses the order in which the army takes vehicles: freight first and the biggest (default), the oldest first, passengers first (section 5.42 of project-status). |
 | C15c (done) | Call-up capacity: each call-up wave lowers for good the capacity of the buildings of every town for people and jobs (`StatsOf`, the needs, the jobs as workplaces and what growth creates); growth cannot refill it (section 5.43 of project-status). With it the work before M6 is finished. |
-| M6 | Save and load, overlays, balancing, art, audio (the old M6 without eras). |
+| M6 | Save and load, overlays, balancing, the interface (`m6-plan.md`); art and audio moved to M7. |
 
 Each slice has its tests and its own pinned hashes where the world changes, and is committed only when the user asks. The 3D side of each is compiled and its GDScript parsed here; the user plays it.
 
