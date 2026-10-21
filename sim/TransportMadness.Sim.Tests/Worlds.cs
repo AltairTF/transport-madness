@@ -140,12 +140,14 @@ internal static class Worlds
         if (pairs.Count == 0) return null;
         var (pa, pb) = pairs[0];
         float dist = Gap(pa, pb);
-        if (sim.Execute(new BuildRoadCommand(pa.X, pa.Z, pb.X, pb.Z, RoadType.TwoLane, 14f)) <= 0) return null;
+        // The road joins the industries' access points (a road ending near one is drawn to it); the stations stand 50 m in from them (a road is not split nearer its end than 30 m), about 80 m from the middles.
+        if (sim.Execute(new BuildRoadCommand(pa.AccessX, pa.AccessZ, pb.AccessX, pb.AccessZ, RoadType.TwoLane, 14f)) <= 0) return null;
         var net = sim.Network;
-        int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(pa.X, pa.Z, 5f, withRoadsOnly: true), DepotLevel.Simple));
-        float dx = (pb.X - pa.X) / dist, dz = (pb.Z - pa.Z) / dist;
-        int sa = sim.Execute(new BuildStationCommand(pa.X + dx * 60f, pa.Z + dz * 60f));
-        int sb = sim.Execute(new BuildStationCommand(pb.X - dx * 60f, pb.Z - dz * 60f));
+        int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(pa.AccessX, pa.AccessZ, 5f, withRoadsOnly: true), DepotLevel.Simple));
+        float length = MathF.Sqrt(MathF.Pow(pb.AccessX - pa.AccessX, 2) + MathF.Pow(pb.AccessZ - pa.AccessZ, 2));
+        float dx = (pb.AccessX - pa.AccessX) / length, dz = (pb.AccessZ - pa.AccessZ) / length;
+        int sa = sim.Execute(new BuildStationCommand(pa.AccessX + dx * 50f, pa.AccessZ + dz * 50f));
+        int sb = sim.Execute(new BuildStationCommand(pb.AccessX - dx * 50f, pb.AccessZ - dz * 50f));
         if (depot < 0 || sa < 0 || sb < 0) return null;
         int line = sim.Execute(new CreateLineCommand(new[] { sa, sb }));
         int bought = 0;

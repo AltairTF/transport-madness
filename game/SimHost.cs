@@ -248,20 +248,48 @@ public partial class SimHost : Node3D
     public Godot.Collections.Dictionary EstimateRoadCost(float x0, float z0, float x1, float z1, int type) =>
         EstimateCurveCost(x0, z0, x1, z1, type, 0f);
 
-    /// <summary>What a road bending by <paramref name="sweep"/> radians would cost; see <see cref="EstimateRoadCost"/>.</summary>
+    /// <summary>
+    /// What a road bending by <paramref name="sweep"/> radians would cost, as <see cref="BuildCurve"/> would build it (its ends drawn to the access points near them, with the
+    /// spurs to the ones it passes, C10): see <see cref="EstimateRoadCost"/>. The money and the demolition include the spurs; {spurs} is how many there are.
+    /// </summary>
     public Godot.Collections.Dictionary EstimateCurveCost(float x0, float z0, float x1, float z1, int type, float sweep)
     {
-        var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        var join = Sim.JoinRoad(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        var cost = Sim.Network.EstimateCost(join.X0, join.Z0, join.X1, join.Z1, RoadTypeOf(type), sweep);
         if (cost is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
-        var demolition = Sim.EstimateRoadDemolition(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        var demolition = Sim.EstimateRoadDemolition(join.X0, join.Z0, join.X1, join.Z1, RoadTypeOf(type), sweep);
+        int demolished = demolition.Count + join.Spurs.Sum(s => s.Demolished);
+        long demolitionPrice = demolition.Price + join.Spurs.Sum(s => s.DemolitionPrice);
+        float spurMoney = join.Spurs.Sum(s => s.Money), spurLength = join.Spurs.Sum(s => MathF.Sqrt((s.ToX - s.FromX) * (s.ToX - s.FromX) + (s.ToZ - s.FromZ) * (s.ToZ - s.FromZ)));
         return new Godot.Collections.Dictionary
         {
-            ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money,
+            ["valid"] = true, ["length"] = c.Length, ["cut"] = c.CutVolume, ["fill"] = c.FillVolume, ["money"] = c.Money + spurMoney,
             ["bridge"] = c.BridgeLength, ["tunnel"] = c.TunnelLength,
-            ["demolished"] = demolition.Count, ["demolition_price"] = demolition.Price,
-            ["affordable"] = Sim.CanAfford(c.Money + demolition.Price),
+            ["demolished"] = demolished, ["demolition_price"] = demolitionPrice,
+            ["spurs"] = join.Spurs.Count, ["spur_length"] = spurLength, ["spur_money"] = spurMoney,
+            ["affordable"] = Sim.CanAfford(c.Money + spurMoney + demolitionPrice),
         };
     }
+
+    /// <summary>
+    /// How a road would be joined to the industries and gateways near it (C10), for the build preview: {x0, z0, x1, z1} are its ends once drawn to the access points
+    /// (the same as given when not), {start, end} name what an end was drawn to ("" when to nothing), and {spurs} lists {name, points, money} for each spur (points lie on the ground).
+    /// </summary>
+    public Godot.Collections.Dictionary RoadJoin(float x0, float z0, float x1, float z1, int type, float sweep)
+    {
+        var join = Sim.JoinRoad(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        var spurs = new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        foreach (var spur in join.Spurs)
+            spurs.Add(new Godot.Collections.Dictionary { ["name"] = AccessName(spur.Target), ["points"] = CurvePoints(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, 0f), ["money"] = spur.Money + spur.DemolitionPrice });
+        return new Godot.Collections.Dictionary
+        {
+            ["x0"] = join.X0, ["z0"] = join.Z0, ["x1"] = join.X1, ["z1"] = join.Z1,
+            ["start"] = join.Start is { } a ? AccessName(a) : "", ["end"] = join.End is { } b ? AccessName(b) : "", ["spurs"] = spurs,
+        };
+    }
+
+    /// <summary>What an access point belongs to, for the build preview: the industry's type or the gateway's name.</summary>
+    string AccessName(AccessRef target) => target.Gateway ? Sim.Gateways[target.Id].Name : Sim.IndustryTuning.Types[Sim.Industries[target.Id].Type].Name;
 
     /// <summary>Points along a road bending by <paramref name="sweep"/> radians, lying on the ground (for the build preview).</summary>
     public Vector3[] CurvePoints(float x0, float z0, float x1, float z1, float sweep)

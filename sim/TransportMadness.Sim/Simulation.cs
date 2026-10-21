@@ -130,6 +130,7 @@ public sealed partial class Simulation
         _crew = tuning.Crews;
         _economy = tuning.Economy;
         _stationTuning = tuning.Stations;
+        _accessTuning = tuning.Access;
         _cargo = tuning.Cargo;
         _townTuning = tuning.Towns;
         _trips = tuning.Trips;

@@ -138,6 +138,9 @@ public sealed class Industry
     public float Y { get; }
     public float Z { get; }
     public float Angle { get; }
+    /// <summary>Where it meets the road network: on the edge of its square that faces the nearest town (C10). A node stands there once a road has been built to it.</summary>
+    public float AccessX { get; internal set; }
+    public float AccessZ { get; internal set; }
     /// <summary>Delivered inputs waiting to be used, by cargo.</summary>
     public float[] Input { get; }
     /// <summary>The tick until which a raid keeps it from working, 0 when it is not damaged (C9d).</summary>
@@ -189,6 +192,9 @@ public sealed class Gateway
     public float Y { get; }
     public float Z { get; }
     public float Angle { get; }
+    /// <summary>Where it meets the road network, as for an <see cref="Industry"/> (C10); only a road gateway is joined to roads.</summary>
+    public float AccessX { get; internal set; }
+    public float AccessZ { get; internal set; }
     /// <summary>Imported cargo waiting for a station to take it, by cargo.</summary>
     public float[] Stock { get; }
     /// <summary>Everything that has arrived and everything that has been delivered here so far, by cargo.</summary>

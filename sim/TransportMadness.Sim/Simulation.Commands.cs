@@ -21,23 +21,7 @@ public sealed partial class Simulation
         switch (command)
         {
             case BuildRoadCommand c:
-            {
-                var cost = _net.EstimateCost(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.Sweep);
-                if (cost == null) return 0;
-                var geometry = RoadGeometry.FromChord(c.X0, c.Z0, c.X1, c.Z1, c.Sweep);
-                var inTheWay = BuildingsInTheWay(new[] { (geometry, c.Type) });
-                int crossings = 0;
-                if (RailInUse && (_net.PlannedPoints(c.X0, c.Z0, c.X1, c.Z1, c.Sweep) is not { } plan || !RoadCrossingsAllowed(geometry, plan, out crossings))) return 0;
-                if (!CanAfford(cost.Value.Money + DemolitionOf(inTheWay).Price + crossings * _railTuning.Crossings.Price)) return 0;
-                int built = _net.BuildRoad(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.SpeedLimit, c.Sweep).Count;
-                if (built > 0)
-                {
-                    Charge(Price(cost.Value.Money), LedgerEntry.Construction);
-                    DemolishForRoad(inTheWay);
-                    if (RailInUse) AddCrossingsFound();
-                }
-                return built;
-            }
+                return BuildRoadWithAccess(c);
             case RemoveRoadCommand c:
                 if (!IsLiveRoad(c.Road) || !CanAfford(_net.DemolitionCost(new RoadId(c.Road)))) return 0;
                 return Paid(_net.DemolitionCost(new RoadId(c.Road)), _net.RemoveRoad(new RoadId(c.Road)));

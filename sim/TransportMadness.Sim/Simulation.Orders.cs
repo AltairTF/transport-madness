@@ -397,6 +397,7 @@ public sealed partial class Simulation
             float y = _net.Terrain?.HeightAt(plan.X, plan.Z) ?? 0f;
             var industry = new Industry(_industries.Count, plan.Type, plan.X, y, plan.Z, plan.Angle, _cargo.Count);
             _industries.Add(industry);
+            SetAccessPoint(industry);
             SetOwnStaff(industry);
             o.WorkIds.Add(industry.Id);
             AddEvent(SimEventKind.Order, EventSeverity.Info, plan.X, plan.Z, industry.Id, $"The state has founded a {_industryTuning.Types[plan.Type].Name.ToLowerInvariant()}");

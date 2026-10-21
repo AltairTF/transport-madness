@@ -9,7 +9,7 @@ Hosted at https://github.com/AltairTF/transport-madness (private), branch `main`
 ```sh
 gh auth login                                   # as AltairTF
 git clone https://github.com/AltairTF/transport-madness.git
-cd transport-madness/sim && dotnet test         # 663 tests, about 50 s
+cd transport-madness/sim && dotnet test         # 687 tests, about 50 s
 BENCH=1 dotnet test -c Release --filter StepBenchmarks --logger "console;verbosity=detailed"   # step time, what the CI benchmark job runs
 ```
 

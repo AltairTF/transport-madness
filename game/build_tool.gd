@@ -1,7 +1,8 @@
 extends Node
 ## Turns mouse input into build commands on the simulation host. Straight roads snap to existing nodes
 ## (that is how junctions are made); otherwise the road follows the mouse in any direction, pulled onto a 15 degree
-## step when within 1.5 degrees of one (Shift forces the step), with 5 m lengths. Curves take three
+## step when within 1.5 degrees of one (Shift forces the step), with 5 m lengths. A road end within reach of an industry or gateway is drawn to its
+## access point, and a road that passes one gets a spur to it (the preview shows both, the price includes the spur). Curves take three
 ## clicks: start, a point on the curve, end. Road tools (upgrade, downgrade, remove, speed limit) act on the road
 ## piece under the mouse; Move takes two clicks: the junction to pick up, then where to put it. Station builds on the
 ## road under the mouse (splitting it); New line takes stations one click at a time and Enter finishes the line.
@@ -209,10 +210,13 @@ func _click(screen: Vector2) -> void:
 	var sweep := 0.0
 	if _is_curve():
 		sweep = host.SweepThrough(_start.x, _start.z, _mid.x, _mid.z, target.x, target.z)
+	var join: Dictionary = {} # a road is joined to the access points near it (C10); the next road goes on from where this one ended
+	if not _is_rail_tool():
+		join = host.RoadJoin(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	var built: bool = host.BuildTrack(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.BuildCurve(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	if built:
-		message.emit("Track laid" if _is_rail_tool() else "Road built")
-		_start = target # keep drawing from the new end
+		message.emit("Track laid" if _is_rail_tool() else "Road built" + _join_text(join))
+		_start = target if join.is_empty() else _ground(join["x1"], join["z1"]) # keep drawing from the new end
 		_mid = null
 		_arc_preview.visible = false
 	else:
@@ -344,14 +348,25 @@ func _update_preview(screen: Vector2) -> void:
 	var offset: Vector3 = target - _start
 	if _is_curve() and _mid != null:
 		sweep = host.SweepThrough(_start.x, _start.z, _mid.x, _mid.z, target.x, target.z)
-	var cost: Dictionary = host.EstimateTrackCost(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.EstimateCurveCost(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
+	var join: Dictionary = {} # the road as the simulation will build it: its ends drawn to the access points near them (C10)
+	var origin: Vector3 = _start
+	var aimed: Vector3 = target
+	if not _is_rail_tool():
+		join = host.RoadJoin(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
+		origin = _ground(join["x0"], join["z0"])
+		target = _ground(join["x1"], join["z1"])
+		offset = target - origin
+	var cost: Dictionary = host.EstimateTrackCost(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.EstimateCurveCost(_start.x, _start.z, aimed.x, aimed.z, _road_type(), sweep)
 	var valid: bool = cost["valid"]
 	var width := RAIL_WIDTH if _is_rail_tool() else (16.0 if _road_type() == 1 else 7.0)
 	_material.albedo_color = ROAD_COLORS["valid"] if valid and cost["affordable"] else ROAD_COLORS["invalid"]
 
-	if absf(sweep) > 0.0001:
+	var spurs: Array = [] if join.is_empty() else join["spurs"]
+	if absf(sweep) > 0.0001 or not spurs.is_empty():
 		_preview.visible = false
-		_draw_arc(host.CurvePoints(_start.x, _start.z, target.x, target.z, sweep), width)
+		_draw_arc(host.CurvePoints(origin.x, origin.z, target.x, target.z, sweep), width)
+		for spur in spurs: # drawn like the road: the road's own style, its own type
+			_draw_arc(spur["points"], width, false)
 	else:
 		_arc_preview.visible = false
 		_preview.visible = true
@@ -359,7 +374,7 @@ func _update_preview(screen: Vector2) -> void:
 		# Lies along the planned road, which may climb: x runs start to end, z stays horizontal.
 		var along := offset.normalized() if offset.length() > 0.001 else Vector3.RIGHT
 		var across := Vector3(-along.z, 0.0, along.x).normalized()
-		_preview.transform = Transform3D(Basis(along, across.cross(along), across), (_start + target) * 0.5 + Vector3(0, 0.3, 0))
+		_preview.transform = Transform3D(Basis(along, across.cross(along), across), (origin + target) * 0.5 + Vector3(0, 0.3, 0))
 
 	if valid:
 		var text := "%d m   grade %.1f%%   cut %d m3   fill %d m3   cost %s" % [
@@ -370,6 +385,7 @@ func _update_preview(screen: Vector2) -> void:
 			text += "   tunnel %d m" % cost["tunnel"]
 		if _is_rail_tool() and cost["crossings"] > 0:
 			text += "   %d level %s" % [cost["crossings"], "crossing" if cost["crossings"] == 1 else "crossings"]
+		text += _join_text(join, cost)
 		text += _demolition_text(cost)
 		message.emit(text)
 	elif _is_rail_tool():
@@ -540,6 +556,21 @@ func _draw_arc(points: PackedVector3Array, width: float, clear := true) -> void:
 		mesh.surface_add_vertex(points[i] - right + lift)
 		mesh.surface_add_vertex(points[i] + right + lift)
 	mesh.surface_end()
+
+
+## What a road is joined to (C10), as part of a line of text: "   joins the Steel Mill   spur to the Forest 47 m". The cost, when given, tells the spurs' length.
+func _join_text(join: Dictionary, cost := {}) -> String:
+	if join.is_empty():
+		return ""
+	var text := ""
+	for end in ["start", "end"]:
+		if join[end] != "":
+			text += "   joins the %s" % join[end]
+	for spur in join["spurs"]:
+		text += "   spur to the %s" % spur["name"]
+	if not cost.is_empty() and cost["spurs"] > 0:
+		text += " (%d m, %s)" % [cost["spur_length"], _money(cost["spur_money"])]
+	return text
 
 
 ## What a road would tear down, as the end of the cost line: "   demolishes 3 buildings for 12,000", or "   (not enough money)".

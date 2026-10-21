@@ -89,6 +89,7 @@ public sealed partial class Simulation
             float y = _net.Terrain?.HeightAt(plan.X, plan.Z) ?? 0f;
             var industry = new Industry(_industries.Count, plan.Type, plan.X, y, plan.Z, plan.Angle, _cargo.Count);
             _industries.Add(industry);
+            SetAccessPoint(industry);
             SetOwnStaff(industry);
         }
         IndustriesVersion++;

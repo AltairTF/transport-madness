@@ -28,6 +28,7 @@ public sealed record Tuning
     public required RoadTuning Roads { get; init; }
     public required EconomyTuning Economy { get; init; }
     public required StationTuning Stations { get; init; }
+    public required AccessTuning Access { get; init; }
     public required TownsTuning Towns { get; init; }
     public required IndustriesTuning Industries { get; init; }
     public required GatewaysTuning Gateways { get; init; }
@@ -275,6 +276,13 @@ public sealed record DepotPrices
         DepotLevel.Workshop => Workshop,
         _ => Complex,
     };
+}
+
+/// <summary>Access points (C10): where an industry or a gateway meets the road network, and how far a road is drawn to it.</summary>
+public sealed record AccessTuning
+{
+    public required float SnapRadius { get; init; }
+    public required float EdgeMargin { get; init; }
 }
 
 public sealed record StationTuning

@@ -33,7 +33,9 @@ public sealed partial class Simulation
         foreach (var plan in plans)
         {
             float y = _net.Terrain?.HeightAt(plan.X, plan.Z) ?? 0f;
-            _gateways.Add(new Gateway(_gateways.Count, plan, y, _cargo.Count));
+            var gateway = new Gateway(_gateways.Count, plan, y, _cargo.Count);
+            (gateway.AccessX, gateway.AccessZ) = AccessPointOf(gateway.X, gateway.Z, gateway.Angle, _gatewayTuning.Size);
+            _gateways.Add(gateway);
         }
         GatewaysVersion++;
     }
