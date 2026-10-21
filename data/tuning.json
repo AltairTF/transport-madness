@@ -143,11 +143,47 @@
     "startYear": 1938,              // the first month of a game is January of this year
     "monthsPerYear": 12,
     "interestPerDay": 0.008,        // share of the loan, charged every day
-    "debtLimit": 100000,            // net worth (money minus loan) below minus this counts as insolvent
-    "bankruptcyDays": 36,           // consecutive insolvent days before the company goes bankrupt (the game goes on in sandbox)
     "sellRefundShare": 0.6,         // of the price, paid when a vehicle is sold
     "parkedUpkeepShare": 0.1,       // of its daily upkeep, paid by a vehicle or train waiting in a depot on no line
     "depotPrice": { "simple": 15000, "workshop": 40000, "complex": 90000 }
+  },
+
+  // The campaign (C4): a region at war from January 1938, 96 months. The government gives the committee an allocation at the turn
+  // of every month (the phase's amount times a factor of the standing) and judges it by its standing, 0 to 100. Each month the
+  // standing moves by what was delivered to the gateways against what the phase expects (exports are valued at the cargo's pay per
+  // unit and km), less a penalty for a deficit (money below zero) and for fines; the orders of C5 will add their own bonuses and
+  // penalties. Under 'dismissBelow' for 'dismissMonths' months in a row the committee is dismissed and the game is over; at the end of
+  // the 96 months a grade is given from the standing, the value of what was delivered and the towns' satisfaction.
+  "campaign": {
+    "country": "Veldmar",
+    "region": "Marren Valley",
+    "months": 96,
+    "startStanding": 60.0,
+    "dismissBelow": 20.0,
+    "dismissMonths": 6,
+    "allocationBase": 0.5,          // allocation factor = base + perStanding * standing: 1.0 at a standing of 50, 1.5 at 100, 0.5 at 0
+    "allocationPerStanding": 0.01,
+    "exportScale": 4000.0,          // value delivered above (or below) what the phase expects that moves the standing by one point ...
+    "maxExportSwing": 3.0,          // ... up to this many points a month either way
+    "deficitPenalty": 2.0,          // standing lost at the turn of a month that finds the money below zero
+    "finePenaltyUnit": 2000.0,      // money in fines that costs one point of standing ...
+    "maxFinePenalty": 5.0,          // ... up to this many a month
+    // The phases of the war, from the month index at which each starts (January 1938 is 0). allocation: money a month at a standing of 50; expectedValue: value
+    // delivered to the gateways a month that leaves the standing as it is.
+    "phases": [
+      { "id": "rearmament", "name": "Rearmament", "fromMonth": 0, "allocation": 45000, "expectedValue": 1500.0 },
+      { "id": "mobilisation", "name": "Mobilisation", "fromMonth": 20, "allocation": 60000, "expectedValue": 4000.0 },
+      { "id": "totalwar", "name": "Total war", "fromMonth": 48, "allocation": 80000, "expectedValue": 8000.0 },
+      { "id": "end", "name": "The end", "fromMonth": 84, "allocation": 50000, "expectedValue": 6000.0 }
+    ],
+    "grade": {
+      "standingWeight": 0.5,
+      "productionWeight": 0.3,
+      "satisfactionWeight": 0.2,
+      "productionTarget": 600000.0, // total value delivered that counts as full marks for production
+      "thresholds": [75.0, 55.0, 35.0],   // the score needed for the first, second and third grade; below the last is the fourth
+      "names": ["Distinguished service", "Creditable service", "Adequate service", "Unsatisfactory service"]
+    }
   },
 
   // Stations stand at a road node. On a map without towns every station simply produces each cargo at its fixed rate (supplyPerDay below); with towns passengers come from trip groups that queue there and cargo from the industries it covers.

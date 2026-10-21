@@ -16,6 +16,8 @@ public enum SimEventKind : byte
     TownUnhappy,
     /// <summary>An import shipment has arrived at a gateway.</summary>
     ShipmentArrived,
+    /// <summary>The government's standing is low, the committee was dismissed, or the campaign is over.</summary>
+    Standing,
 }
 
 public enum EventSeverity : byte { Info, Warning, Serious }

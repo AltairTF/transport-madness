@@ -20,7 +20,8 @@ public class EconomyTests
 
         Assert.Equal(sim.Network.Tuning.Economy.StartingMoney, sim.Company.Money);
         Assert.Equal(0, sim.Company.Loan);
-        Assert.False(sim.Company.Bankrupt);
+        Assert.False(sim.Company.CampaignOver);
+        Assert.Equal(sim.Network.Tuning.Campaign.StartStanding, sim.Company.Standing);
     }
 
     [Fact]
@@ -120,24 +121,6 @@ public class EconomyTests
         Assert.Equal(-(long)Math.Ceiling(500000 * sim.Network.Tuning.Economy.InterestPerDay), sim.Company.Total(LedgerEntry.Interest));
     }
 
-    [Fact]
-    public void AfterTooLongInDebt_TheCompanyGoesBankrupt_ButTheSimulationCarriesOn()
-    {
-        var shipped = Tuning.Load();
-        var tuning = shipped with { Economy = shipped.Economy with { StartingMoney = 0, DebtLimit = 0, BankruptcyDays = 5, MaxLoan = 1000000 } };
-        var sim = NewSim(tuning);
-        sim.Execute(new TakeLoanCommand(100000));
-
-        RunDays(sim, 4);
-        Assert.False(sim.Company.Bankrupt);
-
-        // Money 100000, loan 100000: net worth 0. Interest pushes it below zero every day.
-        RunDays(sim, 3);
-
-        Assert.True(sim.Company.Bankrupt);
-        Assert.True(sim.Company.InsolventDays >= 5);
-        sim.Step();
-    }
 
     [Fact]
     public void AStationFollowsItsNodeWhenItIsMoved()

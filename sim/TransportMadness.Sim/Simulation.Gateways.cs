@@ -130,6 +130,7 @@ public sealed partial class Simulation
         if (gateways.Length == 0 || !_exportable[cargo] || units <= 0) return 0;
         for (int k = 0; k < gateways.Length; k++)
             _gateways[gateways[k]].Exported[cargo] += (double)units / gateways.Length;
+        NoteExport(cargo, units);
         return units;
     }
 

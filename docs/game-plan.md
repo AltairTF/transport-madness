@@ -56,7 +56,7 @@ Chains such as forest to sawmill to shop. Cargo types have different delay toler
 ### Economy
 - Income: cargo and passengers pay by distance times quantity, reduced by delay according to the cargo's tolerance. In the campaign the money is the region's budget: fares and pay earn it, a monthly allocation from the government is added, orders add bonuses, and imports are paid from it. The loan is the ministry's advance, and bankruptcy gives way to dismissal when the government's standing stays under 20 for six months.
 - Costs: construction (including cut and fill), vehicle purchase, vehicle upkeep, road wear, depots, fines, accident compensation.
-- Loan with interest. Bankruptcy when debt stays above the limit for 2 years; ends the game in challenge mode, disabled in sandbox.
+- Loan with interest (the ministry's advance in the campaign). Bankruptcy is replaced by dismissal: a standing under 20 for six months in a row ends the game (C4, `campaign-plan.md`).
 - Prices and tuning live in data files, not code.
 
 ### Maintenance and repair

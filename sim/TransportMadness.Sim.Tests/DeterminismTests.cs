@@ -19,8 +19,8 @@ public class DeterminismTests
     /// round some results differently (Linux gave the same hash on x64 and arm64). A system with no pinned value (Windows) is
     /// only checked against itself, by the other determinism tests.
     /// </summary>
-    const ulong GoldenHashMac = 0x4F98F1BA4876C85AUL;
-    const ulong GoldenHashLinux = 0x21FAD11BE18778E9UL;
+    const ulong GoldenHashMac = 0xB355B85994C6C85AUL;
+    const ulong GoldenHashLinux = 0xFC5DC844B33778E9UL;
 
     sealed record Result(Simulation Sim, int Overtakes);
 
@@ -120,7 +120,7 @@ public class DeterminismTests
         Assert.True(golden == hash, $"state hash changed; if intended, set {(OperatingSystem.IsMacOS() ? "GoldenHashMac" : "GoldenHashLinux")} = 0x{hash:X16}UL (the other system's value may need its own check)");
     }
 
-    const ulong AvenueGoldenHash = 0x4DCE62462F259152UL;
+    const ulong AvenueGoldenHash = 0x8A86D85566559152UL;
 
     /// <summary>Two avenues crossing a two-lane road with dense traffic: lane changes, which <see cref="Run"/> never triggers.</summary>
     static (Simulation Sim, int ShiftingSteps) RunAvenues(ulong seed)

@@ -94,6 +94,7 @@ func _ready() -> void:
 			hud.show_message("Shipment asked for")
 		else:
 			hud.show_message(host.WhyNotImport(gateway, cargo)))
+	hud.campaign_left.connect(_leave_to_menu)
 	hud.town_focus.connect(rig.focus_on)
 	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
 	if _world_note != "":
@@ -130,13 +131,23 @@ func _ready() -> void:
 		_start_bench_phase()
 
 
+var _campaign_over_seen := false
+
+
 func _process(delta: float) -> void:
 	_elapsed += delta
 	_stats_timer += delta
 	if _stats_timer > 0.25:
 		_stats_timer = 0.0
 		hud.show_stats(host.GetStats())
-		hud.show_company(host.GetCompany())
+		var company: Dictionary = host.GetCompany()
+		hud.show_company(company)
+		if company["campaign_over"] and not _campaign_over_seen:
+			_campaign_over_seen = true
+			host.SetSpeed(0.0)
+			hud.highlight_speed(0.0)
+		elif not company["campaign_over"]:
+			_campaign_over_seen = false
 		hud.show_lines(host.GetLines())
 		hud.show_towns(host.GetTowns())
 		hud.show_industries(host.GetIndustries())
@@ -206,7 +217,7 @@ func _on_action(action: String) -> void:
 			var victim: int = host.CrashSomeone()
 			hud.show_message("Vehicle %d crashed" % victim if victim >= 0 else "No moving car to crash")
 		"loan":
-			hud.show_message("Borrowed 100,000" if host.TakeLoan(100000) else "The loan limit is reached")
+			hud.show_message("Advance of 100,000 granted" if host.TakeLoan(100000) else "The ministry will not advance more")
 		"repay":
 			hud.show_message("Repaid 100,000" if host.RepayLoan(100000) else "Nothing to repay, or not enough money")
 		"empty", "hills", "demo", "towns":

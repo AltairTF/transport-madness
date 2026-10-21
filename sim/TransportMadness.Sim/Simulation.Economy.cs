@@ -1,6 +1,6 @@
 namespace TransportMadness.Sim;
 
-/// <summary>The company's money: what commands cost, the daily accounts, and the loan.</summary>
+/// <summary>The company's money: what commands cost, the daily accounts, and the loan (the ministry's advance in the campaign).</summary>
 public sealed partial class Simulation
 {
     readonly EconomyTuning _economy;
@@ -46,6 +46,7 @@ public sealed partial class Simulation
     /// <summary>Takes money that is owed whether or not it is there (upkeep, interest): the balance can go negative.</summary>
     void Charge(long amount, LedgerEntry entry)
     {
+        if (entry == LedgerEntry.Fines) _monthFines += amount;
         Company.Money -= amount;
         Company.Record(entry, -amount);
     }
@@ -73,7 +74,7 @@ public sealed partial class Simulation
         return 1;
     }
 
-    /// <summary>The accounts at the turn of a day: upkeep of stations and vehicles, interest on the loan, insolvency.</summary>
+    /// <summary>The accounts at the turn of a day: upkeep of stations and vehicles, interest on the loan (the ministry's advance); at the turn of a month the campaign's books.</summary>
     void CloseDay()
     {
         foreach (var station in _stations)
@@ -85,13 +86,10 @@ public sealed partial class Simulation
         foreach (var light in _lights)
             if (light.Active) Charge(Price(_net.Tuning.Roads.TrafficLight.UpkeepPerDay), LedgerEntry.Upkeep);
         if (Company.Loan > 0) Charge(Price(Company.Loan * _economy.InterestPerDay), LedgerEntry.Interest);
-
-        if (Company.NetWorth < -_economy.DebtLimit) Company.InsolventDays++;
-        else Company.InsolventDays = 0;
-        if (Company.InsolventDays >= _economy.BankruptcyDays) Company.Bankrupt = true;
         CheckSignals();
         CheckGarage();
         CloseDayForTowns();
         CloseDayForTrips();
+        if ((Day + 1) % _economy.DaysPerMonth == 0) CloseMonthForCampaign();
     }
 }

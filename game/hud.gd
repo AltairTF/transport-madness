@@ -33,6 +33,8 @@ signal frequency_selected(frequency: int)
 ## A worn road is to be resurfaced.
 signal resurface_requested(road: int)
 signal menu_requested
+## The "Main menu" button of the end-of-campaign panel.
+signal campaign_left
 ## The Towns window asks the camera to go to a town.
 signal import_requested(gateway: int, cargo: String)
 
@@ -102,6 +104,9 @@ var _pointer_button: Button
 var _message: Label
 var _message_age := 0.0
 var _money: Label
+var _campaign_end: Control
+var _campaign_end_title: Label
+var _campaign_end_text: Label
 var _company_details: Label
 var _window_buttons: Dictionary = {}
 var _window_panel: PanelContainer
@@ -169,6 +174,7 @@ func _ready() -> void:
 	_build_top_bar()
 	_build_window_panel()
 	_build_feed()
+	_build_campaign_end()
 	_build_debug_panel()
 	_build_bottom()
 	select_tool("pointer")
@@ -195,6 +201,30 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # --- building the layout ---
 
+## A panel in the middle of the screen, hidden until the campaign is over.
+func _build_campaign_end() -> void:
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center.visible = false
+	_root.add_child(center)
+	_campaign_end = center
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(520, 0)
+	center.add_child(panel)
+	var column := VBoxContainer.new()
+	panel.add_child(column)
+	_campaign_end_title = Label.new()
+	_campaign_end_title.theme_type_variation = "Heading"
+	column.add_child(_campaign_end_title)
+	_campaign_end_text = Label.new()
+	_campaign_end_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(_campaign_end_text)
+	var back := Button.new()
+	back.text = "Main menu"
+	back.pressed.connect(func() -> void: campaign_left.emit())
+	column.add_child(back)
+
+
 func _build_top_bar() -> void:
 	var bar := PanelContainer.new()
 	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
@@ -208,7 +238,7 @@ func _build_top_bar() -> void:
 	menu.pressed.connect(func() -> void: menu_requested.emit())
 	row.add_child(menu)
 	_money = Label.new()
-	_money.custom_minimum_size = Vector2(420, 0)
+	_money.custom_minimum_size = Vector2(560, 0)
 	_money.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	row.add_child(_money)
 
@@ -304,7 +334,7 @@ func _build_company_page() -> Control:
 	column.add_child(_company_details)
 	var buttons := HBoxContainer.new()
 	column.add_child(buttons)
-	for entry in [["Borrow 100k", "loan"], ["Repay 100k", "repay"]]:
+	for entry in [["Ask the ministry for an advance of 100k", "loan"], ["Repay 100k", "repay"]]:
 		var button := Button.new()
 		button.text = entry[0]
 		button.pressed.connect(func() -> void: action_requested.emit(entry[1]))
@@ -750,13 +780,46 @@ func show_stats(stats: Dictionary) -> void:
 		stats["incidents"], stats["open_incidents"], stats["wrecks"]]
 
 
-## Company summary: money and day in the bar, the books in the Company window.
+## Company summary: money, standing and day in the bar, the books and the budget in the Company window.
 func show_company(company: Dictionary) -> void:
-	_money.text = "Money %s   %s%s" % [_money_text(company["money"]), _date_text(company), "   BANKRUPT" if company["bankrupt"] else ""]
-	_money.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4) if company["bankrupt"] or company["money"] < 0 else UiTheme.TEXT)
-	_company_details.text = "Money   %s\nLoan   %s of %s\nDate   %s\n\nIncome   %s\nUpkeep   %s\nInterest   %s" % [
+	var standing: float = company["standing"]
+	var low: bool = standing < company["dismiss_below"] + 10.0
+	_money.text = "Money %s   Standing %d   %s%s" % [_money_text(company["money"]), roundi(standing), _date_text(company),
+		"   DISMISSED" if company["dismissed"] else ("   CAMPAIGN OVER" if company["finished"] else "")]
+	_money.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4) if company["money"] < 0 or low else UiTheme.TEXT)
+	var text := "%s: %s\n%s, month %d of %d\n\nMoney   %s\nAdvance from the ministry   %s of %s\nDate   %s\n\nIncome   %s\nUpkeep   %s\nInterest   %s\nAllocations so far   %s\nImports so far   %s" % [
+		company["country"], company["region"], company["phase"], mini(company["phase_month"] + 1, company["months"]), company["months"],
 		_money_text(company["money"]), _money_text(company["loan"]), _money_text(company["max_loan"]), _date_text(company),
-		_money_text(company["income"]), _money_text(-company["upkeep"]), _money_text(-company["interest"])]
+		_money_text(company["income"]), _money_text(-company["upkeep"]), _money_text(-company["interest"]),
+		_money_text(company["allocations"]), _money_text(-company["imports"])]
+	text += "\n\nStanding   %d of 100   (allocation factor x%.2f)" % [roundi(standing), company["allocation_factor"]]
+	if company["months_to_dismissal"] > 0:
+		text += "\nUnder %d: %d more months and the committee is dismissed" % [roundi(company["dismiss_below"]), company["months_to_dismissal"]]
+	text += "\nNext allocation   %s" % _money_text(company["next_allocation"])
+	text += "\nDelivered to the gateways this month   %s  (the phase expects %s)" % [_money_text(company["export_value"]), _money_text(company["expected_value"])]
+	var last: Dictionary = company["last"]
+	if not last.is_empty():
+		text += "\n\nLast month   deliveries %+.1f   deficit %+.1f   fines %+.1f   standing %d to %d   allocation %s" % [
+			last["export_term"], last["deficit_term"], last["fine_term"], roundi(last["standing_before"]), roundi(last["standing_after"]), _money_text(last["allocation"])]
+	_company_details.text = text
+	if company["campaign_over"]:
+		if not _campaign_end.visible:
+			_show_campaign_end(company)
+	else:
+		_campaign_end.visible = false
+
+
+## The panel that ends the game: dismissal, or the grade at the end of December 1945.
+func _show_campaign_end(company: Dictionary) -> void:
+	_campaign_end.visible = true
+	if company["dismissed"]:
+		_campaign_end_title.text = "Dismissed"
+		_campaign_end_text.text = "The standing of the committee stayed under %d for %d months and the ministry has replaced it.\n\nStanding %d   delivered to the gateways %s   towns' satisfaction %d" % [
+			roundi(company["dismiss_below"]), company["dismiss_months"], roundi(company["standing"]), _money_text(company["delivered_value"]), roundi(company["average_satisfaction"])]
+	else:
+		_campaign_end_title.text = company["grade_name"]
+		_campaign_end_text.text = "The campaign is over: the %s, from 1938 to 1945.\n\nScore %d of 100\nStanding %d   delivered to the gateways %s   towns' satisfaction %d" % [
+			company["region"], roundi(company["score"]), roundi(company["standing"]), _money_text(company["delivered_value"]), roundi(company["average_satisfaction"])]
 
 
 ## "2 Mar 1938   14:30": the calendar day and the time of day (a day is 20 minutes long, a month three days).

@@ -31,6 +31,7 @@ public sealed record Tuning
     public required TownsTuning Towns { get; init; }
     public required IndustriesTuning Industries { get; init; }
     public required GatewaysTuning Gateways { get; init; }
+    public required CampaignTuning Campaign { get; init; }
     public required TripsTuning Trips { get; init; }
     public required RailTuning Rail { get; init; }
     public required MaintenanceTuning Maintenance { get; init; }
@@ -52,6 +53,7 @@ public sealed record Tuning
         tuning.Towns.Validate();
         tuning.Industries.Validate();
         tuning.Gateways.Validate();
+        tuning.Campaign.Validate();
         tuning.Trips.Validate();
         tuning.Maintenance.Validate();
         return tuning;
@@ -249,8 +251,6 @@ public sealed record EconomyTuning
     /// <summary>The year of the first day of a game (the campaign starts in January of it).</summary>
     public required int StartYear { get; init; }
     public required float InterestPerDay { get; init; }
-    public required long DebtLimit { get; init; }
-    public required int BankruptcyDays { get; init; }
     public required float SellRefundShare { get; init; }
     public required float ParkedUpkeepShare { get; init; }
     public required DepotPrices DepotPrice { get; init; }

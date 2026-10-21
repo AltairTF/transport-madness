@@ -157,7 +157,8 @@ public sealed partial class Simulation
         _modelCargo = ResolveModelCargo(tuning);
         _ticksPerDay = (long)MathF.Round(_economy.DayLength / StepSeconds);
         _productionPerTick = 1.0 / (_ticksPerDay * _economy.DaysPerMonth);
-        Company = new Company(_economy.StartingMoney);
+        _campaign = tuning.Campaign;
+        Company = new Company(_economy.StartingMoney) { Standing = tuning.Campaign.StartStanding };
         _twoSqrtAB = 2f * MathF.Sqrt(_drive.MaxAccel * _drive.ComfortDecel);
         _laneChangeSeconds = 1f / _manoeuvre.LateralRate;
         _rng = new SimRandom(seed);
@@ -263,7 +264,7 @@ public sealed partial class Simulation
         if (RailInUse) Mix(RailHash());
         Mix((ulong)Company.Money);
         Mix((ulong)Company.Loan);
-        Mix((ulong)(Company.Bankrupt ? Company.InsolventDays + 1 : Company.InsolventDays));
+        Mix(CampaignHash());
         Mix((ulong)_net.Version);
         Mix((ulong)_net.LaneCount);
         foreach (var depot in _depots)

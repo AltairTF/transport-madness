@@ -175,14 +175,17 @@ Veldmar, the fictional republic that goes to war. Its neighbours are never named
 **Region**:
 The map: a small part of the country (the Marren Valley), with Towns and Industries, joined to the rest of the world only by Gateways.
 
-**Phase** (planned, C5):
-A stretch of the campaign (rearmament, mobilisation, total war, the end) that sets the mix of Orders and the size of the Allocation.
+**Phase**:
+A stretch of the campaign (Rearmament to August 1939, Mobilisation to December 1941, Total war 1942 to 1944, The end 1945) that sets the size of the Allocation and what the Government expects to be delivered, and (from C5) the mix of Orders.
 
-**Budget / Allocation / Advance** (planned, C4):
-The money the Player spends. Fares and cargo pay earn it, the Government adds an Allocation every month by Phase and Standing, and the Advance (the old Loan) is borrowed from the ministry. Imports are paid from it.
+**Budget / Allocation / Advance**:
+The money the Player spends. Fares and cargo pay earn it; at the turn of every Month the Government adds an Allocation, the Phase's amount times a factor of the Standing (half at a Standing of 0, double at 100); the Advance (the old Loan) is borrowed from the ministry. Imports are paid from it, and it can go below zero, which costs Standing.
 
-**Standing** (planned, C4):
-A number from 0 to 100 for how the Government sees the Player. Rises with Orders met, falls with Orders failed, fines and deficit; below 20 for six months in a row the Player is dismissed and the game ends. Competes with the Satisfaction of the Towns.
+**Standing**:
+A number from 0 to 100 for how the Government sees the Player, 60 at the start. Each Month it moves by what was delivered to the Gateways against what the Phase expects, falls for a deficit and for fines (and, from C5, rises with Orders met and falls with Orders failed). Under 20 for six Months in a row the Player is **dismissed** and the game ends. Competes with the Satisfaction of the Towns.
+
+**Grade**:
+The end of the campaign in December 1945 gives one of four grades (Distinguished, Creditable, Adequate or Unsatisfactory service) from a score: half the Standing, 30 % the value delivered to the Gateways and 20 % the average Satisfaction of the Towns. Dismissal gives none.
 
 **Gateway**:
 A road or rail connection on the edge of the Region where goods come in and go out, one of each kind per map. Behaves like an Industry that a Station of its own mode covers: an Import shipment arrives there as stock to be carried inland, and Cargo a vehicle unloads there is exported (it pays like any delivery, and counts toward Orders from C5).
@@ -210,7 +213,7 @@ Money earned for cargo or passengers delivered: quantity times straight-line dis
 1200 seconds of simulated time (twenty minutes), the cycle of people's lives: a commute is a small part of it. Upkeep and loan interest are paid at the turn of a day. Three days make a **Month** (the calendar, 3600 s) and twelve months a year, counted from January 1938 and shown on the HUD with the time of day; the campaign of 96 months is 288 days. Monthly rates (production, needs, growth) are per month of 3600 s.
 
 **Loan**:
-Money borrowed, up to a limit, that costs interest every day. A Company whose net worth stays below minus the debt limit for 73 days goes bankrupt (the sandbox carries on). In the campaign it becomes the Advance and bankruptcy gives way to dismissal (C4).
+Money borrowed, up to a limit, that costs interest every day. In the campaign it is the Advance from the ministry, and bankruptcy is replaced by dismissal.
 
 **Bridge / Tunnel**:
 A stretch of road carried over water or a deep valley (Bridge), or through a hill (Tunnel), instead of being cut or filled into the ground. Chosen automatically when a road is planned, priced per metre, and leaves the ground as it was. Other roads can join one in the middle or pass over or under it.

@@ -452,10 +452,24 @@ public partial class SimHost : Node3D
 
     // ---- Company, stations and lines ----------------------------------------------------------------------
 
-    /// <summary>The company: {money, loan, max_loan, net_worth, day, bankrupt, income, upkeep, interest} (the last three are totals so far, income positive, the others spending as negatives).</summary>
+    /// <summary>
+    /// The company: {money, loan (the ministry's advance), max_loan, net_worth, day, year, month, day_of_month, hour, income, upkeep, interest, allocations
+    /// (total so far), imports (total spent), standing, phase, phase_month (months into the campaign), months, country, region, next_allocation,
+    /// allocation_factor, months_to_dismissal, dismiss_below, dismiss_months, export_value (this month), expected_value (the phase's), delivered_value, average_satisfaction,
+    /// campaign_over, dismissed, finished, grade_name, score, last} where last is the report of the month that ended, {month, export_value,
+    /// export_term, deficit_term, fine_term, standing_before, standing_after, allocation}, empty before the first.
+    /// </summary>
     public Godot.Collections.Dictionary GetCompany()
     {
         var c = Sim.Company;
+        var campaign = Sim.CampaignTuning;
+        var last = new Godot.Collections.Dictionary();
+        if (Sim.LastMonth is { } m)
+            last = new Godot.Collections.Dictionary
+            {
+                ["month"] = m.Month, ["export_value"] = m.ExportValue, ["export_term"] = m.ExportTerm, ["deficit_term"] = m.DeficitTerm,
+                ["fine_term"] = m.FineTerm, ["standing_before"] = m.StandingBefore, ["standing_after"] = m.StandingAfter, ["allocation"] = m.Allocation,
+            };
         return new Godot.Collections.Dictionary
         {
             ["money"] = c.Money,
@@ -467,10 +481,32 @@ public partial class SimHost : Node3D
             ["month"] = Sim.Today.Month,
             ["day_of_month"] = Sim.Today.DayOfMonth,
             ["hour"] = Sim.TimeOfDay * 24f,
-            ["bankrupt"] = c.Bankrupt,
             ["income"] = c.Total(LedgerEntry.Income),
             ["upkeep"] = c.Total(LedgerEntry.Upkeep),
             ["interest"] = c.Total(LedgerEntry.Interest),
+            ["allocations"] = c.Total(LedgerEntry.Allocation),
+            ["imports"] = -c.Total(LedgerEntry.Imports),
+            ["standing"] = c.Standing,
+            ["phase"] = Sim.Phase.Name,
+            ["phase_month"] = Sim.MonthIndex,
+            ["months"] = campaign.Months,
+            ["country"] = campaign.Country,
+            ["region"] = campaign.Region,
+            ["next_allocation"] = Sim.NextAllocation,
+            ["allocation_factor"] = campaign.AllocationFactor(c.Standing),
+            ["months_to_dismissal"] = Sim.MonthsToDismissal,
+            ["dismiss_below"] = campaign.DismissBelow,
+            ["dismiss_months"] = campaign.DismissMonths,
+            ["export_value"] = Sim.ExportValueThisMonth,
+            ["expected_value"] = Sim.Phase.ExpectedValue,
+            ["delivered_value"] = c.DeliveredValue,
+            ["average_satisfaction"] = Sim.AverageSatisfaction,
+            ["campaign_over"] = c.CampaignOver,
+            ["dismissed"] = c.Dismissed,
+            ["finished"] = c.Finished,
+            ["grade_name"] = c.Grade >= 0 ? campaign.Grade.Names[c.Grade] : "",
+            ["score"] = c.Score,
+            ["last"] = last,
         };
     }
 
