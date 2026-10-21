@@ -48,7 +48,17 @@ One overlay at a time, chosen from a single bar and cycled with one key; the res
 
 ## M6d: the interface
 
-Starts with an interview of its own and layout prototypes for the developer to choose from. Scope: a toolbar by category, draggable windows, a key-binding menu, splitting `hud.gd`, and moving picking and drawing out of `SimHost`. The details are decided then.
+Decided with the developer on 2026-10-21 (two rounds of the interview); a throwaway prototype (`game/prototype/ui_layout.tscn`, fake data) is tried in the editor before the real build, then deleted.
+
+- **Layout in the style of Transport Fever.** One bar along the bottom: building on the left (Roads, Modify, Rail, Transport, Defence), information on the right (Network: lines, vehicles, depots, stations; Region: towns, industries, gateways, power; Company: money and loan, maintenance, the requisition rule; Government: orders, standing and its history; Map: the eight overlays, which leave the bottom-left corner). A group opens a row of buttons above the bar, as the tool categories do now.
+- **Top strip:** the date, pause and speeds, money, standing with an arrow for its trend, "N months to dismissal" when it applies, the Menu button. The raid banner sits just under it. The debug statistics stay behind F3.
+- **Feed and messages:** the news feed moves to the right under the top strip and can be folded away; short messages stay in the middle above the bar.
+- **Windows float:** they can be dragged and opened several at once. A list window (Lines, Towns, ...) is one of its kind; object windows (a vehicle, a station) can be open up to six at once, the oldest closing beyond that. Esc closes the topmost. The position and size of each kind are kept in the settings.
+- **Clicking the map** on a vehicle, station, industry, town or depot opens its window. Object windows show what the rows of the lists show now.
+- **Keys:** every action can be rebound in Settings and is kept in the settings. Defaults: Space pauses, 1 to 4 pick the speed, WASD and QE move the camera, R turns a signal, V the overlay, F3 debug, F5 and F9 save and load, Esc the menu or closes a window, F1 to F5 open the building groups and Shift+F1 to Shift+F5 the information groups.
+- **Look:** the dark theme of `ui_theme.gd` stays; icons and the art of the interface are M7.
+- **Code:** `game/ui/` with one script per window and a `window_manager.gd` (open, close, drag, remember); `hud.gd` becomes only the frame; picking (what is under the mouse) moves out of `SimHost` into `game/picking.gd`; drawing stays in C# for speed, in partials of its own.
+- **Not in M6d, written down for later:** the usability of the tools themselves, not only the interface around them: how road building behaves (snapping, the preview, curves, drawing a road in one drag, parallel roads, following the ground, undo), how each tool starts, continues and ends, what the mouse buttons do, and the like. To be reviewed with the developer after M6d.
 
 ## M7: art and audio (after M6)
 

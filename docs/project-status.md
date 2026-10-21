@@ -914,7 +914,7 @@ Measured in M6c (5.46): the standing against exports with the campaign bots. Sti
 ### Play-test and presentation
 
 - Not played: the road signs and sign tools (5.22) and the presentation of raids; the look of the war in general is open.
-- The interface (many buttons and windows, hard to reach) is reworked after the features; key rebinding, sound and a draggable window are part of that or of M6.
+- The interface (many buttons and windows, hard to reach) is reworked in M6d (decided 2026-10-21, `docs/m6-plan.md`). After it, the usability of the tools themselves is to be reviewed with the developer: how road building behaves (snapping, preview, curves, one-drag roads, parallel roads, following the ground, undo), how each tool starts and ends, what the mouse buttons do.
 
 ### Archive: the work before M4
 
