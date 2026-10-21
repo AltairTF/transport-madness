@@ -23,7 +23,7 @@ public sealed partial class Simulation
     /// <summary>Orders on offer.</summary>
     public int OpenOffers => _liveOrders.Count(o => o.State == OrderState.Offered);
 
-    /// <summary>Where an order is on the map: its gateway, its town, or the first works of the state; null for state works not yet founded.</summary>
+    /// <summary>Where an order is on the map: its gateway, its town, or the first works the state planned when it offered it; null only for an order without any (the Go to of its row is hidden).</summary>
     public (float X, float Z)? PlaceOf(Order o) => o.Kind switch
     {
         OrderKind.Quota => (_gateways[o.Gateway].X, _gateways[o.Gateway].Z),
