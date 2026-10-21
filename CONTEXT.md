@@ -90,6 +90,9 @@ A place beside a street of a Town where a Building can stand. A Town has the lot
 **Growth**:
 Once a month a Town whose Satisfaction and Connectivity are high enough lets each Building spend a full Construction stock: it goes up a size, or if it is already the biggest founds a new Building on the nearest free Lot, or on a new block of streets when no Lot is free. A Town never shrinks except by abandonment.
 
+**Rebuilding**:
+How a Town recovers from a raid (C15a): a Building a Bomb destroys frees its Lot, and Growth founds new Buildings on free Lots from the Construction stock the player delivers. There is no command to rebuild and the state pays nothing; without Construction stock the Town stays destroyed. A raid never destroys the last standing Building of a Town (standing: not demolished, whether it has a road or not), nor its last Building with a road, so a Town can always be rebuilt from something.
+
 **Passenger**:
 A person moving between a home and a place of work or leisure, here one who has chosen the company's Lines. Waits at a Station in a queue for a destination Station; a bus takes only those whose destination is on its Line and they leave it there.
 

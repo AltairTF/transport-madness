@@ -7,10 +7,10 @@ public class GrowthTests
 {
     const int Materials = 5, Planks = 3;
 
-    static Terrain DryLevelMap() => Terrain.Create(512, 8f, (_, _) => 5f);
+    internal static Terrain DryLevelMap() => Terrain.Create(512, 8f, (_, _) => 5f);
 
     /// <summary>A short day (60 s) so that months go by quickly; growth does not depend on the length of the day.</summary>
-    static Tuning Quick(float minConnectivity = 0f)
+    internal static Tuning Quick(float minConnectivity = 0f)
     {
         var t = Tuning.Load();
         return t with
@@ -20,13 +20,13 @@ public class GrowthTests
         };
     }
 
-    static void RunMonths(Simulation sim, double months)
+    internal static void RunMonths(Simulation sim, double months)
     {
         long ticks = (long)Math.Round(months * sim.Network.Tuning.Economy.DaysPerMonth * sim.DayLengthSeconds / Simulation.StepSeconds);
         for (long t = 0; t < ticks; t++) sim.Step();
     }
 
-    static void Fill(Simulation sim, int building)
+    internal static void Fill(Simulation sim, int building)
     {
         var b = sim.Buildings[building];
         foreach (var a in sim.TownTuning.Of(b.Type, b.Tier).Construction)
@@ -34,16 +34,18 @@ public class GrowthTests
                 if (sim.CargoTypes[c].Id == a.Cargo) b.Construction[c] = a.Amount;
     }
 
-    static bool HasStock(Simulation sim, int building) => sim.Buildings[building].Construction.Any(x => x > 0f);
+    internal static bool HasStock(Simulation sim, int building) => sim.Buildings[building].Construction.Any(x => x > 0f);
 
     /// <summary>
     /// One square block of streets, 120 m a side, round (0, 0), with its eight lots. <paramref name="occupants"/> puts a
     /// building (type, size) on the lots in order; null leaves a lot free.
     /// </summary>
-    static (Simulation Sim, IReadOnlyList<TownGenerator.LotSite> Lots) BlockTown(Tuning tuning, params (BuildingType Type, int Tier)?[] occupants)
+    internal static (Simulation Sim, IReadOnlyList<TownGenerator.LotSite> Lots) BlockTown(Tuning tuning, params (BuildingType Type, int Tier)?[] occupants) => BlockTown(tuning, 7, occupants);
+
+    internal static (Simulation Sim, IReadOnlyList<TownGenerator.LotSite> Lots) BlockTown(Tuning tuning, ulong seed, params (BuildingType Type, int Tier)?[] occupants)
     {
         var net = new RoadNetwork(DryLevelMap(), tuning);
-        var sim = new Simulation(net, 7);
+        var sim = new Simulation(net, seed);
         foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
             sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
         var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();

@@ -1,6 +1,6 @@
 # Campaign plan: a region at war, 1938 to 1945
 
-Status: C1 to C14 done on 2026-10-21 (sections 5.23, 5.25 to 5.40 of `project-status.md`); only M6 is left, and six more slices (C10 to C15; C10 to C14 are done) were decided on 2026-10-21 to come before it (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
+Status: C1 to C14 and C15a done on 2026-10-21 (sections 5.23, 5.25 to 5.41 of `project-status.md`); only M6 is left, and six more slices (C10 to C15; C10 to C14 and C15a are done) were decided on 2026-10-21 to come before it (decisions taken 2026-10-21 in an interview with the developer). The reasons and the shape are in ADR 0006; this file is the list of decisions, the slices and what is still open. It sits between M5 and the old M6 in the milestone table of `game-plan.md`.
 
 ## What was decided
 
@@ -36,7 +36,8 @@ Status: C1 to C14 done on 2026-10-21 (sections 5.23, 5.25 to 5.40 of `project-st
 | C12 (done) | Dynamic raids: bomber flights that fly in from one side of the map and drop a stick of bombs, each bomb resolved by geometry; replaces the instant raid of C9d (section 5.38 of project-status). |
 | C13 (done) | Anti-aircraft: a battery the player builds, an industry with jobs that spends imported ammunition and shoots flights down; the enemy weighs targets by their defence (section 5.39 of project-status). |
 | C14 (done) | Civilians: a siren when a flight is launched, people on foot or in a station queue take cover, casualties really lower the people of a group (section 5.40 of project-status). |
-| C15 (planned) | Three small ones: C15a rebuilding (by the growth of the town; a raid never destroys the last standing building), C15b the player's choice of the rule by which the army requisitions, C15c the call-up lowers the towns' building capacity for good. |
+| C15a (done) | Rebuilding: what a raid destroys becomes a free lot and the town founds it again through its growth; a raid never destroys the last standing building (section 5.41 of project-status). |
+| C15 (planned, the rest) | Two small ones: C15b the player's choice of the rule by which the army requisitions, C15c the call-up lowers the towns' building capacity for good. |
 | M6 | Save and load, overlays, balancing, art, audio (the old M6 without eras). |
 
 Each slice has its tests and its own pinned hashes where the world changes, and is committed only when the user asks. The 3D side of each is compiled and its GDScript parsed here; the user plays it.
@@ -95,7 +96,7 @@ Items marked *needs play* cannot be settled in the headless simulation. Since 20
 
 **Design not done**
 
-Before M6 (slice C15, decided 2026-10-21, see the section above; C10, access points, C11, residents as workers, C12, dynamic raids, C13, anti-aircraft, and C14, civilians, are built): rebuilding, requisition rule and the call-up lowering capacity.
+Before M6 (slice C15, decided 2026-10-21, see the section above; C10, access points, C11, residents as workers, C12, dynamic raids, C13, anti-aircraft, C14, civilians, and C15a, rebuilding, are built): the requisition rule and the call-up lowering capacity.
 
 After M6:
 - A depot with its own stock that nearby industries draw from; a factory of ammunition (until then ammunition is imported only).

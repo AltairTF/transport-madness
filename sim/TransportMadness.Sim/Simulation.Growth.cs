@@ -43,7 +43,7 @@ public sealed partial class Simulation
     }
 
     /// <summary>Whether a lot could have a building put on it now: nobody stands there, there is a road to reach it and none through it.</summary>
-    bool CanBuildOn(Lot lot)
+    internal bool CanBuildOn(Lot lot)
     {
         if (lot.Building >= 0 || _roadIndex == null) return false;
         var s = lot.Site;

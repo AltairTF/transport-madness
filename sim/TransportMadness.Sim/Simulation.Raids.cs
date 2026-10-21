@@ -80,7 +80,7 @@ public sealed class Flight
     internal int BombsLost;
     internal SimRandom Rng = null!;
     internal int InFlight;
-    internal int Buildings, Wrecks, Craters, IndustriesHit, GatewaysHit, StationsShut, DepotsShut, SignalsFailed;
+    internal int Buildings, Spared, Wrecks, Craters, IndustriesHit, GatewaysHit, StationsShut, DepotsShut, SignalsFailed;
     internal long Casualties;
 }
 
@@ -493,6 +493,7 @@ public sealed partial class Simulation
     {
         var parts = new List<string>();
         if (flight.Buildings > 0) parts.Add($"{flight.Buildings} buildings destroyed");
+        if (flight.Spared > 0) parts.Add($"{flight.Spared} spared as the last of their town");
         if (flight.Casualties > 0) parts.Add($"{flight.Casualties} casualties");
         if (flight.IndustriesHit > 0) parts.Add($"{flight.IndustriesHit} industries hit");
         if (flight.GatewaysHit > 0) parts.Add($"{flight.GatewaysHit} gateways hit");
@@ -565,11 +566,29 @@ public sealed partial class Simulation
             var building = _buildings[id];
             float d = MathF.Sqrt((building.X - x) * (building.X - x) + (building.Z - z) * (building.Z - z));
             if (flight.Rng.NextFloat() >= b.BuildingChance * (1f - d / radius)) continue;
+            if (IsLastOfItsTown(building)) { flight.Spared++; continue; }
             if (building.State == BuildingState.Active) KillInside(flight, building);
             Demolish(building);
             flight.Buildings++;
             Dissatisfy(building.Town, b.TownLossPerBuilding);
         }
+    }
+
+    /// <summary>
+    /// Whether no other building of the town would be left standing (not demolished, whether it has a road or not), or, for a building with a road, no other
+    /// one that has a road: the town grows only from its active buildings, so a raid always leaves it one to be rebuilt from (C15a).
+    /// </summary>
+    bool IsLastOfItsTown(Building building)
+    {
+        bool otherStanding = false, otherActive = false;
+        foreach (int id in _towns[building.Town].BuildingIds)
+        {
+            var other = _buildings[id];
+            if (other.Id == building.Id || other.State == BuildingState.Demolished) continue;
+            otherStanding = true;
+            if (other.State == BuildingState.Active) otherActive = true;
+        }
+        return !otherStanding || (building.State == BuildingState.Active && !otherActive);
     }
 
     /// <summary>An industry stays down longer with every bomb (up to a limit) and loses a share of what it holds each time; a power plant gives no power meanwhile.</summary>
