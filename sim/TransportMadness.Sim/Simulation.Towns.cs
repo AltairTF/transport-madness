@@ -333,6 +333,32 @@ public sealed partial class Simulation
             if (!station.Active) continue;
             var (x, z) = PointOf(station);
 
+            if (station.DockKind != 0)
+            {
+                // A stop at an industry or a gateway covers that one place, and nothing around it.
+                var covered = new List<int>();
+                if (station.DockKind == 1)
+                {
+                    var industry = _industries[station.DockId];
+                    covered.Add(industry.Id);
+                    perIndustry[industry.Id].Add(s);
+                    foreach (var (cargo, _) in _industryInputs[industry.Type]) accepts[cargo] = true;
+                    if (_passengerCargo >= 0 && _industryTuning.Types[industry.Type].Jobs > 0) accepts[_passengerCargo] = true;
+                    _stationIndustries[s] = covered.ToArray();
+                }
+                else
+                {
+                    var gateway = _gateways[station.DockId];
+                    covered.Add(gateway.Id);
+                    perGateway[gateway.Id].Add(s);
+                    if (gateway.DamagedUntil <= Tick)
+                        for (int c = 0; c < accepts.Length; c++)
+                            if (_exportable[c]) accepts[c] = true;
+                    _stationGateways[s] = covered.ToArray();
+                }
+                continue;
+            }
+
             var buildings = new List<int>();
             foreach (int id in BuildingsNear(x, z, radius))
             {

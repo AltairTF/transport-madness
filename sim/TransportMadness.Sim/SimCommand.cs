@@ -55,6 +55,18 @@ public sealed record CrashSomeoneCommand : SimCommand;
 /// <summary>Builds a station at the node near (X, Z), or on the road there, with bays for loading vehicles if asked (it costs more). Result: the station id, -1 when refused.</summary>
 public sealed record BuildStationCommand(float X, float Z, bool Bays = false) : SimCommand;
 
+/// <summary>
+/// Makes the stop at an industry's access point (or a road gateway's) that a line can use (M6f), or finds it again. Result: the station id of the stop,
+/// -1 when refused: no such industry or gateway, a rail gateway, or no road reaches its access point yet.
+/// </summary>
+public sealed record AddDockCommand(bool Gateway, int Id) : SimCommand;
+
+/// <summary>
+/// What vehicles do at one stop of a line (M6f): load (and which cargo, -1 for any), unload, and the share of what was taken on at the last loading
+/// stop that is unloaded here, as a percentage (-1 unset: everything). Result: 1, 0 when refused.
+/// </summary>
+public sealed record SetStopOptionsCommand(int Line, int Index, bool Load, int LoadCargo, bool Unload, int Share) : SimCommand;
+
 /// <summary>Creates a line through stations (ids, in order; the line returns to the first after the last). Result: the line id, -1 when refused.</summary>
 public sealed record CreateLineCommand(int[] Stations) : SimCommand;
 

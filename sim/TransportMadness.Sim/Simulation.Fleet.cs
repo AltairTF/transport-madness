@@ -19,6 +19,7 @@ public sealed partial class Simulation
     int[] _loadCargo = FilledWith(64, -1); // the cargo on board, -1 when empty
     int[] _loadFrom = new int[64];  // station the cargo on board was picked up at
     long[] _loadTick = new long[64];
+    int[] _loadTotal = new int[64]; // what was taken on at the last loading stop: the stops' unload shares are a percentage of it (M6f)
     long[] _income = new long[64];
     long[] _upkeepPaid = new long[64];
     bool[] _bay = new bool[64];     // standing in a station's bay: out of the lane, so out of its ordering
@@ -56,6 +57,7 @@ public sealed partial class Simulation
         Array.Resize(ref _loadCargo, n);
         Array.Resize(ref _loadFrom, n);
         Array.Resize(ref _loadTick, n);
+        Array.Resize(ref _loadTotal, n);
         Array.Resize(ref _income, n);
         Array.Resize(ref _upkeepPaid, n);
         Array.Resize(ref _bay, n);
@@ -110,6 +112,42 @@ public sealed partial class Simulation
         return _lines.Count - 1;
     }
 
+    /// <summary>Keeps the options of the stops a line keeps when its stops change: a new stop takes those of the first unused old stop at the same station, else the defaults.</summary>
+    static void RemapStopOptions(Line line, IReadOnlyList<int> before, int[] after)
+    {
+        var load = new bool[after.Length];
+        var cargo = new int[after.Length];
+        var unload = new bool[after.Length];
+        var share = new int[after.Length];
+        var used = new bool[before.Count];
+        for (int k = 0; k < after.Length; k++)
+        {
+            int old = -1;
+            for (int j = 0; j < before.Count; j++)
+                if (!used[j] && before[j] == after[k]) { old = j; break; }
+            var o = old >= 0 ? line.OptionsAt(old) : StopOptions.Default;
+            if (old >= 0) used[old] = true;
+            load[k] = o.Load; cargo[k] = o.LoadCargo; unload[k] = o.Unload; share[k] = o.Share;
+        }
+        line.StopLoad = load; line.StopLoadCargo = cargo; line.StopUnload = unload; line.StopShare = share;
+    }
+
+    /// <summary>
+    /// Sets what vehicles do at one stop of a line (<see cref="SetStopOptionsCommand"/>). Returns 1, 0 when refused: no such line or stop, a cargo that
+    /// does not exist, or a share outside 0 to 100 (-1 unsets it).
+    /// </summary>
+    int SetStopOptions(SetStopOptionsCommand c)
+    {
+        if (c.Line < 0 || c.Line >= _lines.Count || !_lines[c.Line].Active) return 0;
+        var line = _lines[c.Line];
+        if (c.Index < 0 || c.Index >= line.Stops.Count || c.LoadCargo < -1 || c.LoadCargo >= _cargo.Count || c.Share < -1 || c.Share > 100) return 0;
+        line.StopLoad[c.Index] = c.Load;
+        line.StopLoadCargo[c.Index] = c.LoadCargo;
+        line.StopUnload[c.Index] = c.Unload;
+        line.StopShare[c.Index] = c.Share;
+        return 1;
+    }
+
     /// <summary>
     /// Changes the stations of a line. A vehicle keeps heading for its station when the new list has it, otherwise for the stop at
     /// the same place in the list (the last when the list is shorter); it takes the new turn at the next junction it has not yet
@@ -121,6 +159,7 @@ public sealed partial class Simulation
         var current = _lines[line];
         if (_stations[stations[0]].Mode != current.Mode) return 0;
         var before = current.Stops;
+        RemapStopOptions(current, before, stations);
         current.Stops = (int[])stations.Clone();
         _transitVersion++;
         if (current.Mode == StationMode.Rail) EditTrainsOfLine(line, before, stations);
@@ -408,6 +447,7 @@ public sealed partial class Simulation
         _loadCargo[id] = -1;
         _loadFrom[id] = -1;
         _loadTick[id] = 0;
+        _loadTotal[id] = 0;
         _income[id] = 0;
         _upkeepPaid[id] = 0;
         _bay[id] = false;
@@ -488,19 +528,20 @@ public sealed partial class Simulation
             return;
         }
         int unloaded = 0, loaded = 0;
+        var options = _lines[_line[i]].OptionsAt(_stopIndex[i]);
         // Due for a repair that a depot can do: it unloads what this stop takes, puts the rest down here and loads nothing.
         bool service = DecideService(i);
         if (CarriesQueuedPassengers(i))
         {
-            unloaded = UnloadRiders(i, station);
+            if (options.Unload) unloaded = UnloadRiders(i, station);
             if (service)
             {
                 ReleaseRiders(i);
                 SetRiderLoad(i);
             }
-            else loaded = BoardRiders(i, station);
+            else if (options.Load) loaded = BoardRiders(i, station);
         }
-        else if (_load[i] > 0 && Accepts(station, _loadCargo[i])) unloaded = Deliver(i, station);
+        else if (_load[i] > 0 && options.Unload && Accepts(station, _loadCargo[i])) unloaded = Deliver(i, station, options.Share);
         if (service && _load[i] > 0)
         {
             _load[i] = 0;
@@ -519,6 +560,7 @@ public sealed partial class Simulation
                 _loadCargo[i] = cargo;
                 _loadFrom[i] = station.Id;
                 _loadTick[i] = Tick;
+                _loadTotal[i] = loaded;
             }
         }
 
@@ -571,12 +613,15 @@ public sealed partial class Simulation
     /// <summary>The cargo an empty vehicle (or train) takes on at a station when it carries <paramref name="fixedCargo"/> (or any freight), bound for the next stop of the line.</summary>
     int CargoToLoadFor(int fixedCargo, Line line, int stopIndex, Station station)
     {
+        var options = line.OptionsAt(stopIndex);
+        if (!options.Load) return -1;
         var next = _stations[line.Stops[(stopIndex + 1) % line.Stops.Count]];
         int best = -1;
         float bestWaiting = 1f; // at least one whole unit
         for (int c = 0; c < _cargo.Count; c++)
         {
             if (fixedCargo >= 0 ? c != fixedCargo : c == _passengerCargo) continue;
+            if (options.LoadCargo >= 0 && c != options.LoadCargo) continue;
             if (station.Waiting[c] < bestWaiting || !Accepts(next, c)) continue;
             best = c;
             bestWaiting = station.Waiting[c];
@@ -589,10 +634,26 @@ public sealed partial class Simulation
     /// the rate, less for a slow trip. Where buildings or industries are what takes it, only what they have room for is taken
     /// and the rest is lost. Returns the units on board before unloading.
     /// </summary>
-    int Deliver(int i, Station station)
+    int Deliver(int i, Station station, int share = -1)
     {
         int cargo = _loadCargo[i];
         int onBoard = _load[i];
+        if (share >= 0)
+        {
+            // An unload share (M6f): that percentage of what was taken on at the last loading stop (all of what is left when it is 100), and what the place
+            // has no room for stays aboard instead of being lost.
+            int wanted = share >= 100 ? onBoard : Math.Min(onBoard, (int)MathF.Round(_loadTotal[i] * share / 100f));
+            if (wanted <= 0) return 0;
+            int given = Settled && cargo != _passengerCargo ? Distribute(station, cargo, wanted) : wanted;
+            if (given > 0) Pay(i, cargo, given, _stations[_loadFrom[i]], station, _loadTick[i]);
+            _load[i] -= given;
+            if (_load[i] == 0)
+            {
+                _loadCargo[i] = -1;
+                _loadFrom[i] = -1;
+            }
+            return given;
+        }
         int taken = Settled && cargo != _passengerCargo ? Distribute(station, cargo, onBoard) : onBoard;
         Pay(i, cargo, taken, _stations[_loadFrom[i]], station, _loadTick[i]);
         _load[i] = 0;
@@ -669,6 +730,7 @@ public sealed partial class Simulation
     ulong FleetHash()
     {
         ulong h = (ulong)_lines.Count;
+        bool anyOptions = _lines.Any(l => l.HasOptions); // what was taken on only matters to the future once some stop unloads a share of it
         foreach (var line in _lines)
         {
             h = h * 31 + (line.Active ? 1UL : 0UL);
@@ -677,6 +739,12 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)line.Upkeep;
             h = h * 31 + (ulong)line.Delivered;
             h = h * 31 + line.Policy.Bits;
+            if (!line.HasOptions) continue;
+            for (int k = 0; k < line.Stops.Count; k++)
+            {
+                var o = line.OptionsAt(k);
+                h = h * 31 + (o.Load ? 1UL : 0UL) + (o.Unload ? 2UL : 0UL) + ((ulong)(o.LoadCargo + 1) << 2) + ((ulong)(o.Share + 1) << 10);
+            }
         }
         if (_lines.Count > 0 || _garage.Count > 0) h = h * 31 + MaintenanceHash();
         if (_jobs.Count > 0 || _jobCount > 0) h = h * 31 + RepairHash();
@@ -699,6 +767,7 @@ public sealed partial class Simulation
             h = h * 31 + (ulong)_load[i];
             h = h * 31 + (ulong)(_loadCargo[i] + 1);
             h = h * 31 + (ulong)_loadTick[i];
+            if (anyOptions && _loadTotal[i] != 0) h = h * 31 + (ulong)_loadTotal[i];
             h = h * 31 + (ulong)_income[i];
             h = h * 31 + (ulong)_upkeepPaid[i];
             if (_bay[i]) h = h * 31 + 11UL;

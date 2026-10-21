@@ -78,6 +78,10 @@ public sealed partial class Simulation
                 return UpgradeDepot(c);
             case BuildStationCommand c:
                 return BuildStation(c.X, c.Z, c.Bays);
+            case AddDockCommand c:
+                return EnsureDock(c.Gateway, c.Id);
+            case SetStopOptionsCommand c:
+                return SetStopOptions(c);
             case CreateLineCommand c:
                 return CreateLine(c.Stations);
             case EditLineCommand c:

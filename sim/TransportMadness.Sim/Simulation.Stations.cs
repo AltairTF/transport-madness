@@ -157,20 +157,46 @@ public sealed partial class Simulation
 
     /// <summary>Whether vehicles bound for the station stop on this lane: it runs into the station's node and is long enough.</summary>
     bool IsStopLane(int lane, Station station) =>
-        station.Active && _laneEndNode[lane] == station.Node && _laneLength[lane] >= _stationTuning.MinApproach;
+        station.Active && _laneEndNode[lane] == station.Node && _laneLength[lane] >= (station.DockKind != 0 ? RoadNetwork.MinRoadLength : _stationTuning.MinApproach);
 
     /// <summary>Where on a stop lane the front of a vehicle halts: a little before the junction.</summary>
     float StopPosition(int lane) => _laneZoneStart[lane] - _stationTuning.StopMargin;
 
-    /// <summary>Stations whose node has lost every road close, as depots do; lines skip them.</summary>
+    /// <summary>Stations whose node has lost every road close, as depots do; lines skip them. A stop at an industry or gateway opens again when a road reaches its access point.</summary>
     void CloseOrphanedStations()
     {
         foreach (var station in _stations)
+        {
             if (station.Active && station.Mode == StationMode.Road && _net.RoadsAt(station.Node).Count == 0)
             {
                 station.Active = false;
                 _coverageDirty = true;
             }
+            else if (!station.Active && station.DockKind != 0 && AccessNodeOf(new AccessRef(station.DockKind == 2, station.DockId)) is var node and >= 0)
+            {
+                station.Active = true;
+                station.Node = node;
+                _coverageDirty = true;
+                _transitVersion++;
+            }
+        }
+    }
+
+    /// <summary>The stop at an industry's or a road gateway's access point, made when first asked for (<see cref="AddDockCommand"/>), found again after. -1 when there is none to make.</summary>
+    int EnsureDock(bool gateway, int id)
+    {
+        SyncNetwork();
+        if (gateway ? id < 0 || id >= _gateways.Count || _gateways[id].Kind != GatewayKind.Road : id < 0 || id >= _industries.Count) return -1;
+        int kind = gateway ? 2 : 1;
+        foreach (var station in _stations)
+            if (station.DockKind == kind && station.DockId == id) return station.Active ? station.Id : -1;
+        int node = AccessNodeOf(new AccessRef(gateway, id));
+        if (node < 0) return -1;
+        _stations.Add(new Station(_stations.Count, node, _cargo.Count) { DockKind = kind, DockId = id });
+        _fields.Add(Array.Empty<float>());
+        _fieldVersion.Add(-1);
+        _coverageDirty = true;
+        return _stations.Count - 1;
     }
 
     /// <summary>
@@ -199,6 +225,7 @@ public sealed partial class Simulation
         foreach (var station in _stations)
         {
             h = h * 31 + (ulong)station.Node;
+            if (station.DockKind != 0) h = h * 31 + (ulong)station.DockKind * 977UL + (ulong)station.DockId;
             if (station.Mode == StationMode.Rail) h = h * 31 + 13UL + (ulong)station.RailNode;
             h = h * 31 + (station.Active ? 1UL : 0UL);
             if (station.HasBays) h = h * 31 + 7UL;

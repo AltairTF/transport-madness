@@ -51,6 +51,18 @@ public class SaveLoadTests
     }
 
     [Fact]
+    public void StopsAtIndustriesWithOptions_AndAFreeStandingDepot_RunOnTheSameAfterALoad()
+    {
+        var (sim, depot, docks) = DockStopTests.World();
+        int line = sim.Execute(new CreateLineCommand(new[] { docks[0], docks[1], docks[2] }));
+        sim.Execute(new SetStopOptionsCommand(line, 1, false, -1, true, 50));
+        sim.Execute(new BuyVehicleCommand(depot, "truck", line));
+        sim.Execute(new BuildDepotCommand(900, 300, DepotLevel.Simple)); // alone, 300 m from the road
+        Step(sim, 3 * sim.DayLengthSeconds);
+        AssertLoadedGameRunsOnTheSame(sim, 900);
+    }
+
+    [Fact]
     public void TrucksOnAChain_WithIncidentsDrawn_RunOnTheSameAfterALoad()
     {
         var tuning = Tuning.Load();

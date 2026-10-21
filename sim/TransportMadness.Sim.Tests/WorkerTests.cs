@@ -231,6 +231,29 @@ public class WorkerTests
     }
 
     [Fact]
+    public void ALineThatEndsAtTheIndustrysOwnStop_CarriesTheGroupsToTheirWorkplace_AndStaffsIt()
+    {
+        var (sim, depot) = Build(homes: 2, tuning: Quick(carShare: 0f));
+        int homes = sim.Execute(new BuildStationCommand(-100, 0));
+        int atMill = sim.Execute(new AddDockCommand(false, 0)); // the stop at the mill's access point (M6f), no station beside it
+        Assert.True(atMill >= 0);
+        int line = sim.Execute(new CreateLineCommand(new[] { homes, atMill }));
+        for (int k = 0; k < 3; k++) Assert.True(sim.Execute(new BuyVehicleCommand(depot, "bus", line)) >= 0);
+        var industry = sim.Industries[0];
+
+        int best = 0;
+        for (int day = 0; day < 4; day++)
+        {
+            RunDays(sim, 1);
+            best = Math.Max(best, sim.StaffOf(industry));
+        }
+
+        Assert.True(best >= 20, $"{best} reached the mill on the best day");
+        Assert.True(sim.Lines[line].Income > 0);
+        Assert.Contains(sim.TripGroups, g => g.LastMode == TripMode.Transit);
+    }
+
+    [Fact]
     public void TheModeToAnIndustry_IsChosenLikeAnyOther_ByTheQuickestWay()
     {
         var (sim, depot) = Build(homes: 1, tuning: Quick(carShare: 1f));
