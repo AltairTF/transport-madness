@@ -899,4 +899,37 @@ public class RaidTests
         try { action(); return false; }
         catch (System.Text.Json.JsonException) { return true; }
     }
+
+    // ---- What the anti-aircraft overlay reads (M6b) ---------------------------------------------------------------
+
+    [Fact]
+    public void TheOverlaysTargets_AreTheEnemysCandidatesWithTheirWeights_AndReadingThemChangesNothing()
+    {
+        var sim = Bombed();
+        ulong before = sim.StateHash();
+        var targets = sim.RaidTargets();
+        Assert.Equal(before, sim.StateHash());
+        var candidates = sim.CandidatesForTest();
+        Assert.Equal(candidates.Count, targets.Count);
+        for (int k = 0; k < targets.Count; k++)
+        {
+            Assert.Equal(candidates[k].Kind, targets[k].Kind);
+            Assert.Equal(candidates[k].Weight, targets[k].Weight);
+        }
+    }
+
+    [Fact]
+    public void AFlightStraightFromItsSide_EntersAtTheOverlaysEntryPoint_AndLetsItsFirstBombGoTheReleaseDistanceShortOfTheTarget()
+    {
+        var sim = Bombed(b => b with { EntryArc = 0f, AimError = 0f, Scatter = 0f, ScatterAlong = 0f });
+        sim.LaunchFlightForTest();
+        var flight = sim.Flights[^1];
+        var (ex, ez) = sim.RaidEntryPoint();
+        Assert.Equal(ex, flight.EntryX, 1f);
+        Assert.Equal(ez, flight.EntryZ, 1f);
+        Assert.True(StepUntil(sim, 600, () => sim.BombsFalling.Count > 0), "no bomb was let go");
+        var bomb = sim.BombsFalling[0];
+        float short_ = MathF.Sqrt((bomb.FromX - flight.TargetX) * (bomb.FromX - flight.TargetX) + (bomb.FromZ - flight.TargetZ) * (bomb.FromZ - flight.TargetZ));
+        Assert.InRange(short_, sim.BombReleaseDistance - flight.Speed * Simulation.StepSeconds * 2f, sim.BombReleaseDistance + flight.Speed * Simulation.StepSeconds * 2f);
+    }
 }

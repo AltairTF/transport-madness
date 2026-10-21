@@ -547,6 +547,23 @@ public sealed partial class Simulation
     /// <summary>For tests: launches a flight now.</summary>
     internal void LaunchFlightForTest() => Raid();
 
+    /// <summary>What a flight could go for now, with the weight the enemy gives each (its value, less when it is down, idle or defended): for the anti-aircraft overlay (M6b). Reads only.</summary>
+    public IReadOnlyList<(RaidTargetKind Kind, float X, float Z, float Weight, string Name)> RaidTargets() =>
+        RaidCandidates().Select(c => (c.Kind, c.X, c.Z, c.Weight, c.Name)).ToList();
+
+    /// <summary>Where on the edge the flights of this game come in when they fly straight from their side (each flight turns up to the entry arc off it).</summary>
+    public (float X, float Z) RaidEntryPoint()
+    {
+        float half = (_net.Terrain?.HalfSize ?? 2048f) + _war.Bombing.EntryMargin;
+        float angle = _raidDirection * MathF.PI * 0.25f;
+        float ux = MathF.Sin(angle), uz = -MathF.Cos(angle);
+        float reach = half / MathF.Max(MathF.Abs(ux), MathF.Abs(uz));
+        return (ux * reach, uz * reach);
+    }
+
+    /// <summary>How far short of its target the leading aircraft lets its first bomb go, in metres, when nothing hurries it (the fall carries a bomb forward, and a stick is centred on the target).</summary>
+    public float BombReleaseDistance => _war.Bombing.Speed * FallTicks() * StepSeconds + (_war.Bombing.BombsPerAircraft - 1) * 0.5f * _war.Bombing.BombSpacing;
+
     internal IReadOnlyList<(RaidTargetKind Kind, int Id, float Weight)> CandidatesForTest() => RaidCandidates().Select(c => (c.Kind, c.Id, c.Weight)).ToList();
 
     void AddCasualties(Flight flight, int town, long dead)

@@ -47,6 +47,8 @@ signal requisition_rule_set(rule: int)
 signal town_focus(x: float, z: float)
 ## The Towns window turns the connectivity view of the map on or off.
 signal connectivity_view_toggled(on: bool)
+## A map overlay was picked from the bar or with V (0 for none; the order of SimHost.GetOverlayNames).
+signal overlay_selected(index: int)
 
 const UiTheme := preload("res://game/ui_theme.gd")
 
@@ -186,6 +188,17 @@ var _town_rows: Dictionary = {} # town id -> {"row": Control, "label": Label, "b
 const MONTHS := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
+var _connectivity_check: CheckButton
+var _overlay_names: Array = []
+var _overlay_buttons: Array[Button] = []
+var _overlay_index := 0
+var _overlay_bar: VBoxContainer
+var _legend: PanelContainer
+var _legend_title: Label
+var _legend_rows: VBoxContainer
+var _legend_note: Label
+
+
 func _ready() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -199,6 +212,7 @@ func _ready() -> void:
 	_build_campaign_end()
 	_build_debug_panel()
 	_build_bottom()
+	_build_overlays()
 	select_tool("pointer")
 	highlight_speed(1.0)
 
@@ -219,6 +233,97 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F3:
 		_debug_panel.visible = not _debug_panel.visible
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V and not _overlay_names.is_empty():
+		# V shows the next overlay, Shift+V the one before (after the last comes none).
+		get_viewport().set_input_as_handled()
+		var step := -1 if event.shift_pressed else 1
+		overlay_selected.emit(posmod(_overlay_index + step, _overlay_names.size()))
+
+
+# --- map overlays (M6b) ---
+
+## The bar of overlays down the bottom-left corner, with the legend of the one on show beside it.
+func _build_overlays() -> void:
+	var stack := HBoxContainer.new()
+	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stack.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	stack.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	stack.offset_left = 12.0
+	stack.offset_bottom = -12.0
+	_root.add_child(stack)
+	var bar := PanelContainer.new()
+	bar.size_flags_vertical = Control.SIZE_SHRINK_END
+	stack.add_child(bar)
+	_overlay_bar = VBoxContainer.new()
+	bar.add_child(_overlay_bar)
+	var label := Label.new()
+	label.text = "Map view (V)"
+	label.theme_type_variation = "Dim"
+	_overlay_bar.add_child(label)
+	_legend = PanelContainer.new()
+	_legend.visible = false
+	_legend.custom_minimum_size = Vector2(300, 0)
+	_legend.size_flags_vertical = Control.SIZE_SHRINK_END
+	stack.add_child(_legend)
+	var column := VBoxContainer.new()
+	_legend.add_child(column)
+	_legend_title = Label.new()
+	_legend_title.theme_type_variation = "Heading"
+	column.add_child(_legend_title)
+	_legend_rows = VBoxContainer.new()
+	column.add_child(_legend_rows)
+	_legend_note = Label.new()
+	_legend_note.theme_type_variation = "Dim"
+	_legend_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_legend_note.custom_minimum_size = Vector2(300, 0)
+	column.add_child(_legend_note)
+
+
+## The overlays the map has (SimHost.GetOverlayNames), the first being none.
+func set_overlay_names(names: Array) -> void:
+	_overlay_names = names
+	for button in _overlay_buttons:
+		button.queue_free()
+	_overlay_buttons.clear()
+	for i in names.size():
+		var button := Button.new()
+		button.text = names[i]
+		button.toggle_mode = true
+		button.button_pressed = i == _overlay_index
+		button.pressed.connect(func() -> void: overlay_selected.emit(i))
+		_overlay_bar.add_child(button)
+		_overlay_buttons.append(button)
+
+
+## The overlay on show and its legend ({title, rows: [{colour, text}], note}; empty with none).
+func show_overlay(index: int, legend: Dictionary) -> void:
+	_overlay_index = index
+	for i in _overlay_buttons.size():
+		_overlay_buttons[i].set_pressed_no_signal(i == index)
+	if _connectivity_check != null:
+		_connectivity_check.set_pressed_no_signal(index == _overlay_names.find("Connectivity"))
+	_legend.visible = index != 0 and not legend.is_empty()
+	if not _legend.visible:
+		return
+	_legend_title.text = legend["title"]
+	for child in _legend_rows.get_children():
+		child.queue_free()
+	for row in legend["rows"]:
+		var line := HBoxContainer.new()
+		var swatch := ColorRect.new()
+		swatch.color = row["colour"]
+		swatch.custom_minimum_size = Vector2(18, 18)
+		swatch.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		line.add_child(swatch)
+		var text := Label.new()
+		text.text = row["text"]
+		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		text.custom_minimum_size = Vector2(260, 0)
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_child(text)
+		_legend_rows.add_child(line)
+	_legend_note.text = legend["note"]
+	_legend_note.visible = legend["note"] != ""
 
 
 # --- building the layout ---
@@ -394,6 +499,7 @@ func _build_lines_page() -> Control:
 func _build_towns_page() -> Control:
 	_towns_box = VBoxContainer.new()
 	var view := CheckButton.new()
+	_connectivity_check = view
 	view.text = "Show connectivity on the map"
 	view.tooltip_text = "Homes turn green when someone living there reached work or leisure within the time budget last month, red when nobody did. Everything else is dimmed."
 	view.toggled.connect(func(on: bool) -> void: connectivity_view_toggled.emit(on))

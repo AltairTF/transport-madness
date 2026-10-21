@@ -123,7 +123,13 @@ func _ready() -> void:
 		hud.show_message("The army will take: %s" % ["freight first, the biggest first", "the oldest first", "passengers first"][rule] if host.SetRequisitionRule(rule) else "That can't be set now"))
 	hud.campaign_left.connect(_leave_to_menu)
 	hud.town_focus.connect(rig.focus_on)
-	hud.connectivity_view_toggled.connect(func(on: bool) -> void: host.SetConnectivityView(on))
+	hud.connectivity_view_toggled.connect(func(on: bool) -> void:
+		host.SetConnectivityView(on)
+		hud.show_overlay(host.Overlay, host.GetOverlayLegend()))
+	hud.set_overlay_names(Array(host.GetOverlayNames()))
+	hud.overlay_selected.connect(func(index: int) -> void:
+		host.SetOverlay(index)
+		hud.show_overlay(host.Overlay, host.GetOverlayLegend()))
 	if _world_note != "":
 		hud.show_message(_world_note)
 
@@ -221,6 +227,8 @@ func _process(delta: float) -> void:
 		hud.show_worn_roads(host.GetWornRoads(6))
 		hud.show_events(host.TakeEvents())
 		hud.show_raid_warnings(host.GetRaidWarnings())
+		if host.Overlay != 0:
+			hud.show_overlay(host.Overlay, host.GetOverlayLegend())
 		for warning in host.TakeRailWarnings():
 			hud.show_message(warning)
 

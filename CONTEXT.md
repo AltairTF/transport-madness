@@ -257,6 +257,9 @@ A Player action applied to the simulation between steps (build, remove, upgrade,
 A snapshot of the whole simulation (the tuning it was started with included) in a file, with the camera and the news feed of the game layer, so that a game can be taken up again exactly where it was: a loaded game runs on as the saved one would have. Named by the Player, or one of the three Autosaves written at the start of each month, or the quick save (F5, loaded with F9). A save of another version of the game is refused, not converted. The command log of a loaded game starts again from the save.
 _Avoid_: "savegame slot" for the file (a slot is only the named kind)
 
+**Overlay**:
+A view of the map that colours one thing and dims the rest, chosen from the Map view bar or with V: Traffic (vehicles per kilometre of lane over the last hour), Incident risk, Road condition, Coverage (what the Stations cover), Anti-aircraft (gun range and the run in of the Raids), Power, Staffing and Connectivity. One at a time, with a legend. It only shows; it changes nothing in the simulation.
+
 **Company vehicle**:
 A bus or truck the Company owns, bought at a Depot for a Line. A bus takes passengers; a heavy truck and a large bus come on sale later in the campaign; a truck takes whichever freight Cargo is waiting at a stop and wanted at the next one. Unlike Ambient traffic it is routed to its stations, loads and unloads Cargo or Passengers, costs upkeep and earns pay. Comes from the vehicle roster in the tuning data, with its own length.
 _Avoid_: "player vehicle" (ambiguous with the camera), "fleet car"

@@ -985,13 +985,12 @@ public partial class SimHost : Node3D
     /// </summary>
     public void SetConnectivityView(bool on)
     {
-        if (_connectivityView == on) return;
-        _connectivityView = on;
-        _buildingsVersion = -1; // redraw the buildings
+        if (on) SetOverlay((int)MapOverlay.Connectivity);
+        else if (_overlay == MapOverlay.Connectivity) SetOverlay((int)MapOverlay.None);
     }
 
-    public bool ConnectivityView => _connectivityView;
-    bool _connectivityView;
+    /// <summary>Whether the connectivity overlay is the one on show (M6b made it one of the overlays).</summary>
+    public bool ConnectivityView => _overlay == MapOverlay.Connectivity;
 
     /// <summary>Runs the simulation for this many simulated seconds right now, without drawing (for the self-tests).</summary>
     public void StepFor(double seconds)
@@ -1099,6 +1098,7 @@ public partial class SimHost : Node3D
         UpdateRaidEffects(delta, fraction);
         DrawCrews(fraction);
         DrawRail(fraction);
+        UpdateOverlay(delta);
     }
 
     // ---- Drawing --------------------------------------------------------------------------------------------
@@ -1393,7 +1393,8 @@ public partial class SimHost : Node3D
             buf[o + 4] = 0f;         buf[o + 5] = type.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = industry.Z;
             float shade = industry.DamagedUntil > Sim.Tick ? 0.3f : 1f; // bombed: dark until it works again
-            buf[o + 12] = type.Color[0] * shade; buf[o + 13] = type.Color[1] * shade; buf[o + 14] = type.Color[2] * shade; buf[o + 15] = 1f;
+            var own = OverlayIndustryColour(industry, new Color(type.Color[0] * shade, type.Color[1] * shade, type.Color[2] * shade));
+            buf[o + 12] = own.R; buf[o + 13] = own.G; buf[o + 14] = own.B; buf[o + 15] = 1f;
         }
         foreach (var gateway in Sim.Gateways)
         {
@@ -1406,6 +1407,7 @@ public partial class SimHost : Node3D
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;     buf[o + 10] = fx * side; buf[o + 11] = gateway.Z;
             var colour = gateway.Kind == GatewayKind.Road ? GatewayRoadColour : GatewayRailColour;
             if (gateway.DamagedUntil > Sim.Tick) colour = colour.Darkened(0.7f);
+            if (_overlay != MapOverlay.None) colour = colour.Lerp(DimmedColour, 0.5f);
             buf[o + 12] = colour.R; buf[o + 13] = colour.G; buf[o + 14] = colour.B; buf[o + 15] = 1f;
         }
         foreach (var b in Sim.Buildings)
@@ -1420,14 +1422,13 @@ public partial class SimHost : Node3D
             buf[o + 4] = 0f;         buf[o + 5] = tier.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = b.Z;
             var colour = BuildingColors[(int)b.Type];
-            if (_connectivityView)
-                colour = b.Type == BuildingType.Home && b.State == BuildingState.Active ? (b.Reached ? ReachedColour : CutOffColour) : colour.Lerp(DimmedColour, 0.7f);
-            colour = _connectivityView && b.State == BuildingState.Active ? colour : b.State switch
+            colour = b.State switch
             {
                 BuildingState.Inactive => colour.Lerp(new Color(0.45f, 0.45f, 0.45f), 0.65f),
                 BuildingState.Abandoned => new Color(0.17f, 0.15f, 0.15f),
                 _ => colour,
             };
+            colour = OverlayBuildingColour(b, colour);
             buf[o + 12] = colour.R; buf[o + 13] = colour.G; buf[o + 14] = colour.B; buf[o + 15] = 1f;
         }
         if (n > 0) _buildings.Buffer = buf;

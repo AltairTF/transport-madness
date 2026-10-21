@@ -1,6 +1,6 @@
 # M6 plan: save and load, overlays, balance, the interface
 
-Status: M6a built (project-status 5.44); M6b, M6c and M6d to come (decisions taken 2026-10-21 in an interview with the developer). M6 makes the loop complete before the look of the game changes: a campaign of 96 months can be saved and taken up again, the map can show what the player needs to see, the numbers are measured instead of guessed, and the interface is reworked. Art and audio, which the first plan put in M6, are moved to M7, so that everything is right before that overhaul. Weather stays out (after M6, with the visuals it needs). Vocabulary: `CONTEXT.md`. Determinism: ADR 0003.
+Status: M6a and M6b built (project-status 5.44, 5.45); M6c and M6d to come (decisions taken 2026-10-21 in an interview with the developer). M6 makes the loop complete before the look of the game changes: a campaign of 96 months can be saved and taken up again, the map can show what the player needs to see, the numbers are measured instead of guessed, and the interface is reworked. Art and audio, which the first plan put in M6, are moved to M7, so that everything is right before that overhaul. Weather stays out (after M6, with the visuals it needs). Vocabulary: `CONTEXT.md`. Determinism: ADR 0003.
 
 ## Slices
 
