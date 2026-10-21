@@ -1,0 +1,19 @@
+name: campaign balance
+
+# Bots play whole campaigns on generated maps (M6c, CampaignBalanceTests): about a minute each, so this runs only when asked.
+on:
+  workflow_dispatch:
+
+jobs:
+  balance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: Play the campaigns
+        working-directory: sim
+        env:
+          BALANCE_BOTS: "1"
+        run: dotnet test --configuration Release --filter "Category=Balance" --logger "console;verbosity=detailed"

@@ -19,8 +19,8 @@ public class DeterminismTests
     /// round some results differently (Linux gave the same hash on x64 and arm64). A system with no pinned value (Windows) is
     /// only checked against itself, by the other determinism tests.
     /// </summary>
-    const ulong GoldenHashMac = 0xB355B85994C6C85AUL;
-    const ulong GoldenHashLinux = 0xFC5DC844B33778E9UL;
+    const ulong GoldenHashMac = 0x7A95098919D94DBFUL;
+    const ulong GoldenHashLinux = 0xE8E56C5684880209UL;
 
     sealed record Result(Simulation Sim, int Overtakes);
 

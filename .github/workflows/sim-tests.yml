@@ -16,7 +16,8 @@ jobs:
           dotnet-version: 8.0.x
       - name: Test the simulation
         working-directory: sim
-        run: dotnet test --configuration Release
+        # The whole-campaign bots (M6c) are in the Balance category and run in the manual "campaign balance" workflow.
+        run: dotnet test --configuration Release --filter "Category!=Balance"
 
   benchmark:
     # Step time of the simulation in a Release build. Budgets are loose (several times what a laptop measures) so a shared runner

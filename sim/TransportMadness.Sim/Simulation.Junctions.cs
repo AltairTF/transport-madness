@@ -55,6 +55,8 @@ public sealed partial class Simulation
                 if (theirCentre > zone.OutB) continue; // it has left the stretch where we meet
                 float theirToEdge = _laneZoneStart[other] - _pos[j];
                 if (theirToEdge > 0f && _halted[j]) continue; // standing still outside: it is not coming
+                // Waiting outside for room beyond the junction: it is not coming either, and waiting for it can close a ring of queues (M6c found one).
+                if (theirToEdge > 0f && _speed[j] < _drive.ExitQueueSpeed && ExitBlocked(_nextLane[j], _length[j])) continue;
                 if (myRank < theirRank && theirToEdge > 0f) continue; // we have priority and it has not got into the junction
                 float theirArrival = theirToEdge > 0f ? TimeToCover(theirToEdge, _speed[j]) : 0f;
                 if (myRank == theirRank && (myArrival < theirArrival || (myArrival == theirArrival && i < j))) continue;

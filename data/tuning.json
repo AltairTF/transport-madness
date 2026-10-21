@@ -163,25 +163,26 @@
     "dismissMonths": 6,
     "allocationBase": 0.5,          // allocation factor = base + perStanding * standing: 1.0 at a standing of 50, 1.5 at 100, 0.5 at 0
     "allocationPerStanding": 0.01,
-    "exportScale": 4000.0,          // value delivered above (or below) what the phase expects that moves the standing by one point ...
+    "exportScale": 8000.0,          // value delivered above (or below) what the phase expects that moves the standing by one point ...
     "maxExportSwing": 3.0,          // ... up to this many points a month either way
     "deficitPenalty": 2.0,          // standing lost at the turn of a month that finds the money below zero
     "finePenaltyUnit": 2000.0,      // money in fines that costs one point of standing ...
     "maxFinePenalty": 5.0,          // ... up to this many a month
     // The phases of the war, from the month index at which each starts (January 1938 is 0). allocation: money a month at a standing of 50; expectedValue: value
-    // delivered to the gateways a month that leaves the standing as it is.
+    // delivered to the gateways a month that leaves the standing as it is. Set in M6c by the campaign bots (CampaignBalanceTests): an idle committee loses
+    // 2 points a month in rearmament and is dismissed at month 25; a competent player who keeps a few lines to the road gateway stays high.
     "phases": [
-      { "id": "rearmament", "name": "Rearmament", "fromMonth": 0, "allocation": 45000, "expectedValue": 1500.0 },
-      { "id": "mobilisation", "name": "Mobilisation", "fromMonth": 20, "allocation": 60000, "expectedValue": 4000.0 },
-      { "id": "totalwar", "name": "Total war", "fromMonth": 48, "allocation": 80000, "expectedValue": 8000.0 },
-      { "id": "end", "name": "The end", "fromMonth": 84, "allocation": 50000, "expectedValue": 6000.0 }
+      { "id": "rearmament", "name": "Rearmament", "fromMonth": 0, "allocation": 45000, "expectedValue": 16000.0 },
+      { "id": "mobilisation", "name": "Mobilisation", "fromMonth": 20, "allocation": 60000, "expectedValue": 22000.0 },
+      { "id": "totalwar", "name": "Total war", "fromMonth": 48, "allocation": 80000, "expectedValue": 26000.0 },
+      { "id": "end", "name": "The end", "fromMonth": 84, "allocation": 50000, "expectedValue": 20000.0 }
     ],
     "grade": {
       "standingWeight": 0.5,
       "productionWeight": 0.3,
       "satisfactionWeight": 0.2,
       "productionTarget": 600000.0, // total value delivered that counts as full marks for production
-      "thresholds": [75.0, 55.0, 35.0],   // the score needed for the first, second and third grade; below the last is the fourth
+      "thresholds": [85.0, 55.0, 35.0],   // the score needed for the first, second and third grade; below the last is the fourth
       "names": ["Distinguished service", "Creditable service", "Adequate service", "Unsatisfactory service"]
     }
   },

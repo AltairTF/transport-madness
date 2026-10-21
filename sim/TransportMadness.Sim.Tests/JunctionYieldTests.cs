@@ -163,4 +163,29 @@ public class JunctionYieldTests
         }
         Assert.Equal(4, tried);
     }
+
+    /// <summary>
+    /// M6c found a ring of queues at a junction next to a station: cars waiting for room beyond the junction were still yielded to, so the queue that
+    /// would have made the room waited for them. A car standing at the edge whose exit is full is not coming, and is not waited for.
+    /// </summary>
+    [Fact]
+    public void ACarStandingAtTheEdgeWithItsExitFull_IsNotWaitedFor()
+    {
+        int tried = 0;
+        for (ulong seed = 1; seed <= 80 && tried < 4; seed++)
+        {
+            var setup = Setup(Cross(), seed, Edge - 40f, 12f, Edge - 0.5f, 0f);
+            if (setup is not { } s) continue;
+            tried++;
+            var sim = s.Sim;
+            var exit = sim.NextLaneOf(s.B);
+            int blocker = sim.SpawnVehicle(exit, RoadNetwork.JunctionReach(Arm) + Simulation.VehicleLength + 1f, 0f);
+            sim.SetHalted(blocker, true);
+            var west = Approach(sim.Network, -Arm, 0f);
+            for (int t = 0; t < 200 && sim.GetVehicle(s.A).Lane == west; t++) sim.Step();
+            Assert.NotEqual(west, sim.GetVehicle(s.A).Lane); // through the junction within 10 s
+            Assert.Equal(0, sim.IncidentCount);
+        }
+        Assert.True(tried > 0);
+    }
 }
