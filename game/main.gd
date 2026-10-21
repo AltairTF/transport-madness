@@ -80,6 +80,7 @@ func _ready() -> void:
 	hud.line_action.connect(_on_line_action)
 	hud.line_edit.connect(_on_line_edit)
 	hud.line_rename.connect(_on_line_rename)
+	hud.line_stop_options.connect(func(line: int, index: int, load: bool, cargo: int, unload: bool, share: int) -> void: host.SetStopOptions(line, index, load, cargo, unload, share))
 	hud.line_color.connect(func(line: int, color: Color) -> void: host.SetLineColor(line, color))
 	hud.station_action.connect(_on_station_action)
 	hud.vehicle_action.connect(_on_vehicle_action)
@@ -217,6 +218,7 @@ func _process(delta: float) -> void:
 			hud.highlight_speed(0.0)
 		elif not company["campaign_over"]:
 			_campaign_over_seen = false
+		hud.show_places(host.GetStopPlaces())
 		hud.show_lines(host.GetLines())
 		hud.show_towns(host.GetTowns())
 		hud.show_industries(host.GetIndustries())
@@ -425,7 +427,11 @@ func _on_line_action(kind: String, line: int, model: String) -> void:
 func _on_line_edit(line: int, stops: Array) -> void:
 	var ids := PackedInt32Array()
 	for stop in stops:
-		ids.append(int(stop))
+		var id: int = host.StopFromCode(int(stop)) # a place offered as a stop (an industry) gets its stop now
+		if id < 0:
+			hud.show_message("No road reaches that place yet")
+			return
+		ids.append(id)
 	if not host.EditLine(line, ids):
 		hud.show_message("Can't change the line that way: it needs at least two stops, and the same station can't follow itself")
 

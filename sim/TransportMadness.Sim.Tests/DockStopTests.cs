@@ -118,6 +118,27 @@ public class DockStopTests
     }
 
     [Fact]
+    public void ALegBetweenTwoIndustries_IsTheRoadRouteWithItsLengthTimeAndCargo()
+    {
+        var (sim, _, _) = World();
+        var leg = sim.RouteBetween(StopKind.Industry, 0, StopKind.Industry, 1);
+        Assert.NotNull(leg);
+        Assert.True(leg!.Reachable);
+        Assert.InRange(leg.Length, 650f, 800f); // from the forest's access point (533) to the sawmill's (1225), by the road
+        Assert.True(leg.Seconds > 30f);
+        Assert.True(leg.Points.Count > 10);
+        Assert.Equal(new[] { Wood }, leg.Cargo); // the forest makes wood and the sawmill takes it
+        Assert.Empty(sim.RouteBetween(StopKind.Industry, 1, StopKind.Industry, 2)!.Cargo); // a sawmill makes planks, which another sawmill does not take
+    }
+
+    [Fact]
+    public void ALegToAnIndustryNoRoadReaches_IsNotRouted()
+    {
+        var (sim, _, _) = World(withRoad: false);
+        Assert.Null(sim.RouteBetween(StopKind.Industry, 0, StopKind.Industry, 1));
+    }
+
+    [Fact]
     public void EditingALine_KeepsTheOptionsOfTheStopsItKeeps()
     {
         var (sim, _, docks) = World();

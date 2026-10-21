@@ -45,7 +45,7 @@ var _signal_forward := true ## signals face trains going from a track's start to
 var _start: Variant = null # Vector3 or null
 var _mid: Variant = null   # Vector3 or null, curves only
 var _picked_node := -1     # move tool: the node being dragged, with _start at its place
-var _line_stations: Array = [] # line tool: station ids picked so far, in order
+var _line_stations: Array[Dictionary] = [] # line tool: the stops picked so far, in order, each as host.PickStop gives it
 var _preview: MeshInstance3D
 var _arc_preview: MeshInstance3D
 var _earth_preview: MeshInstance3D ## child of _arc_preview (shown with it): earthworks, structures and paths, in vertex colours
@@ -97,7 +97,7 @@ func set_tool(tool_name: String) -> void:
 		"depot": message.emit("Depot: click anywhere. Against a road it stands beside it, with a road within about 74 m it gets a stone path to it, else it waits until a road reaches its door (raise its level in its window)")
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
 		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
-		"line": message.emit("New line: click the stations in order, Enter finishes the line, Esc cancels")
+		"line": message.emit("New line: click stations, or industries and gateways a road reaches, in order. The preview shows the route the vehicles would drive. Enter finishes the line, Esc cancels")
 		"battery": message.emit("Anti-aircraft battery: click level dry ground away from roads and buildings; the circle is its range. It needs people to man it and ammunition from a gateway (from month 20)")
 		"light": message.emit("Traffic light: click a junction of three roads or more; the streets that cross take turns at green")
 		"light_remove": message.emit("Remove light: click a junction with traffic lights")
@@ -198,6 +198,9 @@ func _click(screen: Vector2) -> void:
 	if tool == "depot":
 		_click_depot(screen)
 		return
+	if tool == "line":
+		_click_line(screen)
+		return
 	var target: Variant = _target_point(screen)
 	if target == null:
 		return
@@ -220,9 +223,6 @@ func _click(screen: Vector2) -> void:
 		var id: int = host.BuildStation(target.x, target.z, tool == "station_bays")
 		message.emit("Station %s built" % host.StationName(id) if id >= 0 else "Can't build a station there: it needs a road with room on both sides, no station already, and enough money")
 		_update_preview(screen)
-		return
-	if tool == "line":
-		_click_line(target)
 		return
 	if tool == "battery":
 		_click_battery(screen)
@@ -452,39 +452,111 @@ func _hover_station(screen: Vector2) -> void:
 
 
 ## Line tool: the station under the mouse is added to the line being drawn.
-func _click_line(target: Vector3) -> void:
-	var id: int = host.StationNear(target.x, target.z, STATION_PICK_RADIUS)
-	if id < 0:
-		message.emit("Click a station to add it to the line")
+const LINE_COLOR := Color(0.3, 0.8, 1.0, 0.85)       ## a leg of a line the vehicles can drive
+const LINE_BLOCKED_COLOR := Color(0.95, 0.25, 0.25, 0.85) ## a leg with no road route
+const LINE_BACK_COLOR := Color(0.3, 0.8, 1.0, 0.4)   ## the leg back from the last stop to the first
+const LINE_WIDTH := 4.0
+const LINE_PLACE_MARGIN := 30.0 ## how far from the square of an industry or gateway a click still picks it as a stop
+
+
+func _click_line(screen: Vector2) -> void:
+	var p: Variant = ground_point(screen)
+	if p == null:
 		return
-	if not _line_stations.is_empty() and _line_stations[-1] == id:
-		message.emit("That station is already the last stop")
+	var stop: Dictionary = host.PickStop(p.x, p.z, STATION_PICK_RADIUS, LINE_PLACE_MARGIN)
+	if not stop["found"]:
+		message.emit("Click a station, or an industry or gateway a road reaches, to add it to the line")
 		return
-	_line_stations.append(id)
-	_show_line_draft()
+	if not stop["ready"]:
+		message.emit("No road reaches the %s yet: build a road within 60 m of it first (it gets a stone path)" % stop["name"])
+		return
+	if not _line_stations.is_empty() and _line_stations[-1]["kind"] == stop["kind"] and _line_stations[-1]["id"] == stop["id"]:
+		message.emit("That is already the last stop")
+		return
+	_line_stations.append(stop)
+	_refresh_line_preview({})
 
 
 func _finish_line() -> void:
 	if _line_stations.size() < 2:
-		message.emit("A line needs at least two stations")
+		message.emit("A line needs at least two stops")
 		return
-	var line: int = host.CreateLine(PackedInt32Array(_line_stations))
+	var line: int = host.CreateLineFromStops(_line_stations)
 	if line >= 0:
-		message.emit("Line %d created: buy vehicles for it in the Lines window, and rename it there" % (line + 1))
+		message.emit("Line %d created: buy vehicles for it in the Lines window, and rename it and set what it loads and unloads at each stop there" % (line + 1))
 		_reset()
 	else:
-		message.emit("Can't make that line: the last station may not be the same as the first")
+		message.emit("Can't make that line: the last stop may not be the same as the first")
 
 
-func _show_line_draft() -> void:
+## Draws the legs between the stops picked so far (and the one under the mouse, when given) as the vehicles would drive them, blue where a road route runs and red where
+## none does, and says what the line is: its stops, and for each leg its length, time and the cargo it would carry.
+func _refresh_line_preview(hover: Dictionary) -> void:
+	var stops: Array[Dictionary] = _line_stations.duplicate()
+	if not hover.is_empty():
+		stops.append(hover)
+	_arc_preview.mesh.clear_surfaces()
+	_earth_preview.mesh.clear_surfaces()
+	_arc_preview.visible = true
 	var names := ""
-	var points := PackedVector3Array()
-	for id in _line_stations:
-		names += ("" if names.is_empty() else " - ") + host.StationName(id)
-		points.append(host.StationPosition(id))
-	message.emit("Line: %s   (click more stations, Enter finishes, Esc cancels)" % names)
-	_material.albedo_color = ROAD_COLORS["valid"]
-	_draw_arc(points, 5.0)
+	var legs := ""
+	var meters := 0.0
+	var seconds := 0.0
+	var blocked := false
+	for i in stops.size():
+		names += ("" if i == 0 else " - ") + String(stops[i]["name"])
+		if i == 0:
+			continue
+		var leg: Dictionary = host.LineLeg(stops[i - 1]["kind"], stops[i - 1]["id"], stops[i]["kind"], stops[i]["id"])
+		if not leg["valid"]:
+			continue
+		_draw_ribbon(leg["points"], LINE_WIDTH, LINE_COLOR if leg["reachable"] else LINE_BLOCKED_COLOR)
+		meters += leg["length"]
+		if leg["reachable"]:
+			seconds += leg["seconds"]
+			var cargo: Array = leg["cargo"]
+			legs += "\n%s to %s: %d m, %d s%s" % [stops[i - 1]["name"], stops[i]["name"], leg["length"], ceili(leg["seconds"]),
+				(", carries " + ", ".join(cargo).to_lower()) if not cargo.is_empty() else ", carries nothing it makes and the next takes"]
+		else:
+			blocked = true
+			legs += "\n%s to %s: no road connection" % [stops[i - 1]["name"], stops[i]["name"]]
+	if stops.size() >= 2 and not (stops[-1]["kind"] == stops[0]["kind"] and stops[-1]["id"] == stops[0]["id"]):
+		# The line goes back from the last stop to the first, and over that leg too its vehicles carry what the stop makes.
+		var back: Dictionary = host.LineLeg(stops[-1]["kind"], stops[-1]["id"], stops[0]["kind"], stops[0]["id"])
+		if back["valid"]:
+			if stops.size() >= 3:
+				_draw_ribbon(back["points"], LINE_WIDTH * 0.6, LINE_BACK_COLOR if back["reachable"] else LINE_BLOCKED_COLOR)
+			meters += back["length"]
+			if back["reachable"]:
+				seconds += back["seconds"]
+				var cargo: Array = back["cargo"]
+				legs += "\n%s back to %s: %d m, %d s%s" % [stops[-1]["name"], stops[0]["name"], back["length"], ceili(back["seconds"]),
+					(", carries " + ", ".join(cargo).to_lower()) if not cargo.is_empty() else ", carries nothing it makes and the next takes"]
+			else:
+				blocked = true
+				legs += "\n%s back to %s: no road connection" % [stops[-1]["name"], stops[0]["name"]]
+	var text := "Line: %s" % names
+	if stops.size() >= 2:
+		text += "   %.1f km round trip" % (meters / 1000.0)
+		if not blocked:
+			text += ", about %d s" % ceili(seconds)
+	text += "   (click more stops, Enter finishes, Esc cancels)" + legs
+	message.emit(text)
+
+
+## A flat ribbon on the ground in one colour, added to what the preview already shows (the earthwork mesh, with vertex colours).
+func _draw_ribbon(points: PackedVector3Array, width: float, color: Color) -> void:
+	if points.size() < 2:
+		return
+	var mesh: ImmediateMesh = _earth_preview.mesh
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for i in points.size():
+		var side := _side(points, i) * width * 0.5
+		mesh.surface_set_color(color)
+		mesh.surface_add_vertex(points[i] - side + Vector3(0, 0.6, 0))
+		mesh.surface_set_color(color)
+		mesh.surface_add_vertex(points[i] + side + Vector3(0, 0.6, 0))
+	mesh.surface_end()
 
 
 func _hover_line(screen: Vector2) -> void:
@@ -492,13 +564,19 @@ func _hover_line(screen: Vector2) -> void:
 	var p: Variant = ground_point(screen)
 	if p == null:
 		return
-	var id: int = host.StationNear(p.x, p.z, STATION_PICK_RADIUS)
-	if id < 0:
+	var stop: Dictionary = host.PickStop(p.x, p.z, STATION_PICK_RADIUS, LINE_PLACE_MARGIN)
+	if not stop["found"] or not stop["ready"]:
+		if not _line_stations.is_empty():
+			_refresh_line_preview({})
+		elif stop["found"]:
+			message.emit("No road reaches the %s yet: build a road within 60 m of it first (it gets a stone path)" % stop["name"])
 		return
-	var at: Vector3 = host.StationPosition(id)
+	var same: bool = not _line_stations.is_empty() and _line_stations[-1]["kind"] == stop["kind"] and _line_stations[-1]["id"] == stop["id"]
+	if not _line_stations.is_empty():
+		_refresh_line_preview({} if same else stop)
 	_preview.visible = true
 	_preview.mesh.size = Vector3(10, 10, 10)
-	_preview.transform = Transform3D(Basis.IDENTITY, at + Vector3(0, 5, 0))
+	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(stop["x"], stop["y"] + 5.0, stop["z"]))
 	_material.albedo_color = ROAD_COLORS["valid"]
 
 

@@ -1,6 +1,6 @@
 # M6f: free-standing depots, industry stops with configurable loading, and a line preview
 
-Status: planned 2026-10-21, not started. Agreed with the developer in two grilling rounds; every recommendation was accepted, with the changes noted under Decisions. Second part of the tool usability review (the first is M6e, `docs/m6e-plan.md`); M7 (art and audio) follows.
+Status: slices A, B and C built 2026-10-21 (see `docs/project-status.md` 5.49 and 5.50 for what differs from this plan). Agreed with the developer in two grilling rounds; every recommendation was accepted, with the changes noted under Decisions. Second part of the tool usability review (the first is M6e, `docs/m6e-plan.md`); M7 (art and audio) follows.
 
 ## Context
 

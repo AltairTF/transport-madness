@@ -195,7 +195,7 @@ public partial class SimHost
                 float radius = Sim.Network.Tuning.Stations.CoverageRadius;
                 foreach (var station in Sim.Stations)
                 {
-                    if (!station.Active) continue;
+                    if (!station.Active || station.DockKind != 0) continue; // the stop at an industry covers that industry only
                     var p = StationPosition(station.Id);
                     quads += Ring(st, p.X, p.Z, radius, 2.5f, Neutral);
                 }

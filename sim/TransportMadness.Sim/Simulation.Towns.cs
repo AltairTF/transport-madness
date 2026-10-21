@@ -404,6 +404,7 @@ public sealed partial class Simulation
     /// <summary>The buildings an active station covers (active ones only), in id order.</summary>
     public List<int> CoveredBy(Station station)
     {
+        if (station.DockKind != 0) return new List<int>(); // the stop at an industry covers that industry, not the buildings around
         var (x, z) = PointOf(station);
         return BuildingsNear(x, z, _stationTuning.CoverageRadius).Where(id => _buildings[id].State == BuildingState.Active).ToList();
     }

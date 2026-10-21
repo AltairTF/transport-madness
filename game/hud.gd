@@ -12,6 +12,8 @@ signal line_action(kind: String, line: int, model: String)
 ## The stops of a line changed in the Lines window: the full new list of station ids.
 signal line_edit(line: int, stops: Array)
 signal line_rename(line: int, new_name: String)
+## What vehicles do at one stop of a line (M6f): load, which cargo (-1 any), unload, and the unload share in percent (-1 all).
+signal line_stop_options(line: int, index: int, load: bool, cargo: int, unload: bool, share: int)
 ## A colour picked for a line in the Lines window.
 signal line_color(line: int, color: Color)
 ## A station's button or name box: kind is "rename" (with the text), "close" or "bays".
@@ -114,6 +116,7 @@ var models: Array = []
 var train_options: Array = [] ## what can be bought for a rail line: {id, label, price, upkeep, capacity, cargo}
 var cargo_names: Array = []
 var stations_known: Array = [] ## [{id, name, rail}] of the open stations, for the "add a stop" choices of the lines
+var places_known: Array = [] ## [{code, name}] of the industries and road gateways a road reaches that have no stop yet, offered as stops too (M6f)
 
 var _root: Control
 var _windows: Control
@@ -810,6 +813,10 @@ func set_train_options(options: Array) -> void:
 	train_options = options
 	_pages["lines"].reset_rows()
 	_pages["vehicles"].rebuild_buy_buttons()
+
+
+func show_places(places: Array) -> void:
+	places_known = places
 
 
 func show_lines(lines: Array) -> void:

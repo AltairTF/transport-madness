@@ -666,6 +666,7 @@ public partial class SimHost : Node3D
     public string StationName(int station)
     {
         if (Sim.Stations[station].Name is { } chosen) return chosen;
+        if (Sim.Stations[station].DockKind != 0) return DockName(Sim.Stations[station]);
         for (int s = 0; s <= station; s++)
         {
             if (_stationNames.ContainsKey(s)) continue;
@@ -754,6 +755,7 @@ public partial class SimHost : Node3D
                 ["color"] = LineColor(line.Id),
                 ["stations"] = names,
                 ["stop_ids"] = ids,
+                ["stop_options"] = StopOptionsOf(line),
                 ["rail"] = line.Mode == StationMode.Rail,
                 ["income"] = line.Income,
                 ["upkeep"] = line.Upkeep,
@@ -1380,7 +1382,7 @@ public partial class SimHost : Node3D
         var net = Sim.Network;
         foreach (var station in Sim.Stations)
         {
-            if (!station.Active || station.Mode != StationMode.Road) continue;
+            if (!station.Active || station.Mode != StationMode.Road || station.DockKind != 0) continue; // the stop at an industry has no platform of its own
             var (x, z) = net.GetNode(station.Node);
             var block = _whitebox.Station;
             var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _stationMaterial };

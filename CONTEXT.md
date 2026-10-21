@@ -105,6 +105,9 @@ How a Town recovers from a raid (C15a): a Building a Bomb destroys frees its Lot
 **Passenger**:
 A person moving between a home and a place of work or leisure, here one who has chosen the company's Lines. Waits at a Station in a queue for a destination Station; a bus takes only those whose destination is on its Line and they leave it there.
 
+**Stop**:
+A place a road Line's vehicles stop at: a road Station, or a stop at an Industry or a road Gateway, which stands at its Access point and covers only that Industry or Gateway (what it makes is loaded there, what it uses is unloaded there, the people who work there get off and on, and the Line is paid by the distance between the Access points); it needs a road to reach the Access point and opens again when one does. Each stop of a Line has options the Player sets: **load** (on or off, and which cargo when the place makes more than one), **unload** (on or off) and an **unload share**, the percentage of what the vehicle took on at the last loading stop that it unloads here (unset: everything the place takes; with a share, what the place has no room for stays aboard). _Avoid_: "dock" for what the Player sees; the code calls the stop at an Industry a dock.
+
 **Station**:
 A place on the road network (a road Station) or the rail network (a rail Station) where vehicles or trains load and unload, covering nearby buildings within a coverage radius. Stands at a road node (a road is split to make one) and stops vehicles on the lanes that run into it. On a map with towns, Passengers queue at it for the Station they are going to and Cargo comes from the Industries it covers; on a map without, it produces them at a fixed rate.
 
@@ -112,7 +115,7 @@ A place on the road network (a road Station) or the rail network (a rail Station
 A place beside the right-most lane of a Station with bays where a loading vehicle waits out of the lane, so the traffic behind it drives on. A Station with bays has room for a few vehicles at once (the next one loads in the lane as at any Station); a vehicle pulls back into the lane when there is a gap. Costs more to build and to keep.
 
 **Line**:
-A recurring route that a group of vehicles (a rail Line: trains) runs between stations, all of them road Stations or all rail Stations: they visit its stations in order and start over after the last. Vehicles find their way over the road network on their own. Has a name the Player can change, and its stations can be added, dropped and reordered while its vehicles run.
+A recurring route that a group of vehicles (a rail Line: trains) runs between stops, all of them on the road network or all rail Stations: they visit its stops in order and start over after the last. A road Line's stops are road Stations or Stops at an Industry or road Gateway. Vehicles find their way over the road network on their own. Has a name the Player can change, and its stations can be added, dropped and reordered while its vehicles run.
 
 **Track**:
 One piece of single railway between two nodes, straight or an arc, used by trains in both directions. Several meet at a node (a rail junction) and a train may pass from one to another there when the turn is gentle enough, slowing for it. Built with cut and fill, Bridges and Tunnels like a road, but steeper than 4 % or tighter than 90 m radius is refused.

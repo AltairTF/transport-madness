@@ -41,6 +41,8 @@ func show_lines(lines: Array) -> void:
 		label.add_theme_color_override("font_color", colour)
 		Kit.show_policy(entry["policy"], line["policy"], "Maintenance of its vehicles: %s" % line["policy_text"])
 		_show_stops(id, line["stop_ids"], line["stations"])
+		if not line.get("rail", false):
+			_show_options(id, line["stop_options"])
 		_fill_stop_choices(id)
 	for id in _rows.keys():
 		if not seen.has(id):
@@ -59,6 +61,7 @@ func _show_stops(id: int, stop_ids: Array, stop_names: Array) -> void:
 	for child in box.get_children():
 		box.remove_child(child)
 		child.queue_free()
+	entry["controls"] = []
 	for i in stop_ids.size():
 		var stop := Kit.row()
 		var caption := Label.new()
@@ -71,6 +74,72 @@ func _show_stops(id: int, stop_ids: Array, stop_names: Array) -> void:
 			b.disabled = (action[1] == -1 and i == 0) or (action[1] == 1 and i == stop_ids.size() - 1)
 			stop.add_child(b)
 		box.add_child(stop)
+		if not entry["rail"]:
+			var options := _make_options(id, i)
+			box.add_child(options["row"])
+			entry["controls"].append(options)
+
+
+## What a road vehicle does at one stop (M6f): load (and which cargo), unload, and how much of what it took on at the last loading stop it unloads here.
+func _make_options(id: int, index: int) -> Dictionary:
+	var row := Kit.flow()
+	var load_box := CheckBox.new()
+	load_box.text = "Load"
+	load_box.tooltip_text = "Take cargo on at this stop. Off: the vehicle takes nothing here."
+	row.add_child(load_box)
+	var cargo := OptionButton.new()
+	cargo.add_item("any cargo")
+	for name in hud.cargo_names:
+		cargo.add_item(String(name).to_lower())
+	cargo.tooltip_text = "Which cargo it takes on here, when the place makes more than one."
+	row.add_child(cargo)
+	var unload_box := CheckBox.new()
+	unload_box.text = "Unload"
+	unload_box.tooltip_text = "Put cargo down at this stop. Off: what it carries stays aboard."
+	row.add_child(unload_box)
+	var share_box := CheckBox.new()
+	share_box.text = "share"
+	share_box.tooltip_text = "Unload only this percentage of what the vehicle took on at the last loading stop (the rest goes on to the next stop). Off: unload everything the place takes."
+	row.add_child(share_box)
+	var share := SpinBox.new()
+	share.min_value = 0
+	share.max_value = 100
+	share.step = 5
+	share.suffix = "%"
+	share.value = 100
+	row.add_child(share)
+	var controls := {"row": row, "load": load_box, "cargo": cargo, "unload": unload_box, "share_on": share_box, "share": share}
+	var changed := func(_value: Variant = null) -> void: _send_options(id, index)
+	load_box.toggled.connect(changed)
+	cargo.item_selected.connect(changed)
+	unload_box.toggled.connect(changed)
+	share_box.toggled.connect(changed)
+	share.value_changed.connect(changed)
+	return controls
+
+
+func _send_options(id: int, index: int) -> void:
+	var c: Dictionary = _rows[id]["controls"][index]
+	hud.line_stop_options.emit(id, index, c["load"].button_pressed, c["cargo"].selected - 1, c["unload"].button_pressed, int(c["share"].value) if c["share_on"].button_pressed else -1)
+
+
+## Shows what the line does at its stops in the controls, without sending it back (and not under the hand that is changing them).
+func _show_options(id: int, options: Array) -> void:
+	var controls: Array = _rows[id]["controls"]
+	for i in mini(controls.size(), options.size()):
+		var c: Dictionary = controls[i]
+		var o: Dictionary = options[i]
+		if c["share"].get_line_edit().has_focus():
+			continue
+		c["load"].set_pressed_no_signal(o["load"])
+		c["cargo"].select(o["cargo"] + 1)
+		c["cargo"].disabled = not o["load"]
+		c["unload"].set_pressed_no_signal(o["unload"])
+		c["share_on"].set_pressed_no_signal(o["share"] >= 0)
+		c["share_on"].disabled = not o["unload"]
+		c["share"].editable = o["share"] >= 0 and o["unload"]
+		if o["share"] >= 0:
+			c["share"].set_value_no_signal(o["share"])
 
 
 ## Moves a stop one place (-1 earlier, 1 later) or takes it off (0) and asks for the line to be changed.
@@ -91,10 +160,13 @@ func _fill_stop_choices(id: int) -> void:
 	var choice: OptionButton = _rows[id]["choice"]
 	var rail: bool = _rows[id]["rail"]
 	var offered: Array = hud.stations_known.filter(func(station: Dictionary) -> bool: return station["rail"] == rail) # a line is all road or all rail
+	if not rail:
+		for place in hud.places_known: # industries and gateways a road reaches, as stops (M6f)
+			offered.append({"id": place["code"], "name": place["name"]})
 	var same := choice.item_count == offered.size()
 	if same:
 		for i in offered.size():
-			if choice.get_item_id(i) != offered[i]["id"]:
+			if choice.get_item_id(i) != offered[i]["id"] or choice.get_item_text(i) != offered[i]["name"]:
 				same = false
 	if same:
 		return
@@ -158,7 +230,7 @@ func _add(id: int, rail := false) -> void:
 			buttons.add_child(Kit.button("+ %s (%s)" % [model["name"], Kit.money(model["price"])], func() -> void: hud.line_action.emit("buy", id, model["id"])))
 	var separator := add_row(_box, row)
 	_rows[id] = {"row": row, "label": label, "separator": separator, "swatch": swatch, "name": name_edit, "stops": stops,
-		"choice": choice, "stop_ids": [], "stop_names": [], "color": swatch.color, "rail": rail, "policy": policy}
+		"choice": choice, "stop_ids": [], "stop_names": [], "color": swatch.color, "rail": rail, "policy": policy, "controls": []}
 
 
 func _remove(id: int) -> void:
