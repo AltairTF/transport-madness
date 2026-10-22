@@ -51,7 +51,9 @@ var _twin_preview: MeshInstance3D ## the parallel road's box
 var _twin_material := StandardMaterial3D.new()
 const PLACE_TOOLS := ["depot", "battery"] ## buildings put on the ground that can be turned and raised
 const TURN_STEP := deg_to_rad(15.0)
-var _turned := false      ## the player has turned the building, so it stands exactly where put, at _angle
+var _turned := false      ## the player has turned the building by hand, so it faces _angle instead of the way the place gives it
+var _free_toggle := false ## placing without the snap switched on (G), for when holding the key is not possible
+var _free_held := false   ## whether the hold key was down at the last look, to refresh the preview when it changes
 var _angle := 0.0         ## radians the building is turned (the way its door faces)
 var _raise := 0.0         ## metres the floor is lifted above the default height of its pad
 var _site_angle := 0.0    ## the angle the last preview used (the place's own while the player has not turned it)
@@ -107,6 +109,7 @@ func set_tool(tool_name: String) -> void:
 	_turned = false
 	_raise = 0.0
 	_parallel = 0
+	_free_toggle = false
 	_reset()
 	match tool:
 		"road2": message.emit("2-lane road: click to start, click again to build (right click or Esc stops)")
@@ -120,7 +123,7 @@ func set_tool(tool_name: String) -> void:
 		"move": message.emit("Move: click a junction to pick it up, then click where it goes (roads keep their bend; vehicles carry on)")
 		"resurface": message.emit("Resurface: click a worn road piece; a crew restores it (the road is closed while they work)")
 		"remove": message.emit("Remove: click a road piece (junction to junction) to tear it down")
-		"depot": message.emit("Depot: click anywhere. Against a road it stands beside it, with a road within about 74 m it gets a stone path to it, else it waits until a road reaches its door (raise its level in its window). R turns it, Page Up and Page Down raise and lower its floor, Alt (or turning it) puts it exactly where the mouse is. The ground under it is levelled for a price")
+		"depot": message.emit("Depot: click anywhere. Against a road it stands beside it, with a road within about 74 m it gets a stone path to it, else it waits until a road reaches its door (raise its level in its window). R turns it, Page Up and Page Down raise and lower its floor, Alt held, or G, puts it exactly where the mouse is, without the snap. The ground under it is levelled for a price")
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
 		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
 		"line": message.emit("New line: click stations, or industries and gateways a road reaches, in order. The preview shows the route the vehicles would drive. Enter finishes the line, right click or Esc cancels")
@@ -196,12 +199,26 @@ func _reset() -> void:
 	_twin_preview.visible = false
 
 
+## The preview follows the hold key as it goes down and up, not only when the mouse moves.
+func _process(_delta: float) -> void:
+	if tool == "pointer":
+		return
+	var held := Input.is_action_pressed("place_free")
+	if held != _free_held:
+		_free_held = held
+		_update_preview(get_viewport().get_mouse_position())
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if tool == "pointer":
 		return
 	if event is InputEventKey and event.pressed and (Keys.pressed(event, "finish_line") or event.keycode == KEY_KP_ENTER):
 		if tool == "line":
 			_finish_line()
+	elif event is InputEventKey and event.pressed and not event.echo and Keys.pressed(event, "place_free_toggle"):
+		_free_toggle = not _free_toggle
+		_update_preview(get_viewport().get_mouse_position())
+		message.emit("Placing without snapping is %s" % ("on (G or Alt)" if _free_toggle else "off"))
 	elif event is InputEventKey and event.pressed and not event.echo and _is_straight_tool() and Keys.pressed(event, "parallel_road"):
 		_parallel = [0, 1, -1][(([0, 1, -1].find(_parallel)) + 1) % 3] # off, one side, the other side
 		message.emit(["Parallel road off", "Parallel road on the right", "Parallel road on the left"][[0, 1, -1].find(_parallel)])
@@ -264,9 +281,9 @@ func _place_key(event: InputEvent) -> bool:
 	return false
 
 
-## The building is put exactly where the mouse is (not drawn against a road) once it has been turned or the key to place freely is held.
+## Everything is put exactly where the mouse is (no snap) while the key to place freely is held or it has been switched on with its other key. Turning a building does not change this.
 func _free_placement() -> bool:
-	return _turned or Input.is_action_pressed("place_free")
+	return _free_toggle or Input.is_action_pressed("place_free")
 
 
 func _wanted_angle() -> float:
@@ -278,7 +295,7 @@ func _pad_text(site: Dictionary) -> String:
 	var text := "   floor %+.1f m" % _raise if absf(_raise) > 0.01 else ""
 	if site["pad_cut"] + site["pad_fill"] > 1.0:
 		text += "   levelling %s (cut %d m3 up to %.1f m, fill %d m3 up to %.1f m)" % [_money(site["pad_money"]), roundi(site["pad_cut"]), site["pad_max_cut"], roundi(site["pad_fill"]), site["pad_max_fill"]]
-	return text + "   [R turns, PgUp/PgDn raise, Alt places freely]"
+	return text + "   [R turns, PgUp/PgDn raise, hold Alt or press G to place without snapping%s]" % (": on" if _free_placement() else "")
 
 
 ## Esc and a click of the right button: drop the draft in progress (a road, a line), else leave the tool.
@@ -301,7 +318,7 @@ func _target_point(screen: Vector2) -> Variant:
 	var p: Variant = ground_point(screen)
 	if p == null:
 		return null
-	if Input.is_action_pressed("place_free"):
+	if _free_placement():
 		return _ground(p.x, p.z) # held: no snap to a node, a step or a length (the buildings read it too)
 	var snap: Dictionary = host.SnapToRailNode(p.x, p.z, NODE_SNAP_RADIUS) if _is_rail_tool() else host.SnapToNode(p.x, p.z, NODE_SNAP_RADIUS)
 	if snap["snapped"]:
@@ -891,6 +908,7 @@ func _click_depot(screen: Vector2) -> void:
 		message.emit("Can't build a depot there: %s" % site["why"])
 		return
 	if host.BuildDepot(p.x, p.z, 0, _free_placement(), _wanted_angle(), _raise):
+		_turned = false # the next one faces the way its place gives it again
 		var connected: bool = site["connection"] != 0 and (site["connection"] == 1 or site["path_buildable"])
 		message.emit("Depot built" if connected else "Depot built, not connected yet: build a road within 60 m of its door")
 	else:

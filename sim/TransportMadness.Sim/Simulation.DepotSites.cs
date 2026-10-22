@@ -57,12 +57,15 @@ public sealed partial class Simulation
 
     /// <summary>
     /// How a depot clicked for at (x, z) would be placed (M6g): <see cref="PlanSnappedDepot"/> by default, or with <paramref name="free"/> exactly there, turned by
-    /// <paramref name="angle"/> (NaN: toward the nearest road, else town) and joined by a Path to a road within reach of its door. Either way the ground under it is levelled
+    /// <paramref name="angle"/> (NaN: toward the nearest road, else town) and joined by a Path to a road within reach of its door. A turn given without <paramref name="free"/>
+    /// keeps the snapped place and only changes the way the depot faces. Either way the ground under it is levelled
     /// (<see cref="PlanPad"/>, <paramref name="raise"/> metres above the default height) and a pad that cannot be made makes the plan invalid.
     /// </summary>
     public DepotPlan PlanDepot(float x, float z, bool free = false, float angle = float.NaN, float raise = 0f)
     {
         var plan = free ? PlanFreeDepot(x, z, angle) : PlanSnappedDepot(x, z);
+        // Turned by hand with the snap on: it stands where the snap puts it but faces the way it was turned, and its door is joined to the road as a free one's is.
+        if (!free && plan.Valid && !float.IsNaN(angle)) plan = PlanFreeDepot(plan.X, plan.Z, angle);
         if (!plan.Valid) return plan;
         float baseHeight = float.NaN; // the mean ground under it, or the road at its door when it stands against one
         if (plan.Connection == DepotConnection.Beside)

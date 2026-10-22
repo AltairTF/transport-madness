@@ -173,4 +173,20 @@ public class PadTests
         Assert.Equal(7f, sim.Network.Terrain!.HeightAt(600, 400), 0.001f);
         Assert.Equal(before - sim.AntiAircraft.Price - pad.Money, sim.Company.Money);
     }
+
+    [Fact]
+    public void ATurnWithTheSnapOn_KeepsTheSnappedPlace_AndOnlyChangesTheWayItFaces()
+    {
+        var sim = World(Terrain.Create(512, 8f, (_, _) => 5f));
+        Assert.Equal(1, Build(sim, 0, 100, 1000, 100));
+        var snapped = sim.PlanDepot(500, 112);
+        Assert.Equal(DepotConnection.Beside, snapped.Connection);
+        var turned = sim.PlanDepot(500, 112, free: false, angle: 0f); // facing east, away from the road
+        Assert.True(turned.Valid, turned.Reason);
+        Assert.Equal(snapped.X, turned.X, 0.01f);
+        Assert.Equal(snapped.Z, turned.Z, 0.01f);
+        Assert.Equal(0f, turned.Angle, 0.001f);
+        Assert.NotEqual(DepotConnection.Beside, turned.Connection);
+        Assert.Equal(snapped.Z, sim.PlanDepot(500, 112, free: true, angle: 0f).Z + 2f, 0.01f); // a free one stands where the mouse is (z = 112), the snapped one at 114
+    }
 }

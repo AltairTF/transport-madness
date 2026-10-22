@@ -31,7 +31,8 @@ public sealed record AddDepotCommand(int Node, DepotLevel Level) : SimCommand;
 /// Builds a depot where it is put, not on a node (M6f): against a road when one is near (the road is split there), joined to the nearest road by a Path
 /// when one is within reach, or alone, not connected until a road reaches it. See <see cref="Simulation.PlanDepot"/>. Result: the depot id, -1 when
 /// refused (in water, a depot there already, or not enough money for it, its Path and the levelling of its pad).
-/// With <paramref name="Free"/> it stands exactly at (X, Z) turned by <paramref name="Angle"/> (NaN: toward the nearest road, else town) and is not drawn against a road; its door
+/// With <paramref name="Free"/> it stands exactly at (X, Z) turned by <paramref name="Angle"/> (NaN: toward the nearest road, else town) and is not drawn against a road; an
+/// <paramref name="Angle"/> without it turns the depot where the snap puts it. Its door
 /// is joined to a road within reach by a Path (M6g). <paramref name="Raise"/> lifts the floor that many metres above the default height of its pad (negative lowers it).
 /// </summary>
 public sealed record BuildDepotCommand(float X, float Z, DepotLevel Level, bool Free = false, float Angle = float.NaN, float Raise = 0f) : SimCommand;

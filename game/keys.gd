@@ -23,6 +23,7 @@ const ACTIONS := [
 	["raise_building", "Raise a building's floor", KEY_PAGEUP, false],
 	["lower_building", "Lower a building's floor", KEY_PAGEDOWN, false],
 	["place_free", "Hold to place without snapping", KEY_ALT, false],
+	["place_free_toggle", "Switch placing without snapping on or off", KEY_G, false],
 	["parallel_road", "Build a parallel road or track beside", KEY_P, false],
 	["finish_line", "Finish a new line", KEY_ENTER, false],
 	["quick_save", "Quick save", KEY_F5, false],

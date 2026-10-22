@@ -6,7 +6,7 @@ Status: slices A, B and C built 2026-10-22 (see `docs/project-status.md` 5.51 to
 
 - **Buildings the player places** (depot, rail depot, rail station, anti-aircraft battery) can be **rotated** and **raised or lowered**. The terrain under them is levelled.
 - **Terrain model.** A flat pad under the footprint, at the average ground height under it by default; PageUp / PageDown raise and lower it in 0.5 m steps. The ground is carved to the pad with a shoulder, the way roads already carve it (`Terrain.CarvePath`). The cost of the earthwork is in the price and the preview shows cut and fill and the highest of each. The pad is refused above a slope limit (a maximum cut or fill in metres, in tuning).
-- **Snap off.** A key (Alt, rebindable in `game/keys.gd`) turns off the snap to the road: the building stands exactly where it is put, and its access road (the Path of M6e/M6f) is still built to the nearest road within reach. Without the key a building near a road is pulled against it (the "Beside" connection of M6f).
+- **Snap off.** A key (Alt held, or G to switch it on; both rebindable in `game/keys.gd`) turns off the snap to the road: the building stands exactly where it is put, and its access road (the Path of M6e/M6f) is still built to the nearest road within reach. Without the key a building near a road is pulled against it (the "Beside" connection of M6f).
 - **Bus stop (road station).** It stands on the road, so its box is replaced by a marker lying on the road: a thin slab on the lane side and a sign post, no blue building beside the road. Size and colour stay in `data/whitebox.json`.
 - **Mouse in the build tools.** Left click places. Right click cancels the draft in progress (a road, a line); with no draft it leaves the tool for the pointer. Esc keeps doing the same. Applies to every tool that has a draft, not only roads.
 - **Included from the road tool review:** a road in one drag (press, drag, release builds; click-click still works), parallel roads (a second road at a fixed offset beside the one being drawn), and the camera following a vehicle. **Left for later:** undo.
@@ -33,3 +33,5 @@ Status: slices A, B and C built 2026-10-22 (see `docs/project-status.md` 5.51 to
 
 ## Documentation to update when building
 `docs/project-status.md` (new sections), `CONTEXT.md` if a term is added (Pad).
+
+Follow-up items raised while playing M6g (interface scale, coverage along the streets, a coverage preview, a ghost road) are in `docs/m6h-plan.md`.

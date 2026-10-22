@@ -746,6 +746,34 @@ func _selftest_place() -> void:
 		say.call("depot %s at %.0f, %.0f" % [depot["name"], depot["x"], depot["z"]])
 	build_tool.set_tool("pointer")
 
+	# A depot beside a road keeps its snap when turned, and loses it only while Alt is held or G is on.
+	build_tool.set_tool("depot")
+	var beside := Vector3(50, 0, 112)
+	var move := InputEventMouseMotion.new()
+	move.position = get_viewport().get_final_transform() * camera.unproject_position(beside)
+	Input.parse_input_event(move)
+	await get_tree().process_frame
+	say.call("beside, plain: %s" % [build_tool._free_placement()])
+	await _key(KEY_R)
+	say.call("beside, turned: turned=%s free=%s" % [build_tool._turned, build_tool._free_placement()])
+	await _key(KEY_G)
+	say.call("beside, G: free=%s" % build_tool._free_placement())
+	build_tool.set_tool("pointer")
+
+	# Holding the key to place freely.
+	var alt := InputEventKey.new()
+	alt.keycode = KEY_ALT
+	alt.alt_pressed = true
+	alt.pressed = true
+	Input.parse_input_event(alt)
+	await get_tree().process_frame
+	say.call("alt held: action=%s key=%s" % [Input.is_action_pressed("place_free"), Input.is_key_pressed(KEY_ALT)])
+	alt.pressed = false
+	alt.alt_pressed = false
+	Input.parse_input_event(alt)
+	await get_tree().process_frame
+	say.call("alt let go: action=%s" % Input.is_action_pressed("place_free"))
+
 	# A station on the dragged road and a look from above, for --shot.
 	say.call("station %d" % host.BuildStation(-150, -100, false))
 	if _args.has("--shot"):
