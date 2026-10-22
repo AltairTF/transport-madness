@@ -33,7 +33,17 @@ public partial class SimHost : Node3D
     MultiMesh _vehicles = null!;
     MultiMesh _crews = null!;
     MultiMesh _marks = null!; // the Line markers on the roofs of vehicles that have a Model
-    ModelDraw _vehicleModels = null!, _crewModels = null!;
+    ModelDraw _vehicleModels = null!, _crewModels = null!, _buildingModels = null!;
+    Node3D _industryRoot = null!;
+    readonly Dictionary<int, Node3D> _industryNodes = new();
+    Simulation? _industryNodesOf; // the Simulation the nodes above stand for
+    static readonly string[][] TownModelIds =
+    {
+        new[] { "town.home.0", "town.home.1", "town.home.2" },
+        new[] { "town.commerce.0", "town.commerce.1", "town.commerce.2" },
+        new[] { "town.industry.0", "town.industry.1", "town.industry.2" },
+    };
+    StandardMaterial3D? _smokeMaterial;
     float[] _markBuffer = new float[InitialCapacity * FloatsPerInstance];
     string[]? _roadModelIds;
     static readonly string[] CarModelIds = { "car.a", "car.b", "car.c" };
@@ -150,6 +160,9 @@ public partial class SimHost : Node3D
         AddChild(new MultiMeshInstance3D { Name = "LineMarkers", Multimesh = _marks, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         _vehicleModels = new ModelDraw(this);
         _crewModels = new ModelDraw(this);
+        _buildingModels = new ModelDraw(this, tinted: true);
+        _industryRoot = new Node3D { Name = "Industries" };
+        AddChild(_industryRoot);
         AddChild(new MultiMeshInstance3D { Name = "Crews", Multimesh = _crews, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         AddChild(new MultiMeshInstance3D { Name = "Vehicles", Multimesh = _vehicles, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         ReadyRail();
@@ -1558,6 +1571,41 @@ public partial class SimHost : Node3D
         _roadRoot.AddChild(door);
     }
 
+    /// <summary>One industry as its composite Model: made once, then moved and tinted (dark when bombed, the colour of the map view when one is shown).</summary>
+    void PlaceIndustryModel(int index, Industry industry, string modelId, float shade)
+    {
+        if (!_industryNodes.TryGetValue(index, out var node))
+        {
+            node = _buildingModels.Compose(modelId);
+            if (node == null) return;
+            _industryRoot.AddChild(node);
+            _industryNodes[index] = node;
+        }
+        node.Position = new Vector3(industry.X, Math.Max(_terrain.HeightAt(industry.X, industry.Z), _terrain.WaterSurfaceAt(industry.X, industry.Z)) - 0.3f, industry.Z);
+        node.Rotation = new Vector3(0f, -industry.Angle, 0f);
+        Color? overlay = null;
+        if (_overlay != MapOverlay.None) overlay = OverlayIndustryColour(industry, Colors.White) with { A = 0.8f };
+        else if (shade < 1f) overlay = new Color(0.05f, 0.05f, 0.06f, 0.65f);
+        SetOverlay(node, overlay);
+    }
+
+    /// <summary>A flat colour laid over every mesh below a node (null takes it away).</summary>
+    void SetOverlay(Node node, Color? colour)
+    {
+        Material? material = null;
+        if (colour is { } c)
+        {
+            _smokeMaterial ??= new StandardMaterial3D { Transparency = BaseMaterial3D.TransparencyEnum.Alpha, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded };
+            material = (Material)_smokeMaterial.Duplicate();
+            ((StandardMaterial3D)material).AlbedoColor = c;
+        }
+        foreach (var child in node.GetChildren())
+        {
+            if (child is MeshInstance3D mesh) mesh.MaterialOverlay = material;
+            SetOverlay(child, colour);
+        }
+    }
+
     /// <summary>Redraws every building that stands (one box each, coloured by kind and state) and the town names.</summary>
     void RebuildBuildings()
     {
@@ -1565,12 +1613,26 @@ public partial class SimHost : Node3D
         var tuning = Sim.TownTuning;
         int n = Sim.Industries.Count + Sim.Gateways.Count;
         foreach (var b in Sim.Buildings) if (b.State != BuildingState.Demolished) n++;
-        _buildings.InstanceCount = n;
         var buf = new float[n * FloatsPerInstance];
         int k = 0;
-        foreach (var industry in Sim.Industries)
+        _buildingModels.Begin();
+        if (_industryNodesOf != Sim)
         {
+            foreach (var node in _industryNodes.Values) node.QueueFree();
+            _industryNodes.Clear();
+            _industryNodesOf = Sim;
+        }
+        for (int index = 0; index < Sim.Industries.Count; index++)
+        {
+            var industry = Sim.Industries[index];
             var type = Sim.IndustryTuning.Types[industry.Type];
+            float shade = industry.DamagedUntil > Sim.Tick ? 0.3f : 1f; // bombed: dark until it works again
+            string industryModel = "industry." + type.Id;
+            if (_buildingModels.HasComposite(industryModel))
+            {
+                PlaceIndustryModel(index, industry, industryModel, shade);
+                continue;
+            }
             float side = type.Size * 2f;
             float fx = MathF.Cos(industry.Angle), fz = MathF.Sin(industry.Angle);
             float y = Math.Max(_terrain.HeightAt(industry.X, industry.Z), _terrain.WaterSurfaceAt(industry.X, industry.Z)) - 0.3f + type.Height * 0.5f;
@@ -1578,7 +1640,6 @@ public partial class SimHost : Node3D
             buf[o + 0] = fx * side;  buf[o + 1] = 0f;          buf[o + 2] = -fz * side; buf[o + 3] = industry.X;
             buf[o + 4] = 0f;         buf[o + 5] = type.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
             buf[o + 8] = fz * side;  buf[o + 9] = 0f;          buf[o + 10] = fx * side; buf[o + 11] = industry.Z;
-            float shade = industry.DamagedUntil > Sim.Tick ? 0.3f : 1f; // bombed: dark until it works again
             var own = OverlayIndustryColour(industry, new Color(type.Color[0] * shade, type.Color[1] * shade, type.Color[2] * shade));
             buf[o + 12] = own.R; buf[o + 13] = own.G; buf[o + 14] = own.B; buf[o + 15] = 1f;
         }
@@ -1600,9 +1661,23 @@ public partial class SimHost : Node3D
         {
             if (b.State == BuildingState.Demolished) continue;
             var tier = tuning.Of(b.Type, b.Tier);
-            float side = tier.Size * 2f;
             float fx = MathF.Cos(b.Facing), fz = MathF.Sin(b.Facing);
-            float y = Math.Max(_terrain.HeightAt(b.X, b.Z), _terrain.WaterSurfaceAt(b.X, b.Z)) - 0.3f + tier.Height * 0.5f;
+            float ground = Math.Max(_terrain.HeightAt(b.X, b.Z), _terrain.WaterSurfaceAt(b.X, b.Z)) - 0.3f;
+            string townModel = TownModelIds[(int)b.Type][b.Tier];
+            if (_buildingModels.Has(townModel))
+            {
+                // A Model keeps its own colours; the colour of the state multiplies them (white leaves them as they are).
+                var tint = b.State switch
+                {
+                    BuildingState.Inactive => Colors.White.Lerp(new Color(0.45f, 0.45f, 0.45f), 0.65f),
+                    BuildingState.Abandoned => new Color(0.3f, 0.27f, 0.27f),
+                    _ => Colors.White,
+                };
+                _buildingModels.Add(townModel, b.X, ground, b.Z, fx, fz, 0f, _buildingModels.Pick(townModel, b.Id), OverlayBuildingColour(b, tint));
+                continue;
+            }
+            float side = tier.Size * 2f;
+            float y = ground + tier.Height * 0.5f;
             int o = k++ * FloatsPerInstance;
             buf[o + 0] = fx * side;  buf[o + 1] = 0f;          buf[o + 2] = -fz * side; buf[o + 3] = b.X;
             buf[o + 4] = 0f;         buf[o + 5] = tier.Height; buf[o + 6] = 0f;         buf[o + 7] = y;
@@ -1617,7 +1692,9 @@ public partial class SimHost : Node3D
             colour = OverlayBuildingColour(b, colour);
             buf[o + 12] = colour.R; buf[o + 13] = colour.G; buf[o + 14] = colour.B; buf[o + 15] = 1f;
         }
-        if (n > 0) _buildings.Buffer = buf;
+        _buildingModels.End();
+        _buildings.InstanceCount = k;
+        if (k > 0) _buildings.Buffer = k == n ? buf : buf[..(k * FloatsPerInstance)];
 
         foreach (var child in _townLabels.GetChildren()) child.QueueFree();
         foreach (var town in Sim.Towns)

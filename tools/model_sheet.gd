@@ -3,6 +3,7 @@ extends SceneTree
 ## Run (needs a window, so not --headless):
 ##   Godot --path . --script res://tools/model_sheet.gd -- <out folder> <a.glb> [<b.glb> ...]
 ## Writes <out folder>/<name of the glb>.png at 360 x 270: three-quarter view from the front right, a soft key light, the ground as a grey plate.
+## An argument "model:<id>" renders that Model of data/models.json (a composite industry, a variant 0 plain Model) instead of a file.
 ## GLBs are read from disk as they are (no import, no copy into the project). Slow models are not a concern: one frame each.
 
 const Library := preload("res://game/model_library.gd")
@@ -45,9 +46,10 @@ func _render_all(args: PackedStringArray) -> void:
 	camera.fov = 30.0
 	viewport.add_child(camera)
 
+	var library: RefCounted = Library.load_file()
 	for index in range(1, args.size()):
 		var path := args[index]
-		var scene := Library._read_scene(path)
+		var scene: Node3D = library.instance(path.trim_prefix("model:")) if path.begins_with("model:") else Library._read_scene(path)
 		if scene == null:
 			printerr("cannot read " + path)
 			continue
@@ -70,7 +72,7 @@ func _render_all(args: PackedStringArray) -> void:
 		for frame in 3:
 			await process_frame
 		var image := viewport.get_texture().get_image()
-		var name := path.get_file().get_basename()
+		var name := path.trim_prefix("model:") if path.begins_with("model:") else path.get_file().get_basename()
 		image.save_png("%s/%s.png" % [args[0], name])
 		print("%s  %.2f x %.2f x %.2f m" % [name, box.size.x, box.size.y, box.size.z])
 		scene.free()

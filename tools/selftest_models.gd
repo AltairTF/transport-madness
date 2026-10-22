@@ -22,6 +22,8 @@ func _initialize() -> void:
 	for id in shipped.ids():
 		for variant in shipped.variant_count(id):
 			var scene: String = shipped.scene_path(id, variant)
+			if scene == "":
+				continue # a composite has no file of its own
 			var listed := false
 			for row in rows:
 				listed = listed or scene.begins_with("res://" + row["folder"])

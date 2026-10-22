@@ -8,7 +8,6 @@ using Godot;
 /// </summary>
 public sealed class ModelDraw
 {
-    const int FloatsPerInstance = 12; // 3x4 transform
 
     sealed class Batch
     {
@@ -20,13 +19,19 @@ public sealed class ModelDraw
 
     readonly Node _parent;
     readonly GodotObject? _library;
-    readonly Dictionary<string, Batch?> _batches = new();
+    readonly Dictionary<(string, int), Batch?> _batches = new();
+    readonly Dictionary<string, int> _variantCounts = new();
     readonly bool _shadows;
+    readonly bool _tinted;
+    readonly int _stride; // floats per instance: the 3x4 transform, and a colour when tinted
 
-    public ModelDraw(Node parent, bool shadows = false)
+    /// <param name="tinted">Each instance takes a colour that multiplies the Model's own (white leaves it as it is): for buildings that go grey, dark or take a map overlay.</param>
+    public ModelDraw(Node parent, bool shadows = false, bool tinted = false)
     {
         _parent = parent;
         _shadows = shadows;
+        _tinted = tinted;
+        _stride = tinted ? 16 : 12;
         _library = GD.Load<GDScript>("res://game/model_library.gd").Call("load_file").AsGodotObject();
         if (_library != null)
             foreach (var line in _library.Get("errors").AsStringArray())
@@ -34,10 +39,34 @@ public sealed class ModelDraw
     }
 
     /// <summary>True when the Model exists and is read; it is baked into a mesh the first time it is asked for.</summary>
-    public bool Has(string id) => Prepare(id) != null;
+    public bool Has(string id, int variant = 0) => Prepare(id, variant) != null;
+
+    /// <summary>How many variants a Model has (0 for an unknown one).</summary>
+    public int Variants(string id)
+    {
+        if (_library == null) return 0;
+        if (!_variantCounts.TryGetValue(id, out int count))
+            _variantCounts[id] = count = _library.Call("variant_count", id).AsInt32();
+        return count;
+    }
+
+    /// <summary>Which variant a key (a building's id) chooses; the same as <c>pick</c> of the library, without the call into GDScript.</summary>
+    public int Pick(string id, int key)
+    {
+        int count = Variants(id);
+        if (count <= 1) return 0;
+        long mixed = (long)key * 2654435761L >> 7;
+        return (int)((mixed % count + count) % count);
+    }
+
+    /// <summary>True when the id is a composite (a few Models standing together, built node by node, not drawn by a MultiMesh).</summary>
+    public bool HasComposite(string id) => _library != null && _library.Call("has", id).AsBool() && _library.Call("is_composite", id).AsBool();
+
+    /// <summary>A fresh Node3D of a composite, or null.</summary>
+    public Node3D? Compose(string id) => _library?.Call("instance", id, 0).AsGodotObject() as Node3D;
 
     /// <summary>How tall the Model stands, in metres (for what goes on its roof); 0 for an unknown one.</summary>
-    public float HeightOf(string id) => Prepare(id)?.Height ?? 0f;
+    public float HeightOf(string id, int variant = 0) => Prepare(id, variant)?.Height ?? 0f;
 
     public void Begin()
     {
@@ -46,23 +75,28 @@ public sealed class ModelDraw
     }
 
     /// <summary>One instance of a Model at a position, going along (<paramref name="fx"/>, <paramref name="fz"/>) and pitched by <paramref name="rise"/> (the grade, rise over run along the heading; 0 on the flat).</summary>
-    public void Add(string id, float x, float y, float z, float fx, float fz, float rise)
+    public void Add(string id, float x, float y, float z, float fx, float fz, float rise, int variant = 0, Color? tint = null)
     {
-        var batch = Prepare(id);
+        var batch = Prepare(id, variant);
         if (batch == null) return;
         float tilt = 1f / MathF.Sqrt(1f + rise * rise);
         float slope = rise * tilt;
-        int o = batch.Count * FloatsPerInstance;
-        if (o + FloatsPerInstance > batch.Buffer.Length)
+        int o = batch.Count * _stride;
+        if (o + _stride > batch.Buffer.Length)
         {
-            Array.Resize(ref batch.Buffer, Math.Max(64 * FloatsPerInstance, batch.Buffer.Length * 2));
-            batch.Mesh.InstanceCount = batch.Buffer.Length / FloatsPerInstance;
+            Array.Resize(ref batch.Buffer, Math.Max(64 * _stride, batch.Buffer.Length * 2));
+            batch.Mesh.InstanceCount = batch.Buffer.Length / _stride;
         }
         var b = batch.Buffer;
         // columns: X = to the right of the heading, Y = up (tilted with the grade), Z = backwards (the Model's front is -Z)
         b[o + 0] = -fz;          b[o + 1] = -fx * slope; b[o + 2] = -fx * tilt;  b[o + 3] = x;
         b[o + 4] = 0f;           b[o + 5] = tilt;        b[o + 6] = -slope;      b[o + 7] = y;
         b[o + 8] = fx;           b[o + 9] = -fz * slope; b[o + 10] = -fz * tilt; b[o + 11] = z;
+        if (_tinted)
+        {
+            var c = tint ?? Colors.White;
+            b[o + 12] = c.R; b[o + 13] = c.G; b[o + 14] = c.B; b[o + 15] = 1f;
+        }
         batch.Count++;
     }
 
@@ -76,27 +110,44 @@ public sealed class ModelDraw
         }
     }
 
-    Batch? Prepare(string id)
+    Batch? Prepare(string id, int variant = 0)
     {
-        if (_batches.TryGetValue(id, out var known)) return known;
+        var key = (id, variant);
+        if (_batches.TryGetValue(key, out var known)) return known;
         Batch? batch = null;
-        if (_library != null && _library.Call("has", id).AsBool())
+        if (_library != null && _library.Call("has", id).AsBool() && variant >= 0 && variant < _library.Call("variant_count", id).AsInt32() && !_library.Call("is_composite", id).AsBool())
         {
-            var baked = _library.Call("baked", id, 0).AsGodotDictionary();
+            var baked = _library.Call("baked", id, variant).AsGodotDictionary();
             if (baked.Count > 0 && baked["mesh"].AsGodotObject() is Mesh mesh)
             {
-                var multi = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, Mesh = mesh, InstanceCount = 0 };
+                if (_tinted) mesh = TintCapable(mesh);
+                var multi = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = _tinted, Mesh = mesh, InstanceCount = 0 };
                 batch = new Batch { Mesh = multi, Height = baked["aabb"].AsAabb().Size.Y };
                 _parent.AddChild(new MultiMeshInstance3D
                 {
-                    Name = "Model_" + id.Replace('.', '_'),
+                    Name = "Model_" + id.Replace('.', '_') + "_" + variant,
                     Multimesh = multi,
                     CastShadow = _shadows ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
                 });
             }
         }
-        if (batch == null) GD.PushWarning("Model " + id + " is not available; its whitebox is drawn");
-        _batches[id] = batch;
+        if (batch == null) GD.PushWarning("Model " + id + " variant " + variant + " is not available; its whitebox is drawn");
+        _batches[key] = batch;
         return batch;
+    }
+
+    /// <summary>The mesh with its materials copied so that the colour of an instance multiplies the texture.</summary>
+    static Mesh TintCapable(Mesh mesh)
+    {
+        for (int i = 0; i < mesh.GetSurfaceCount(); i++)
+        {
+            if (mesh.SurfaceGetMaterial(i) is BaseMaterial3D material)
+            {
+                var copy = (BaseMaterial3D)material.Duplicate();
+                copy.VertexColorUseAsAlbedo = true;
+                mesh.SurfaceSetMaterial(i, copy);
+            }
+        }
+        return mesh;
     }
 }

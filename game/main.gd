@@ -12,6 +12,7 @@ extends Node3D
 ##   --selftest-curve             the curved road preview with a third point almost on the line of the first two (a nearly whole circle of a huge radius), print the times, quit
 ##   --selftest-reach             with --towns: the station tool over a town and the coverage map view, print and screenshot (--shot), quit
 ##   --selftest-models            a bus line, a truck line and a train line on an empty map, run, screenshots (--shot, one for the road and one ending -rail) of the Models, quit
+##   --selftest-industries        with --towns: a screenshot (--shot, files ending -0, -1, ...) of each kind of industry on the map with its Model, and of a town, quit
 ##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
@@ -188,6 +189,8 @@ func _ready() -> void:
 		_selftest_lines()
 	if _args.has("--selftest-models"):
 		_selftest_models()
+	if _args.has("--selftest-industries"):
+		_selftest_industries()
 	if _args.has("--selftest-place"):
 		_selftest_place()
 	if _args.has("--selftest-reach"):
@@ -639,6 +642,29 @@ func _selftest_models() -> void:
 		await get_tree().process_frame
 	if _args.has("--shot"):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-rail.png"))
+	get_tree().quit()
+
+
+## Looks at the industries of the generated map one by one, from a three-quarter view 130 m away.
+func _selftest_industries() -> void:
+	await get_tree().process_frame
+	var seen := {}
+	var shot := 0
+	rig.distance = 130.0
+	rig.pitch = -35.0
+	rig.yaw = 30.0
+	for industry in host.GetIndustries():
+		if seen.has(industry["name"]) or shot >= 14:
+			continue
+		seen[industry["name"]] = true
+		rig.position = Vector3(industry["x"], host.HeightAt(industry["x"], industry["z"]), industry["z"])
+		rig._apply()
+		for i in 6:
+			await get_tree().process_frame
+		print("INDUSTRIES %d: %s" % [shot, industry["name"]])
+		if _args.has("--shot"):
+			get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-%d.png" % shot))
+		shot += 1
 	get_tree().quit()
 
 

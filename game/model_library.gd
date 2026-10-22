@@ -10,6 +10,8 @@ extends RefCounted
 ##          "maxWidth" (optional) caps the width in metres: a chunky Model is made shorter than its length rather than wider than its lane or gauge.
 ##   Forward is -Z (a Model made facing +Z, as the Kenney ones are, takes a "yaw" of 180).
 ##   "offset": [x, y, z]  optional, in metres after the fit
+## A composite entry has "parts" in place of "variants" and "fit": [ { "model": id of a plain Model, "at": [x, z] from the middle in metres, "yaw": degrees, "scale": uniform, "raise": metres, "variant": n }, ... ];
+## it is a few things standing together (an industry; a "scale" of its own sizes the whole) and only instance() builds it. Its parts keep their own fit.
 ## A scene that Godot has not imported (a file outside the project, as the sheet tool and the self-test use) is read straight from disk.
 
 const PATH := "res://data/models.json"
@@ -44,6 +46,10 @@ func define(models: Dictionary) -> void:
 		_entries[str(id)] = entry
 
 
+func is_composite(id: String) -> bool:
+	return _entries.has(id) and _entries[id].has("parts")
+
+
 func ids() -> Array:
 	return _entries.keys()
 
@@ -53,7 +59,9 @@ func has(id: String) -> bool:
 
 
 func variant_count(id: String) -> int:
-	return _entries[id]["variants"].size() if _entries.has(id) else 0
+	if not _entries.has(id):
+		return 0
+	return 1 if is_composite(id) else _entries[id]["variants"].size()
 
 
 ## The variant a key (an id of a building, say) chooses; the same key always gives the same one and no random stream is touched.
@@ -64,6 +72,8 @@ func pick(id: String, key: int) -> int:
 
 ## A fresh Node3D holding the Model, ready to add to the scene; null if the id is unknown or the scene cannot be read.
 func instance(id: String, variant: int = 0) -> Node3D:
+	if is_composite(id):
+		return _compose(id)
 	var fit := _fit(id, variant)
 	if fit.is_empty():
 		return null
@@ -77,6 +87,8 @@ func instance(id: String, variant: int = 0) -> Node3D:
 
 ## The Model as one Mesh with its fit applied, for a MultiMesh: { "mesh": ArrayMesh, "aabb": AABB }; empty if it cannot be read.
 func baked(id: String, variant: int = 0) -> Dictionary:
+	if is_composite(id):
+		return {}
 	var fit := _fit(id, variant)
 	if fit.is_empty():
 		return {}
@@ -113,6 +125,14 @@ func bounds(id: String, variant: int = 0) -> AABB:
 func check() -> Array[String]:
 	var problems: Array[String] = errors.duplicate()
 	for id in _entries:
+		if is_composite(id):
+			for part: Dictionary in _entries[id]["parts"]:
+				var part_id := str(part["model"])
+				if not _entries.has(part_id) or is_composite(part_id):
+					problems.append("%s: part %s is not a plain Model" % [id, part_id])
+				elif int(part.get("variant", 0)) >= variant_count(part_id):
+					problems.append("%s: part %s has no variant %d" % [id, part_id, int(part.get("variant", 0))])
+			continue
 		for variant in variant_count(id):
 			if _fit(id, variant).is_empty():
 				problems.append("%s variant %d: cannot read %s" % [id, variant, scene_path(id, variant)])
@@ -129,6 +149,16 @@ static func extent_of(root: Node3D) -> AABB:
 static func _problem(entry: Variant) -> String:
 	if typeof(entry) != TYPE_DICTIONARY:
 		return "is not an object"
+	if entry.has("parts"):
+		if typeof(entry["parts"]) != TYPE_ARRAY or entry["parts"].is_empty():
+			return "has no parts"
+		for part: Variant in entry["parts"]:
+			if typeof(part) != TYPE_DICTIONARY or typeof(part.get("model")) != TYPE_STRING:
+				return "has a part without a model"
+			var at: Variant = part.get("at", [0, 0])
+			if typeof(at) != TYPE_ARRAY or at.size() != 2:
+				return "has a part whose \"at\" is not [x, z]"
+		return ""
 	var variants: Variant = entry.get("variants")
 	if typeof(variants) != TYPE_ARRAY or variants.is_empty():
 		return "has no variants"
@@ -149,10 +179,31 @@ static func _problem(entry: Variant) -> String:
 
 ## The scene file of a variant.
 func scene_path(id: String, variant: int) -> String:
+	if is_composite(id):
+		return ""
 	return _entries[id]["variants"][variant]["scene"]
 
 
+## A composite: its parts, each an instance of a plain Model, placed on the ground around the middle.
+func _compose(id: String) -> Node3D:
+	var holder := Node3D.new()
+	holder.name = id.replace(".", "_")
+	holder.scale = Vector3.ONE * float(_entries[id].get("scale", 1.0))
+	for part: Dictionary in _entries[id]["parts"]:
+		var node := instance(str(part["model"]), int(part.get("variant", 0)))
+		if node == null:
+			continue
+		var at: Array = part.get("at", [0, 0])
+		node.position = Vector3(float(at[0]), float(part.get("raise", 0.0)), float(at[1]))
+		node.rotation.y = deg_to_rad(float(part.get("yaw", 0.0)))
+		node.scale = Vector3.ONE * float(part.get("scale", 1.0))
+		holder.add_child(node)
+	return holder
+
+
 func _fit(id: String, variant: int) -> Dictionary:
+	if is_composite(id):
+		return {}
 	var key := "%s#%d" % [id, variant]
 	if _fitted.has(key):
 		return _fitted[key]
