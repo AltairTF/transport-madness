@@ -297,6 +297,15 @@ The height water stands at. It falls gently toward a Sea along one side of the m
 **Junction path**:
 The line a vehicle follows from one lane through a junction to the next. Vehicles drive along it, slowing for tight turns. Two paths that cross, merge or run closer than a vehicle is wide conflict; the vehicle that would reach the junction second waits at its edge until the other has passed the place where they meet, and nobody enters a junction whose exit lane is full. Two vehicles that do meet inside a junction crash (a Junction Incident).
 
+**Whitebox**:
+The plain stand-in the game draws for something that has no art yet: a box (or a few) of the right footprint, height, colour and Access point, read from `data/whitebox.json` and the tuning. The look of a thing can change from Whitebox to Model without its footprint, its door or any rule changing.
+
+**Model**:
+A 3D asset drawn for a game object (a Vehicle, a Building, an Industry, a Depot, a Station) in place of its Whitebox. It is scaled uniformly (never stretched) to the footprint or the length the tuning gives the object, keeps the proportions it was made with, and is chosen by the object's type and level and, for Buildings, by one of a few variants drawn from the object's id. Purely visual: the simulation never sees it. Chosen from existing CC0 packs first; each one is recorded in `CREDITS.md`.
+
+**Line marker**:
+The small mark in the colour of its Line on the roof of a Vehicle that has a Model, so a Line can be told apart from above; the Model keeps its own colours.
+
 ## Relationships
 
 - A **Town** is served by **Stations**; a **Station** belongs to one or more **Lines**.
