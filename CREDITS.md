@@ -15,3 +15,4 @@ Licences: CC0 needs no credit, but the authors are named anyway. CC-BY only with
 | Mini Forest 1.0 | Kenney | CC0 | https://kenney.nl/assets/mini-forest | game/assets/nature/kenney-mini-forest/ |
 | Fantasy Town Kit 2.0 | Kenney | CC0 | https://kenney.nl/assets/fantasy-town-kit | game/assets/nature/kenney-fantasy-town-kit/ |
 | Made for the game (bomber, bomb, anti-aircraft gun, signs, signals, platform, shelter, wreck and the like) | Transport Madness, built by tools/make_models.gd | CC0 | https://github.com/AltairTF/transport-madness/blob/main/tools/make_models.gd | game/assets/made/ |
+| Ground and road textures: Grass001, Ground037, Rock030, Gravel023, Asphalt012, PavingStones070 (resized to 512 px and brightness-normalised so that the vertex colour stays the tint) | ambientCG (Lennart Demes) | CC0 | https://ambientcg.com | game/assets/ground/ambientcg/ |

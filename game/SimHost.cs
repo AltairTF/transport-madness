@@ -56,7 +56,7 @@ public partial class SimHost : Node3D
     int _capacity = InitialCapacity;
     Node3D _roadRoot = null!, _stationRoot = null!;
     Node3D _terrainRoot = null!;
-    StandardMaterial3D _terrainMaterial = null!;
+    ShaderMaterial _terrainMaterial = null!;
     MeshInstance3D?[] _terrainChunks = Array.Empty<MeshInstance3D?>();
     int _terrainVersion = -1;
     Terrain _terrain = null!, _terrainSource = null!;
@@ -83,9 +83,9 @@ public partial class SimHost : Node3D
         AddChild(_roadRoot);
         _stationRoot = new Node3D { Name = "Stations" };
         AddChild(_stationRoot);
-        _roadMaterial = Flat(new Color(0.23f, 0.24f, 0.26f));
-        _pathMaterial = Flat(new Color(0.5f, 0.44f, 0.34f)); // the stone road of an access connection (M6e)
-        _medianMaterial = Flat(new Color(0.35f, 0.5f, 0.3f));
+        _roadMaterial = Textured(new Color(0.23f, 0.24f, 0.26f), "asphalt", 4f);
+        _pathMaterial = Textured(new Color(0.5f, 0.44f, 0.34f), "paving", 3f); // the stone road of an access connection (M6e)
+        _medianMaterial = Textured(new Color(0.35f, 0.5f, 0.3f), "grass", 6f);
         for (int level = 0; level < 3; level++) _depotLevelMaterials[level] = Flat(_whitebox.Depots[level].Color);
         _depotMaterial = _depotLevelMaterials[1];
         _depotIdleMaterial = Flat(_whitebox.DepotIdle);
@@ -110,10 +110,23 @@ public partial class SimHost : Node3D
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             Roughness = 0.15f,
             Metallic = 0.2f,
+            NormalEnabled = true,
+            NormalScale = 0.35f,
+            NormalTexture = new NoiseTexture2D
+            {
+                Width = 512, Height = 512, Seamless = true, AsNormalMap = true, BumpStrength = 6f,
+                Noise = new FastNoiseLite { NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth, Frequency = 0.02f },
+            },
+            Uv1Triplanar = true,
+            Uv1WorldTriplanar = true,
+            Uv1Scale = Vector3.One / 40f, // one tile of ripples is 40 m
         };
         _water = new MeshInstance3D { Name = "Water", MaterialOverride = _waterMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_water);
-        _terrainMaterial = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 1f };
+        _terrainMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://game/terrain.gdshader") };
+        _terrainMaterial.SetShaderParameter("grass_tex", GD.Load<Texture2D>("res://game/assets/ground/ambientcg/grass.png"));
+        _terrainMaterial.SetShaderParameter("dirt_tex", GD.Load<Texture2D>("res://game/assets/ground/ambientcg/dirt.png"));
+        _terrainMaterial.SetShaderParameter("rock_tex", GD.Load<Texture2D>("res://game/assets/ground/ambientcg/rock.png"));
         _cutaway = new MeshInstance3D { Name = "Cutaway", Position = new Vector3(0, -TerrainSink, 0) };
         AddChild(_cutaway);
         _terrainRoot = new Node3D { Name = "Terrain", Position = new Vector3(0, -TerrainSink, 0) };
@@ -168,6 +181,17 @@ public partial class SimHost : Node3D
     }
 
     static StandardMaterial3D Flat(Color color) => new() { AlbedoColor = color, Roughness = 1f };
+
+    /// <summary>A flat colour with the grain of a ground texture (M7e), projected from the world so that ribbons and boxes without UVs take it; <paramref name="metres"/> is the size of one tile.</summary>
+    static StandardMaterial3D Textured(Color color, string texture, float metres) => new()
+    {
+        AlbedoColor = new Color(color.R * 2f, color.G * 2f, color.B * 2f), // the textures have a mean of 0.5
+        AlbedoTexture = GD.Load<Texture2D>("res://game/assets/ground/ambientcg/" + texture + ".png"),
+        Roughness = 1f,
+        Uv1Triplanar = true,
+        Uv1WorldTriplanar = true,
+        Uv1Scale = Vector3.One / metres,
+    };
 
     // ---- API for GDScript -----------------------------------------------------------------------------------
 
@@ -1205,6 +1229,8 @@ public partial class SimHost : Node3D
         DrawCrews(fraction);
         DrawRail(fraction);
         UpdateOverlay(delta);
+        _waterMaterial.Uv1Offset = new Vector3((float)(Time.GetTicksMsec() * 0.00002), 0f, (float)(Time.GetTicksMsec() * 0.000013)); // the ripples drift
+        UpdateTrees();
     }
 
     // ---- Drawing --------------------------------------------------------------------------------------------
@@ -2084,7 +2110,12 @@ public partial class SimHost : Node3D
                 float gx = _terrain.GetSample(i + 1, j) - _terrain.GetSample(i - 1, j);
                 float gz = _terrain.GetSample(i, j + 1) - _terrain.GetSample(i, j - 1);
                 normals[k] = new Vector3(-gx, 2f * cell, -gz).Normalized();
-                colors[k] = TerrainColor(height, _terrain.WaterSurfaceAtSample(i, j), normals[k].Y, NearWater(i, j)).SrgbToLinear(); // vertex colours are read as linear
+                float surface = _terrain.WaterSurfaceAtSample(i, j);
+                bool shore = NearWater(i, j);
+                var colour = TerrainColor(height, surface, normals[k].Y, shore).SrgbToLinear(); // vertex colours are read as linear
+                float depth = height - surface;
+                colour.A = depth < 0f ? 1f : shore && depth < 1.5f ? 1f - depth / 1.5f : 0f; // how much of the ground is sand (the shader takes its grain from it)
+                colors[k] = colour;
             }
         var indices = new int[(w - 1) * (h - 1) * 6];
         int t = 0;

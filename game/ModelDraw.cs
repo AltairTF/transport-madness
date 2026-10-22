@@ -17,17 +17,22 @@ public sealed class ModelDraw
         public float Height;
     }
 
+    static readonly int[] ScaledSlots = { 0, 1, 2, 4, 5, 6, 8, 9, 10 };
+
     readonly Node _parent;
     readonly GodotObject? _library;
     readonly Dictionary<(string, int), Batch?> _batches = new();
     readonly Dictionary<string, int> _variantCounts = new();
     readonly bool _shadows;
     readonly bool _tinted;
+    readonly float _rangeEnd;
     readonly int _stride; // floats per instance: the 3x4 transform, and a colour when tinted
 
+    /// <param name="rangeEnd">Beyond this distance from the camera the Model is not drawn (0: always).</param>
     /// <param name="tinted">Each instance takes a colour that multiplies the Model's own (white leaves it as it is): for buildings that go grey, dark or take a map overlay.</param>
-    public ModelDraw(Node parent, bool shadows = false, bool tinted = false)
+    public ModelDraw(Node parent, bool shadows = false, bool tinted = false, float rangeEnd = 0f)
     {
+        _rangeEnd = rangeEnd;
         _parent = parent;
         _shadows = shadows;
         _tinted = tinted;
@@ -75,7 +80,7 @@ public sealed class ModelDraw
     }
 
     /// <summary>One instance of a Model at a position, going along (<paramref name="fx"/>, <paramref name="fz"/>) and pitched by <paramref name="rise"/> (the grade, rise over run along the heading; 0 on the flat).</summary>
-    public void Add(string id, float x, float y, float z, float fx, float fz, float rise, int variant = 0, Color? tint = null)
+    public void Add(string id, float x, float y, float z, float fx, float fz, float rise, int variant = 0, Color? tint = null, float scale = 1f)
     {
         var batch = Prepare(id, variant);
         if (batch == null) return;
@@ -92,6 +97,8 @@ public sealed class ModelDraw
         b[o + 0] = -fz;          b[o + 1] = -fx * slope; b[o + 2] = -fx * tilt;  b[o + 3] = x;
         b[o + 4] = 0f;           b[o + 5] = tilt;        b[o + 6] = -slope;      b[o + 7] = y;
         b[o + 8] = fx;           b[o + 9] = -fz * slope; b[o + 10] = -fz * tilt; b[o + 11] = z;
+        if (scale != 1f)
+            foreach (int k in ScaledSlots) b[o + k] *= scale;
         if (_tinted)
         {
             var c = tint ?? Colors.White;
@@ -128,6 +135,7 @@ public sealed class ModelDraw
                     Name = "Model_" + id.Replace('.', '_') + "_" + variant,
                     Multimesh = multi,
                     CastShadow = _shadows ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+                    VisibilityRangeEnd = _rangeEnd,
                 });
             }
         }

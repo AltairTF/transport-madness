@@ -42,7 +42,7 @@ public partial class SimHost
         AddChild(_signalRoot);
         _crossingRoot = new Node3D { Name = "Crossings" };
         AddChild(_crossingRoot);
-        _bedMaterial = Flat(new Color(0.36f, 0.33f, 0.30f));
+        _bedMaterial = Textured(new Color(0.36f, 0.33f, 0.30f), "gravel", 2f);
         _railMaterial = Flat(new Color(0.78f, 0.78f, 0.82f));
         _railStationMaterial = Flat(new Color(0.25f, 0.62f, 0.78f));
         _railDepotMaterial = Flat(_whitebox.RailDepot.Color);

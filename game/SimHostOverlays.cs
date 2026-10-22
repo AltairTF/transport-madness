@@ -84,8 +84,9 @@ public partial class SimHost
     /// <summary>Darkens the ground, the water and the roads under an overlay (and lights them again).</summary>
     void DimMap(bool dim)
     {
-        var materials = new List<StandardMaterial3D> { _terrainMaterial, _roadMaterial, _medianMaterial, _lineMaterial, _deckMaterial, _waterMaterial, _depotMaterial, _stationMaterial };
+        var materials = new List<StandardMaterial3D> { _roadMaterial, _medianMaterial, _lineMaterial, _deckMaterial, _waterMaterial, _depotMaterial, _stationMaterial };
         if (GetNodeOrNull<MeshInstance3D>("Ground")?.MaterialOverride is StandardMaterial3D ground) materials.Add(ground);
+        _terrainMaterial.SetShaderParameter("tint", dim ? 0.45f : 1f);
         foreach (var m in materials)
         {
             if (!_litColours.ContainsKey(m)) _litColours[m] = m.AlbedoColor;
