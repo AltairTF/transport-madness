@@ -11,6 +11,7 @@ extends Node3D
 ##   --selftest-rail              with --towns: a track beside a town, then the rail depot tool (turned and raised, with its pad) and the rail station tool (with its coverage), print and screenshot (--shot), quit
 ##   --selftest-curve             the curved road preview with a third point almost on the line of the first two (a nearly whole circle of a huge radius), print the times, quit
 ##   --selftest-reach             with --towns: the station tool over a town and the coverage map view, print and screenshot (--shot), quit
+##   --selftest-models            a bus line, a truck line and a train line on an empty map, run, screenshots (--shot, one for the road and one ending -rail) of the Models, quit
 ##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
@@ -185,6 +186,8 @@ func _ready() -> void:
 		_selftest_hills()
 	if _args.has("--selftest-lines"):
 		_selftest_lines()
+	if _args.has("--selftest-models"):
+		_selftest_models()
 	if _args.has("--selftest-place"):
 		_selftest_place()
 	if _args.has("--selftest-reach"):
@@ -581,6 +584,61 @@ func _selftest_lines() -> void:
 	await get_tree().process_frame
 	if _args.has("--shot"):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	get_tree().quit()
+
+
+## The Models of M7b in the real game: the road vehicles, a train and the cars of the ambient traffic, seen from close.
+func _selftest_models() -> void:
+	host.NewHillsWorld(Session.world_seed)
+	await get_tree().process_frame
+	print("MODELS road=%s" % host.BuildRoad(-200, 0, 600, 0, 0))
+	var depot_built := false
+	for x in range(-150, 560, 50):
+		for z in [-30, 30, -14, 14, -45, 45]:
+			if not depot_built and host.DepotPreview(x, z, 0, false, NAN, 0.0)["valid"] and host.DepotPreview(x, z, 0, false, NAN, 0.0)["connection"] == 1:
+				depot_built = host.BuildDepot(x, z, 0, false, NAN, 0.0)
+	print("MODELS depot=%s" % depot_built)
+	var a: int = host.BuildStation(100, 0, false)
+	var b: int = host.BuildStation(450, 0, true)
+	var line: int = host.CreateLine(PackedInt32Array([a, b]))
+	print("MODELS stations %d %d line %d" % [a, b, line])
+	for model in ["bus", "truck", "heavytruck", "bigbus"]:
+		print("MODELS buy %s -> %d" % [model, host.BuyVehicle(model, line)])
+		host.StepFor(6.0)
+	print("MODELS track=%s" % host.BuildTrack(-200, 150, 700, 150, 0.0))
+	var rail_depot := false
+	for x in [-200, 700]:
+		if not rail_depot and host.RailDepotPreview(x, 150, NAN, 0.0)["valid"]:
+			rail_depot = host.BuildRailDepot(x, 150, NAN, 0.0)
+	print("MODELS rail depot=%s" % rail_depot)
+	var r1: int = host.BuildRailStation(100, 150)
+	var r2: int = host.BuildRailStation(550, 150)
+	var rail_line: int = host.CreateLine(PackedInt32Array([r1, r2]))
+	print("MODELS rail stations %d %d line %d" % [r1, r2, rail_line])
+	for option in host.GetTrainOptions():
+		if option["id"] == "steam:freight:4" or option["id"] == "steam:coach:4":
+			print("MODELS train %s -> %d" % [option["id"], host.BuyTrain(option["id"], rail_line)])
+			host.StepFor(8.0)
+	host.StepFor(60.0)
+	var camera: Camera3D = rig.get_node("Camera3D")
+	rig.distance = 70.0
+	rig.pitch = -30.0
+	rig.yaw = 20.0
+	for k in 4:
+		host.StepFor(7.0)
+		var spot: Vector3 = Vector3(host.GetVehicles()[0]["x"], 0, host.GetVehicles()[0]["z"])
+		rig.position = Vector3(spot.x, host.HeightAt(spot.x, spot.z), spot.z)
+		rig._apply()
+		for i in 5:
+			await get_tree().process_frame
+		if _args.has("--shot"):
+			get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-%d.png" % k))
+	rig.position = Vector3(250, 0, 150)
+	rig._apply()
+	for i in 5:
+		await get_tree().process_frame
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-rail.png"))
 	get_tree().quit()
 
 

@@ -32,6 +32,11 @@ public partial class SimHost : Node3D
 
     MultiMesh _vehicles = null!;
     MultiMesh _crews = null!;
+    MultiMesh _marks = null!; // the Line markers on the roofs of vehicles that have a Model
+    ModelDraw _vehicleModels = null!, _crewModels = null!;
+    float[] _markBuffer = new float[InitialCapacity * FloatsPerInstance];
+    string[]? _roadModelIds;
+    static readonly string[] CarModelIds = { "car.a", "car.b", "car.c" };
     MultiMesh _buildings = null!;
     Node3D _townLabels = null!;
     int _buildingsVersion = -1;
@@ -134,6 +139,17 @@ public partial class SimHost : Node3D
         AddChild(new MultiMeshInstance3D { Name = "Buildings", Multimesh = _buildings, MaterialOverride = material });
         _townLabels = new Node3D { Name = "TownLabels" };
         AddChild(_townLabels);
+        _marks = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            UseColors = true,
+            Mesh = new BoxMesh { Size = new Vector3(2.0f, 0.14f, 1.1f) },
+            InstanceCount = InitialCapacity,
+            VisibleInstanceCount = 0,
+        };
+        AddChild(new MultiMeshInstance3D { Name = "LineMarkers", Multimesh = _marks, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        _vehicleModels = new ModelDraw(this);
+        _crewModels = new ModelDraw(this);
         AddChild(new MultiMeshInstance3D { Name = "Crews", Multimesh = _crews, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         AddChild(new MultiMeshInstance3D { Name = "Vehicles", Multimesh = _vehicles, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         ReadyRail();
@@ -1222,8 +1238,14 @@ public partial class SimHost : Node3D
             while (_capacity < count) _capacity *= 2;
             _buffer = new float[_capacity * FloatsPerInstance];
             _vehicles.InstanceCount = _capacity;
+            _markBuffer = new float[_capacity * FloatsPerInstance];
+            _marks.InstanceCount = _capacity;
         }
         var buf = _buffer;
+        var marks = _markBuffer;
+        int markCount = 0;
+        _roadModelIds ??= Sim.VehicleModels.Select(m => "road." + m.Id).ToArray();
+        _vehicleModels.Begin();
         for (int i = 0; i < count; i++)
         {
             int o = i * FloatsPerInstance;
@@ -1264,6 +1286,24 @@ public partial class SimHost : Node3D
             float grade = _laneGrade[lane], tilt = 1f / MathF.Sqrt(1f + grade * grade), rise = grade * tilt;
             bool company = Sim.IsCompanyVehicle(i);
             float tall = company ? 1.6f : 1f; // buses and trucks stand taller
+            string? modelId = v.Kind != VehicleKind.Car ? null : company ? _roadModelIds[Sim.GetFleetInfo(i).Model] : CarModelIds[(int)(((uint)i * 2654435761u >> 8) % (uint)CarModelIds.Length)];
+            if (modelId != null && _vehicleModels.Has(modelId))
+            {
+                // A Model: it keeps its own colours; the Line colour is the marker on its roof (and a yellow one on a car that is overtaking).
+                _vehicleModels.Add(modelId, x, baseY, z, fx, fz, grade);
+                Array.Clear(buf, o, FloatsPerInstance);
+                if (company || v.Overtake != OvertakePhase.None)
+                {
+                    int m = markCount++ * FloatsPerInstance;
+                    float top = baseY + _vehicleModels.HeightOf(modelId) + 0.1f;
+                    marks[m + 0] = fx * tilt;  marks[m + 1] = -fx * rise; marks[m + 2] = -fz; marks[m + 3] = x;
+                    marks[m + 4] = rise;       marks[m + 5] = tilt;       marks[m + 6] = 0f;  marks[m + 7] = top;
+                    marks[m + 8] = fz * tilt;  marks[m + 9] = -fz * rise; marks[m + 10] = fx; marks[m + 11] = z;
+                    Color mark = company ? ConditionTint(LineColor(Sim.GetFleetInfo(i).Line), Sim.ConditionOf(i)) : new Color(1f, 0.9f, 0.2f);
+                    marks[m + 12] = mark.R; marks[m + 13] = mark.G; marks[m + 14] = mark.B; marks[m + 15] = 1f;
+                }
+                continue;
+            }
             float y = baseY + 0.8f * tall;
             buf[o + 0] = fx * tilt * length;  buf[o + 1] = -fx * rise * tall; buf[o + 2] = -fz; buf[o + 3] = x;
             buf[o + 4] = rise * length;       buf[o + 5] = tilt * tall;       buf[o + 6] = 0f;  buf[o + 7] = y;
@@ -1280,6 +1320,9 @@ public partial class SimHost : Node3D
         }
         _vehicles.Buffer = buf;
         _vehicles.VisibleInstanceCount = count;
+        _vehicleModels.End();
+        _marks.Buffer = marks;
+        _marks.VisibleInstanceCount = markCount;
     }
 
     /// <summary>Rescue crews as blue boxes: driving from their depot to the site, then parked beside the wreck while they work.</summary>
@@ -1288,6 +1331,8 @@ public partial class SimHost : Node3D
         var buf = _crewBuffer;
         int n = 0;
         var net = Sim.Network;
+        _crewModels.Begin();
+        bool crewModel = _crewModels.Has("crew");
         foreach (int id in Sim.OpenIncidentIds)
         {
             if (n >= CrewCapacity) break;
@@ -1315,6 +1360,12 @@ public partial class SimHost : Node3D
                 continue; // the distant service is not on the map yet
             }
 
+            if (crewModel)
+            {
+                _crewModels.Add("crew", x, _terrain.HeightAt(x, z) + 0.1f, z, dx, dz, 0f);
+                n++;
+                continue;
+            }
             int o = n * FloatsPerInstance;
             buf[o + 0] = dx;  buf[o + 1] = 0f; buf[o + 2] = -dz; buf[o + 3] = x;
             buf[o + 4] = 0f;  buf[o + 5] = 1f; buf[o + 6] = 0f;  buf[o + 7] = _terrain.HeightAt(x, z) + 1.1f;
@@ -1323,8 +1374,9 @@ public partial class SimHost : Node3D
             buf[o + 12] = working ? 1f : 0.1f; buf[o + 13] = working ? 0.85f : 0.4f; buf[o + 14] = working ? 0.1f : 1f; buf[o + 15] = 1f;
             n++;
         }
+        _crewModels.End();
         _crews.Buffer = buf;
-        _crews.VisibleInstanceCount = n;
+        _crews.VisibleInstanceCount = crewModel ? 0 : n;
     }
 
     /// <summary>The colour of a line, shared by its vehicles and the line list: the player's choice, else a strong colour from its number.</summary>

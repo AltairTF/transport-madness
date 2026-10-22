@@ -7,6 +7,8 @@ extends RefCounted
 ##   "variants": [ { "scene": "res://game/assets/..../x.glb", "yaw": 0 }, ... ]   one or more; a building picks one by its id, see pick()
 ##   "fit": { "mode": "length" | "width" | "height" | "footprint" | "scale", "value": number, or [width, length] for "footprint" }
 ##          length is the extent along Z once turned, width along X; footprint is the largest scale that fits both.
+##          "maxWidth" (optional) caps the width in metres: a chunky Model is made shorter than its length rather than wider than its lane or gauge.
+##   Forward is -Z (a Model made facing +Z, as the Kenney ones are, takes a "yaw" of 180).
 ##   "offset": [x, y, z]  optional, in metres after the fit
 ## A scene that Godot has not imported (a file outside the project, as the sheet tool and the self-test use) is read straight from disk.
 
@@ -168,6 +170,8 @@ func _fit(id: String, variant: int) -> Dictionary:
 	var yaw := Basis(Vector3.UP, deg_to_rad(float(entry["variants"][variant].get("yaw", 0.0))))
 	var turned := _union(parts, Transform3D(yaw, Vector3.ZERO))
 	var scale := _scale_for(entry["fit"], turned.size)
+	if entry["fit"].has("maxWidth"):
+		scale = minf(scale, float(entry["fit"]["maxWidth"]) / maxf(turned.size.x, 0.0001))
 	var basis := yaw.scaled(Vector3.ONE * scale)
 	var fitted := Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * scale), Vector3.ZERO) * turned
 	var offset: Variant = entry.get("offset")

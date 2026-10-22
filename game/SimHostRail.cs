@@ -20,6 +20,10 @@ public partial class SimHost
 
     Node3D _railRoot = null!, _signalRoot = null!, _crossingRoot = null!;
     MultiMesh _trainCars = null!;
+    MultiMesh _trainMarks = null!; // the Line marker on the roof of a locomotive
+    ModelDraw _trainModels = null!;
+    string[]? _locomotiveModelIds, _wagonModelIds;
+    readonly float[] _trainMarkBuffer = new float[TrainCarCapacity * FloatsPerInstance];
     float[] _trainBuffer = new float[TrainCarCapacity * FloatsPerInstance];
     StandardMaterial3D _bedMaterial = null!, _railMaterial = null!, _railStationMaterial = null!, _railDepotMaterial = null!, _postMaterial = null!;
     Simulation? _railSim;
@@ -52,6 +56,16 @@ public partial class SimHost
         };
         var material = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.7f };
         AddChild(new MultiMeshInstance3D { Name = "TrainCars", Multimesh = _trainCars, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        _trainMarks = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            UseColors = true,
+            Mesh = new BoxMesh { Size = new Vector3(3.0f, 0.16f, 1.4f) },
+            InstanceCount = TrainCarCapacity,
+            VisibleInstanceCount = 0,
+        };
+        AddChild(new MultiMeshInstance3D { Name = "TrainMarkers", Multimesh = _trainMarks, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        _trainModels = new ModelDraw(this);
     }
 
     // ---- Building and reading, for GDScript ------------------------------------------------------------------------------
@@ -569,6 +583,11 @@ public partial class SimHost
     {
         var buf = _trainBuffer;
         int n = 0;
+        var marks = _trainMarkBuffer;
+        int markCount = 0;
+        _locomotiveModelIds ??= Sim.Locomotives.Select(l => "rail." + l.Id).ToArray();
+        _wagonModelIds ??= Sim.Wagons.Select(w => "rail." + w.Id).ToArray();
+        _trainModels.Begin();
         foreach (var train in Sim.Trains)
         {
             if (!train.Active) continue;
@@ -581,6 +600,23 @@ public partial class SimHost
                 if (n >= TrainCarCapacity) break;
                 int o = n * FloatsPerInstance;
                 float fx = MathF.Cos(car.Heading), fz = MathF.Sin(car.Heading);
+                string modelId = car.IsLocomotive ? _locomotiveModelIds[train.Locomotive] : _wagonModelIds[train.Wagon];
+                if (_trainModels.Has(modelId))
+                {
+                    _trainModels.Add(modelId, car.X, car.Y + RailLift + 0.35f, car.Z, fx, fz, 0f);
+                    n++; // keeps the box's slot (zeroed below) so the counts stay one to one
+                    Array.Clear(buf, o, FloatsPerInstance);
+                    if (car.IsLocomotive && markCount < TrainCarCapacity)
+                    {
+                        int m = markCount++ * FloatsPerInstance;
+                        marks[m + 0] = fx;  marks[m + 1] = 0f; marks[m + 2] = -fz; marks[m + 3] = car.X;
+                        marks[m + 4] = 0f;  marks[m + 5] = 1f; marks[m + 6] = 0f;  marks[m + 7] = car.Y + RailLift + 0.35f + _trainModels.HeightOf(modelId) + 0.1f;
+                        marks[m + 8] = fz;  marks[m + 9] = 0f; marks[m + 10] = fx; marks[m + 11] = car.Z;
+                        Color mark = train.Deadlocked ? new Color(0.95f, 0.15f, 0.12f) : ConditionTint(line, train.Condition);
+                        marks[m + 12] = mark.R; marks[m + 13] = mark.G; marks[m + 14] = mark.B; marks[m + 15] = 1f;
+                    }
+                    continue;
+                }
                 float length = car.Length - 0.6f, height = car.IsLocomotive ? 3.8f : 3.4f;
                 buf[o + 0] = fx * length; buf[o + 1] = 0f;     buf[o + 2] = -fz; buf[o + 3] = car.X;
                 buf[o + 4] = 0f;          buf[o + 5] = height; buf[o + 6] = 0f;  buf[o + 7] = car.Y + RailLift + 0.35f + height * 0.5f;
@@ -591,7 +627,10 @@ public partial class SimHost
                 n++;
             }
         }
+        _trainModels.End();
         _trainCars.Buffer = buf;
         _trainCars.VisibleInstanceCount = n;
+        _trainMarks.Buffer = marks;
+        _trainMarks.VisibleInstanceCount = markCount;
     }
 }

@@ -6,3 +6,5 @@ Licences: CC0 needs no credit, but the authors are named anyway. CC-BY only with
 
 | Asset | Author | Licence | Link | Folder |
 | --- | --- | --- | --- | --- |
+| Car Kit 3.1 | Kenney | CC0 | https://kenney.nl/assets/car-kit | game/assets/vehicles/kenney-car-kit/ |
+| Train Kit 1.1 | Kenney | CC0 | https://kenney.nl/assets/train-kit | game/assets/trains/kenney-train-kit/ |

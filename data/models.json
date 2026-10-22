@@ -1,3 +1,16 @@
 {
-  "models": {}
+  "models": {
+    "road.bus":        { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/van.glb", "yaw": 180 }],           "fit": { "mode": "length", "value": 10.0, "maxWidth": 3.4 } },
+    "road.bigbus":     { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/delivery.glb", "yaw": 180 }],      "fit": { "mode": "length", "value": 12.0, "maxWidth": 3.4 } },
+    "road.truck":      { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/truck.glb", "yaw": 180 }],         "fit": { "mode": "length", "value": 8.0,  "maxWidth": 3.2 } },
+    "road.heavytruck": { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/truck-flat.glb", "yaw": 180 }],    "fit": { "mode": "length", "value": 10.0, "maxWidth": 3.4 } },
+    "car.a":           { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/sedan.glb", "yaw": 180 }],         "fit": { "mode": "length", "value": 4.5 } },
+    "car.b":           { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/taxi.glb", "yaw": 180 }],          "fit": { "mode": "length", "value": 4.5 } },
+    "car.c":           { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/suv.glb", "yaw": 180 }],           "fit": { "mode": "length", "value": 4.5 } },
+    "crew":            { "variants": [{ "scene": "res://game/assets/vehicles/kenney-car-kit/tractor-shovel.glb", "yaw": 180 }], "fit": { "mode": "length", "value": 5.5 } },
+    "rail.steam":      { "variants": [{ "scene": "res://game/assets/trains/kenney-train-kit/train-locomotive-a.glb", "yaw": 180 }], "fit": { "mode": "length", "value": 15.4, "maxWidth": 3.8 } },
+    "rail.diesel":     { "variants": [{ "scene": "res://game/assets/trains/kenney-train-kit/train-diesel-a.glb", "yaw": 180 }],      "fit": { "mode": "length", "value": 17.4, "maxWidth": 3.8 } },
+    "rail.coach":      { "variants": [{ "scene": "res://game/assets/trains/kenney-train-kit/train-locomotive-passenger-a.glb", "yaw": 180 }], "fit": { "mode": "length", "value": 19.4, "maxWidth": 3.8 } },
+    "rail.freight":    { "variants": [{ "scene": "res://game/assets/trains/kenney-train-kit/train-carriage-box.glb", "yaw": 180 }],  "fit": { "mode": "length", "value": 15.4, "maxWidth": 3.8 } }
+  }
 }
