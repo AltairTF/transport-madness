@@ -285,6 +285,14 @@ public sealed record AccessTuning
 {
     public required float SnapRadius { get; init; }
     public required float EdgeMargin { get; init; }
+    /// <summary>The ground under a depot or battery is levelled (M6g): it blends back to the old ground over this many metres.</summary>
+    public required float PadShoulder { get; init; }
+    /// <summary>A pad is refused when it would cut or fill more than this many metres at any point.</summary>
+    public required float PadMaxChange { get; init; }
+    /// <summary>The share of a road's price per cubic metre that levelling a pad costs: it is rough work, not a road bed.</summary>
+    public required float PadCostShare { get; init; }
+    /// <summary>How far a pad is raised or lowered by one step of the player's keys, in metres.</summary>
+    public required float PadRaiseStep { get; init; }
 }
 
 public sealed record StationTuning

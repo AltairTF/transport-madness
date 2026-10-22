@@ -42,6 +42,12 @@ const RAIL_TOOLS := ["track", "track_curve", "track_remove", "signal_block", "si
 const RAIL_WIDTH := 4.2
 const RANGE_SEGMENTS := 96 ## the circle of a battery's range is drawn with this many segments
 const RANGE_WIDTH := 3.0
+const PLACE_TOOLS := ["depot", "battery"] ## buildings put on the ground that can be turned and raised
+const TURN_STEP := deg_to_rad(15.0)
+var _turned := false      ## the player has turned the building, so it stands exactly where put, at _angle
+var _angle := 0.0         ## radians the building is turned (the way its door faces)
+var _raise := 0.0         ## metres the floor is lifted above the default height of its pad
+var _site_angle := 0.0    ## the angle the last preview used (the place's own while the player has not turned it)
 var _signal_forward := true ## signals face trains going from a track's start toward its end; R turns them round
 
 var _start: Variant = null # Vector3 or null
@@ -84,6 +90,8 @@ func setup(sim_host: Node3D, cam: Camera3D) -> void:
 
 func set_tool(tool_name: String) -> void:
 	tool = tool_name
+	_turned = false
+	_raise = 0.0
 	_reset()
 	match tool:
 		"road2": message.emit("2-lane road: click to start, click again to build (right click or Esc stops)")
@@ -97,7 +105,7 @@ func set_tool(tool_name: String) -> void:
 		"move": message.emit("Move: click a junction to pick it up, then click where it goes (roads keep their bend; vehicles carry on)")
 		"resurface": message.emit("Resurface: click a worn road piece; a crew restores it (the road is closed while they work)")
 		"remove": message.emit("Remove: click a road piece (junction to junction) to tear it down")
-		"depot": message.emit("Depot: click anywhere. Against a road it stands beside it, with a road within about 74 m it gets a stone path to it, else it waits until a road reaches its door (raise its level in its window)")
+		"depot": message.emit("Depot: click anywhere. Against a road it stands beside it, with a road within about 74 m it gets a stone path to it, else it waits until a road reaches its door (raise its level in its window). R turns it, Page Up and Page Down raise and lower its floor, Alt (or turning it) puts it exactly where the mouse is. The ground under it is levelled for a price")
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
 		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
 		"line": message.emit("New line: click stations, or industries and gateways a road reaches, in order. The preview shows the route the vehicles would drive. Enter finishes the line, right click or Esc cancels")
@@ -151,6 +159,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and (Keys.pressed(event, "finish_line") or event.keycode == KEY_KP_ENTER):
 		if tool == "line":
 			_finish_line()
+	elif event is InputEventKey and event.pressed and not event.echo and tool in PLACE_TOOLS and _place_key(event):
+		get_viewport().set_input_as_handled()
+		_update_preview(get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and not event.echo and Keys.pressed(event, "rotate_signal") and tool.begins_with("signal_"):
 		_signal_forward = not _signal_forward
 		_update_preview(get_viewport().get_mouse_position())
@@ -170,6 +181,47 @@ func _unhandled_input(event: InputEvent) -> void:
 			_cancel()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_click(event.position)
+
+
+## R and Shift+R turn a building by a step (the first turn starts from the angle the place gave it and makes it stand exactly where put), Page Up and Page Down lift
+## and lower its floor. True when the key was one of them.
+func _place_key(event: InputEvent) -> bool:
+	var turn := 0.0
+	if Keys.pressed(event, "rotate_signal"):
+		turn = TURN_STEP
+	elif Keys.pressed(event, "rotate_back"):
+		turn = -TURN_STEP
+	if turn != 0.0:
+		if not _turned:
+			_angle = roundf(_site_angle / TURN_STEP) * TURN_STEP
+			_turned = true
+		_angle = wrapf(_angle + turn, -PI, PI)
+		return true
+	var step: float = host.PadRaiseStep()
+	if Keys.pressed(event, "raise_building"):
+		_raise += step
+		return true
+	if Keys.pressed(event, "lower_building"):
+		_raise -= step
+		return true
+	return false
+
+
+## The building is put exactly where the mouse is (not drawn against a road) once it has been turned or the key to place freely is held.
+func _free_placement() -> bool:
+	return _turned or Input.is_action_pressed("place_free")
+
+
+func _wanted_angle() -> float:
+	return _angle if _turned else NAN
+
+
+## " pad: ..." for the status line: what levelling the ground under the building costs, what it cuts and fills, and the raise in hand.
+func _pad_text(site: Dictionary) -> String:
+	var text := "   floor %+.1f m" % _raise if absf(_raise) > 0.01 else ""
+	if site["pad_cut"] + site["pad_fill"] > 1.0:
+		text += "   levelling %s (cut %d m3 up to %.1f m, fill %d m3 up to %.1f m)" % [_money(site["pad_money"]), roundi(site["pad_cut"]), site["pad_max_cut"], roundi(site["pad_fill"]), site["pad_max_fill"]]
+	return text + "   [R turns, PgUp/PgDn raise, Alt places freely]"
 
 
 ## Esc and a click of the right button: drop the draft in progress (a road, a line), else leave the tool.
@@ -701,24 +753,24 @@ func _hover_depot(screen: Vector2) -> void:
 		_preview.visible = false
 		_arc_preview.visible = false
 		return
-	var site: Dictionary = host.DepotPreview(p.x, p.z, 0)
+	var site: Dictionary = host.DepotPreview(p.x, p.z, 0, _free_placement(), _wanted_angle(), _raise)
+	_site_angle = site["angle"]
+	_arc_preview.visible = false
+	var size: Vector3 = site["size"]
+	_preview.visible = true
+	_preview.mesh.size = size
+	_preview.transform = Transform3D(Basis(Vector3.UP, -float(site["angle"])), Vector3(site["x"], site["y"] + size.y * 0.5, site["z"]))
 	if not site["valid"]:
-		_preview.visible = false
-		_arc_preview.visible = false
+		_material.albedo_color = ROAD_COLORS["invalid"]
 		message.emit("Can't build a depot there: %s" % site["why"])
 		return
 	var connection: int = site["connection"]
-	_arc_preview.visible = false
 	var runs: Array = site["path_runs"]
 	if not runs.is_empty():
 		_draw_runs(runs, PATH_WIDTH)
 	elif site["path_points"].size() >= 2:
 		_draw_arc(site["path_points"], PATH_WIDTH)
-	_preview.visible = true
-	var size: Vector3 = site["size"]
-	_preview.mesh.size = size
-	_preview.transform = Transform3D(Basis(Vector3.UP, -float(site["angle"])), Vector3(site["x"], site["y"] + size.y * 0.5, site["z"]))
-	var total: float = site["price"] + site["path_money"]
+	var total: float = site["price"] + site["path_money"] + site["pad_money"]
 	var ok: bool = site["affordable"]
 	_material.albedo_color = ROAD_COLORS["invalid"] if not ok else (DEPOT_ALONE_COLOR if connection == 0 or (connection == 2 and not site["path_buildable"]) else ROAD_COLORS["valid"])
 	var text := "Depot: %s" % _money(total)
@@ -734,18 +786,18 @@ func _hover_depot(screen: Vector2) -> void:
 			text += "   NOT connected: no road within reach, so it waits until a road is built within 60 m of its door"
 	if not ok:
 		text += "   (not enough money)"
-	message.emit(text)
+	message.emit(text + _pad_text(site))
 
 
 func _click_depot(screen: Vector2) -> void:
 	var p: Variant = ground_point(screen)
 	if p == null:
 		return
-	var site: Dictionary = host.DepotPreview(p.x, p.z, 0)
+	var site: Dictionary = host.DepotPreview(p.x, p.z, 0, _free_placement(), _wanted_angle(), _raise)
 	if not site["valid"]:
 		message.emit("Can't build a depot there: %s" % site["why"])
 		return
-	if host.BuildDepot(p.x, p.z, 0):
+	if host.BuildDepot(p.x, p.z, 0, _free_placement(), _wanted_angle(), _raise):
 		var connected: bool = site["connection"] != 0 and (site["connection"] == 1 or site["path_buildable"])
 		message.emit("Depot built" if connected else "Depot built, not connected yet: build a road within 60 m of its door")
 	else:
@@ -835,11 +887,12 @@ func _hover_battery(screen: Vector2) -> void:
 	var p: Variant = ground_point(screen)
 	if p == null:
 		return
-	var site: Dictionary = host.BatteryPreview(p.x, p.z)
-	_material.albedo_color = ROAD_COLORS["valid"] if site["valid"] else ROAD_COLORS["invalid"]
+	var site: Dictionary = host.BatteryPreview(p.x, p.z, _angle, _raise)
+	_site_angle = _angle
+	_material.albedo_color = ROAD_COLORS["valid"] if site["valid"] and site["affordable"] else ROAD_COLORS["invalid"]
 	_preview.visible = true
 	_preview.mesh.size = Vector3(site["size"] * 2.0, 6.0, site["size"] * 2.0)
-	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(p.x, site["y"] + 3.0, p.z))
+	_preview.transform = Transform3D(Basis(Vector3.UP, -_angle), Vector3(p.x, site["y"] + 3.0, p.z))
 	var ring := PackedVector3Array()
 	for i in RANGE_SEGMENTS + 1:
 		var angle := TAU * i / RANGE_SEGMENTS
@@ -852,15 +905,15 @@ func _hover_battery(screen: Vector2) -> void:
 	elif site["why"] != "":
 		message.emit("Anti-aircraft battery: %s" % site["why"])
 	else:
-		message.emit("Anti-aircraft battery: cost %s and %s a month   range %d m (the circle)   needs people to man it and ammunition from a gateway" % [_money(site["price"]), _money(site["upkeep"]), roundi(site["range"])])
+		message.emit("Anti-aircraft battery: cost %s and %s a month   range %d m (the circle)   needs people to man it and ammunition from a gateway%s" % [_money(site["price"] + site["pad_money"]), _money(site["upkeep"]), roundi(site["range"]), _pad_text(site)])
 
 
 func _click_battery(screen: Vector2) -> void:
 	var target: Variant = ground_point(screen) # not snapped to a junction: a battery stands clear of the roads
 	if target == null:
 		return
-	var site: Dictionary = host.BatteryPreview(target.x, target.z)
-	if host.BuildBattery(target.x, target.z):
+	var site: Dictionary = host.BatteryPreview(target.x, target.z, _angle, _raise)
+	if host.BuildBattery(target.x, target.z, _angle, _raise):
 		message.emit("Anti-aircraft battery built: bring people to it by a road and ammunition by a station that covers it")
 	elif not site["available"]:
 		message.emit("Can't build one yet: the guns are available from month %d" % site["from_month"])

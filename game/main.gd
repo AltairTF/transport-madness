@@ -528,7 +528,7 @@ func _selftest_build() -> void:
 func _selftest_lines() -> void:
 	host.NewEmptyWorld(Session.world_seed)
 	await get_tree().process_frame
-	print("SELFTEST lines: road built=%s depot=%s" % [host.BuildRoad(0, 0, 1200, 0, 0), host.BuildDepot(0, 0, 0)])
+	print("SELFTEST lines: road built=%s depot=%s" % [host.BuildRoad(0, 0, 1200, 0, 0), host.BuildDepot(0, 0, 0, false, NAN, 0.0)])
 	var a: int = host.BuildStation(150, 0, false)
 	var b: int = host.BuildStation(1050, 0, true)
 	var bus_line: int = host.CreateLine(PackedInt32Array([a, b]))

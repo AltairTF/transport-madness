@@ -30,9 +30,11 @@ public sealed record AddDepotCommand(int Node, DepotLevel Level) : SimCommand;
 /// <summary>
 /// Builds a depot where it is put, not on a node (M6f): against a road when one is near (the road is split there), joined to the nearest road by a Path
 /// when one is within reach, or alone, not connected until a road reaches it. See <see cref="Simulation.PlanDepot"/>. Result: the depot id, -1 when
-/// refused (in water, a depot there already, or not enough money for it and its Path).
+/// refused (in water, a depot there already, or not enough money for it, its Path and the levelling of its pad).
+/// With <paramref name="Free"/> it stands exactly at (X, Z) turned by <paramref name="Angle"/> (NaN: toward the nearest road, else town) and is not drawn against a road; its door
+/// is joined to a road within reach by a Path (M6g). <paramref name="Raise"/> lifts the floor that many metres above the default height of its pad (negative lowers it).
 /// </summary>
-public sealed record BuildDepotCommand(float X, float Z, DepotLevel Level) : SimCommand;
+public sealed record BuildDepotCommand(float X, float Z, DepotLevel Level, bool Free = false, float Angle = float.NaN, float Raise = 0f) : SimCommand;
 
 /// <summary>
 /// Raises a depot to a higher level in place, paying the difference in price: a Workshop does a Service and has two bays, a Complex also does an
@@ -191,7 +193,7 @@ public readonly record struct LoggedCommand(long Tick, SimCommand Command);
 public sealed record RequestImportCommand(int Gateway, string Cargo) : SimCommand;
 
 /// <summary>Builds an anti-aircraft battery (C13) on the ground at (X, Z), from the month the guns are available. Result: the id of the industry that is the battery, -1 when refused (see <see cref="Simulation.WhyNotBattery"/>).</summary>
-public sealed record BuildBatteryCommand(float X, float Z) : SimCommand;
+public sealed record BuildBatteryCommand(float X, float Z, float Angle = 0f, float Raise = 0f) : SimCommand;
 
 /// <summary>Takes up an order the government has offered (C5); the clock to its deadline starts now. Result: 1, 0 when refused (see <see cref="Simulation.WhyNotAccept"/>).</summary>
 public sealed record AcceptOrderCommand(int Order) : SimCommand;

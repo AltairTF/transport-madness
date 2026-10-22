@@ -19,10 +19,12 @@ public enum DepotConnection
 /// </summary>
 public readonly record struct DepotPlan(
     bool Valid, string Reason, DepotConnection Connection, float X, float Z, float Angle, float AccessX, float AccessZ,
-    int Node, RoadId SplitRoad, float SplitAlong, float PathFromX, float PathFromZ, bool PathBuildable, RoadCost? PathCost, int Demolished, long DemolitionPrice)
+    int Node, RoadId SplitRoad, float SplitAlong, float PathFromX, float PathFromZ, bool PathBuildable, RoadCost? PathCost, int Demolished, long DemolitionPrice, PadPlan Pad = default)
 {
     /// <summary>The price of the Path, its demolitions included; 0 when there is none to build.</summary>
     public float PathMoney => Connection == DepotConnection.Path && PathBuildable ? (PathCost?.Money ?? 0f) + DemolitionPrice : 0f;
+    /// <summary>The levelling of the ground under it (M6g); <see cref="PadPlan.Reason"/> says why it cannot be made.</summary>
+    public long PadMoney => Pad.Money;
 }
 
 public sealed partial class Simulation
@@ -54,11 +56,67 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// How a depot clicked for at (x, z) would be placed (see <see cref="DepotPlan"/>): within <c>crews.depotBesideRadius</c> of a road it stands against it,
+    /// How a depot clicked for at (x, z) would be placed (M6g): <see cref="PlanSnappedDepot"/> by default, or with <paramref name="free"/> exactly there, turned by
+    /// <paramref name="angle"/> (NaN: toward the nearest road, else town) and joined by a Path to a road within reach of its door. Either way the ground under it is levelled
+    /// (<see cref="PlanPad"/>, <paramref name="raise"/> metres above the default height) and a pad that cannot be made makes the plan invalid.
+    /// </summary>
+    public DepotPlan PlanDepot(float x, float z, bool free = false, float angle = float.NaN, float raise = 0f)
+    {
+        var plan = free ? PlanFreeDepot(x, z, angle) : PlanSnappedDepot(x, z);
+        if (!plan.Valid) return plan;
+        float baseHeight = float.NaN; // the mean ground under it, or the road at its door when it stands against one
+        if (plan.Connection == DepotConnection.Beside)
+            baseHeight = plan.Node >= 0 ? _net.GetNodeHeight(plan.Node) : _net.RoadHeightAt(plan.SplitRoad, plan.SplitAlong);
+        var pad = PlanPad(plan.X, plan.Z, plan.Angle, _crew.DepotHalfSize, baseHeight, raise);
+        plan = plan with { Pad = pad };
+        return pad.Ok ? plan : plan with { Valid = false, Reason = pad.Reason };
+    }
+
+    /// <summary>A depot placed exactly where it is clicked (the snap is off): its door is <c>depotHalfSize + edgeMargin</c> from its middle along <paramref name="angle"/>.</summary>
+    DepotPlan PlanFreeDepot(float x, float z, float angle)
+    {
+        float reach = _crew.DepotHalfSize + _accessTuning.EdgeMargin;
+        DepotPlan Invalid(string why) => new(false, why, DepotConnection.None, x, z, float.IsNaN(angle) ? 0f : angle, x, z, -1, default, 0f, 0f, 0f, false, null, 0, 0);
+
+        if (_net.Terrain is { } terrain && terrain.IsWater(x, z)) return Invalid("it cannot stand in water");
+        if (_net.RoadAt(x, z, _crew.DepotHalfSize) != null) return Invalid("a road is in the way");
+        if (float.IsNaN(angle))
+        {
+            var near = NearestRoadSpot(x, z, _accessTuning.SnapRadius + reach);
+            if (near is { } n && n.Distance > 1e-3f) angle = MathF.Atan2(n.Z - z, n.X - x);
+            else
+            {
+                var (tx, tz) = AccessPointOf(x, z, 0f, _crew.DepotHalfSize);
+                angle = MathF.Atan2(tz - z, tx - x);
+            }
+        }
+        float ax = x + MathF.Cos(angle) * reach, az = z + MathF.Sin(angle) * reach;
+        var spot = NearestRoadSpot(ax, az, _accessTuning.SnapRadius);
+        if (spot is { } s && s.Distance <= DoorOnRoad)
+        {
+            if (s.Node >= 0)
+                foreach (var d in _depots)
+                    if (d.Active && d.Node == s.Node) return Invalid("a depot has this node already");
+            return new DepotPlan(true, "", DepotConnection.Beside, x, z, angle, s.X, s.Z, s.Node, s.Road, s.Along, 0f, 0f, false, null, 0, 0);
+        }
+        if (spot is { } p)
+        {
+            RoadCost? cost = _net.EstimateCost(p.X, p.Z, ax, az, RoadType.Path);
+            var demolition = cost == null ? default : EstimateRoadDemolition(p.X, p.Z, ax, az, RoadType.Path);
+            return new DepotPlan(true, "", DepotConnection.Path, x, z, angle, ax, az, -1, default, 0f, p.X, p.Z, cost != null, cost, demolition.Count, demolition.Price);
+        }
+        return new DepotPlan(true, "", DepotConnection.None, x, z, angle, ax, az, -1, default, 0f, 0f, 0f, false, null, 0, 0);
+    }
+
+    /// <summary>How near a road a door put with the snap off must be for the depot to stand on it, as a depot against a road does, in metres.</summary>
+    const float DoorOnRoad = 2f;
+
+    /// <summary>
+    /// How a depot clicked for at (x, z) would be placed with the snap on (see <see cref="DepotPlan"/>): within <c>crews.depotBesideRadius</c> of a road it stands against it,
     /// else with a road within reach of its access point (<c>access.snapRadius</c>) it gets a Path from the nearest point of that road, else it stands alone
     /// with its access point toward the nearest town. A depot cannot stand in water or where an open depot already has its access node.
     /// </summary>
-    public DepotPlan PlanDepot(float x, float z)
+    DepotPlan PlanSnappedDepot(float x, float z)
     {
         float reach = _crew.DepotHalfSize + _accessTuning.EdgeMargin; // from the middle to the access point
         DepotPlan Invalid(string why) => new(false, why, DepotConnection.None, x, z, 0f, x, z, -1, default, 0f, 0f, 0f, false, null, 0, 0);
@@ -103,10 +161,10 @@ public sealed partial class Simulation
     int BuildFreeDepot(BuildDepotCommand c)
     {
         SyncNetwork();
-        var plan = PlanDepot(c.X, c.Z);
+        var plan = PlanDepot(c.X, c.Z, c.Free, c.Angle, c.Raise);
         if (!plan.Valid || !Enum.IsDefined(c.Level)) return -1;
         long price = _economy.DepotPrice.For(c.Level);
-        if (!CanAfford(price + plan.PathMoney)) return -1;
+        if (!CanAfford(price + plan.PathMoney + plan.PadMoney)) return -1;
 
         int node = -1;
         if (plan.Connection == DepotConnection.Beside)
@@ -115,6 +173,7 @@ public sealed partial class Simulation
             SyncNetwork();
         }
         if (!TrySpend(price, LedgerEntry.Depots)) return -1;
+        if (plan.PadMoney > 0) Charge(plan.PadMoney, LedgerEntry.Construction);
         var depot = new Depot(_depots.Count, node, c.Level, _crew.PerDepot.For(c.Level))
         {
             FreeStanding = true, X = plan.X, Z = plan.Z, Angle = plan.Angle, AccessX = plan.AccessX, AccessZ = plan.AccessZ, Active = false,
@@ -122,6 +181,7 @@ public sealed partial class Simulation
         _depots.Add(depot);
         if (plan.Connection == DepotConnection.Path && plan.PathBuildable)
             BuildRoadPiece(plan.PathFromX, plan.PathFromZ, plan.AccessX, plan.AccessZ, RoadType.Path, _net.Tuning.Roads.Path.SpeedLimit, 0f, 0f);
+        LevelPad(plan.X, plan.Z, plan.Angle, _crew.DepotHalfSize, plan.Pad);
         SyncNetwork();
         UpdateDepotConnections();
         return depot.Id;

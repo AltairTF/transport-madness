@@ -408,7 +408,7 @@
   // Access points (C10): an industry and a road gateway have an access point on the edge of their square that faces the nearest town, edgeMargin outside it,
   // and it is a node of the road network once a road reaches it. A road with an end within snapRadius of a point ends at it; a road that passes within snapRadius of it
   // (and not nearer than a road piece's minimum length) gets a spur of its own type to it.
-  "access": { "snapRadius": 60.0, "edgeMargin": 3.0 },
+  "access": { "snapRadius": 60.0, "edgeMargin": 3.0, "padShoulder": 10.0, "padMaxChange": 6.0, "padCostShare": 0.35, "padRaiseStep": 0.5 }, // padShoulder, padMaxChange, padCostShare, padRaiseStep: the levelled ground under a depot or battery (M6g)
 
   // Stations stand at a road node. On a map without towns every station simply produces each cargo at its fixed rate (supplyPerDay below); with towns passengers come from trip groups that queue there and cargo from the industries it covers.
   "stations": {

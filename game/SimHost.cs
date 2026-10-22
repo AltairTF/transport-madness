@@ -478,35 +478,47 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// Builds a depot where it is put (<see cref="Simulation.PlanDepot"/>): against a road, with a Path to one within reach, or alone and not connected until a road
-    /// reaches it. False when it cannot be built or paid for.
+    /// reaches it. With <paramref name="free"/> (the snap off or the depot turned by hand) it stands exactly there at <paramref name="angle"/> (NaN: toward the nearest road or town);
+    /// <paramref name="raise"/> lifts the floor of its levelled pad. False when it cannot be built or paid for.
     /// </summary>
-    public bool BuildDepot(float x, float z, int level)
+    public bool BuildDepot(float x, float z, int level, bool free, float angle, float raise)
     {
-        if (Sim.Execute(new BuildDepotCommand(x, z, (DepotLevel)Math.Clamp(level, 0, 2))) < 0) return false;
+        if (Sim.Execute(new BuildDepotCommand(x, z, (DepotLevel)Math.Clamp(level, 0, 2), free, angle, raise)) < 0) return false;
         RebuildRoads();
         return true;
     }
 
+    /// <summary>How many metres one press of the raise and lower keys moves the floor of a building being placed.</summary>
+    public float PadRaiseStep() => Sim.PadRaiseStep;
+
     /// <summary>
     /// What a depot clicked for at (x, z) would be, for the build preview: {valid, why (when not), connection (0 alone, 1 against a road, 2 with a Path), x, z (its middle, on the
-    /// ground), angle, size (its box), price (the depot's), path_money, path_length, path_buildable, path_runs (as RoadRuns), affordable}.
+    /// ground), y (the floor of its pad), angle, size (its box), price (the depot's), path_money, path_length, path_buildable, path_runs (as RoadRuns), pad_money, pad_cut and pad_fill
+    /// (cubic metres), pad_max_cut and pad_max_fill (metres), affordable}. A depot refused for its pad still has its place, angle, size and pad figures, to be drawn red.
     /// </summary>
-    public Godot.Collections.Dictionary DepotPreview(float x, float z, int level)
+    public Godot.Collections.Dictionary DepotPreview(float x, float z, int level, bool free, float angle, float raise)
     {
-        var plan = Sim.PlanDepot(x, z);
-        if (!plan.Valid) return new Godot.Collections.Dictionary { ["valid"] = false, ["why"] = plan.Reason };
+        var plan = Sim.PlanDepot(x, z, free, angle, raise);
         var lvl = (DepotLevel)Math.Clamp(level, 0, 2);
+        var result = new Godot.Collections.Dictionary
+        {
+            ["valid"] = plan.Valid, ["why"] = plan.Reason, ["x"] = plan.X, ["z"] = plan.Z, ["angle"] = plan.Angle, ["size"] = _whitebox.Depots[(int)lvl].Size,
+            ["y"] = plan.Pad.Reason == null ? HeightAt(plan.X, plan.Z) : plan.Pad.Height,
+            ["pad_money"] = plan.PadMoney, ["pad_cut"] = plan.Pad.Cut, ["pad_fill"] = plan.Pad.Fill, ["pad_max_cut"] = plan.Pad.MaxCut, ["pad_max_fill"] = plan.Pad.MaxFill,
+            ["pad_height"] = plan.Pad.Height, ["pad_step"] = Sim.PadRaiseStep,
+        };
+        if (!plan.Valid) return result;
         long price = Sim.DepotPrice(false, lvl);
         bool path = plan.Connection == DepotConnection.Path;
-        return new Godot.Collections.Dictionary
-        {
-            ["valid"] = true, ["connection"] = (int)plan.Connection, ["x"] = plan.X, ["y"] = HeightAt(plan.X, plan.Z), ["z"] = plan.Z, ["angle"] = plan.Angle,
-            ["size"] = _whitebox.Depots[(int)lvl].Size, ["price"] = price,
-            ["path_money"] = plan.PathMoney, ["path_length"] = plan.PathCost?.Length ?? 0f, ["path_buildable"] = plan.PathBuildable,
-            ["path_runs"] = path && plan.PathBuildable ? RoadRuns(plan.PathFromX, plan.PathFromZ, plan.AccessX, plan.AccessZ, 0f, 2) : new Godot.Collections.Array<Godot.Collections.Dictionary>(),
-            ["path_points"] = path && !plan.PathBuildable ? CurvePoints(plan.PathFromX, plan.PathFromZ, plan.AccessX, plan.AccessZ, 0f) : System.Array.Empty<Vector3>(),
-            ["affordable"] = Sim.CanAfford(price + plan.PathMoney),
-        };
+        result["connection"] = (int)plan.Connection;
+        result["price"] = price;
+        result["path_money"] = plan.PathMoney;
+        result["path_length"] = plan.PathCost?.Length ?? 0f;
+        result["path_buildable"] = plan.PathBuildable;
+        result["path_runs"] = path && plan.PathBuildable ? RoadRuns(plan.PathFromX, plan.PathFromZ, plan.AccessX, plan.AccessZ, 0f, 2) : new Godot.Collections.Array<Godot.Collections.Dictionary>();
+        result["path_points"] = path && !plan.PathBuildable ? CurvePoints(plan.PathFromX, plan.PathFromZ, plan.AccessX, plan.AccessZ, 0f) : System.Array.Empty<Vector3>();
+        result["affordable"] = Sim.CanAfford(price + plan.PathMoney + plan.PadMoney);
+        return result;
     }
 
     // ---- Company, stations and lines ----------------------------------------------------------------------

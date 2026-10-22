@@ -222,6 +222,66 @@ public sealed class Terrain
         }
     }
 
+    /// <summary>What levelling a pad changes: the volumes of ground taken away (cut) and put on (fill) in cubic metres, and the largest drop and rise of any height sample in metres.</summary>
+    public readonly record struct PadChange(float Cut, float Fill, float MaxCut, float MaxFill);
+
+    /// <summary>
+    /// Levels the ground under a square of half-side <paramref name="half"/> centred at (x, z) and turned by <paramref name="angle"/> to <paramref name="height"/>, blending back
+    /// to the old ground over <paramref name="shoulder"/> metres (as <see cref="CarvePath"/> does for a road). Samples for which <paramref name="skip"/> is true (under a road)
+    /// are left alone. With <paramref name="apply"/> false nothing changes and the result is what it would change.
+    /// </summary>
+    public PadChange LevelPad(float x, float z, float angle, float half, float height, float shoulder, bool apply, Func<float, float, bool>? skip = null)
+    {
+        half += CellSize; // every sample that bilinear interpolation reads under the footprint is level
+        float reach = half * 1.4143f + shoulder;
+        int iMin = Clamp((int)MathF.Floor((x - reach) / CellSize + Cells * 0.5f));
+        int iMax = Clamp((int)MathF.Ceiling((x + reach) / CellSize + Cells * 0.5f));
+        int jMin = Clamp((int)MathF.Floor((z - reach) / CellSize + Cells * 0.5f));
+        int jMax = Clamp((int)MathF.Ceiling((z + reach) / CellSize + Cells * 0.5f));
+        float cos = MathF.Cos(angle), sin = MathF.Sin(angle), area = CellSize * CellSize;
+        float cut = 0f, fill = 0f, maxCut = 0f, maxFill = 0f;
+        bool changed = false;
+        for (int j = jMin; j <= jMax; j++)
+            for (int i = iMin; i <= iMax; i++)
+            {
+                float px = (i - Cells * 0.5f) * CellSize, pz = (j - Cells * 0.5f) * CellSize;
+                float dx = px - x, dz = pz - z;
+                float lx = MathF.Abs(dx * cos + dz * sin), lz = MathF.Abs(-dx * sin + dz * cos);
+                float ox = MathF.Max(lx - half, 0f), oz = MathF.Max(lz - half, 0f);
+                float distance = MathF.Sqrt(ox * ox + oz * oz);
+                if (distance >= shoulder) continue;
+                if (skip != null && skip(px, pz)) continue;
+                float blend = distance <= 0f ? 1f : 1f - distance / shoulder;
+                blend = blend * blend * (3f - 2f * blend);
+                ref float h = ref _heights[j * Samples + i];
+                float delta = (height - h) * blend;
+                if (delta == 0f) continue;
+                if (delta < 0f) { cut -= delta * area; maxCut = MathF.Max(maxCut, -delta); }
+                else { fill += delta * area; maxFill = MathF.Max(maxFill, delta); }
+                if (apply) { h += delta; changed = true; }
+            }
+        if (changed)
+        {
+            Version++;
+            MarkChanged(iMin, iMax, jMin, jMax);
+        }
+        return new PadChange(cut, fill, maxCut, maxFill);
+    }
+
+    /// <summary>The mean height of the ground under a square (a grid of points across it), the pad height when the player has not raised or lowered it.</summary>
+    public float MeanHeight(float x, float z, float angle, float half)
+    {
+        float cos = MathF.Cos(angle), sin = MathF.Sin(angle), sum = 0f;
+        const int n = 5;
+        for (int a = 0; a < n; a++)
+            for (int b = 0; b < n; b++)
+            {
+                float lx = (a / (n - 1f) * 2f - 1f) * half, lz = (b / (n - 1f) * 2f - 1f) * half;
+                sum += HeightAt(x + lx * cos - lz * sin, z + lx * sin + lz * cos);
+            }
+        return sum / (n * n);
+    }
+
     /// <summary>
     /// Chunks (index = row * <see cref="ChunksPerSide"/> + column) whose mesh is out of date since the last call, in
     /// ascending order. A mesh depends on the samples one step beyond its edge (for normals), so neighbours are included.

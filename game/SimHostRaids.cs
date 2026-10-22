@@ -71,23 +71,30 @@ public partial class SimHost
     }
 
     /// <summary>
-    /// What a click would do with the anti-aircraft tool (C13): {valid, why (what is wrong, "" when nothing), x, y, z, size (half the side of the square it stands on), price, upkeep (a month), range (metres),
-    /// affordable, available (the guns can be built yet), from_month}.
+    /// What a click would do with the anti-aircraft tool (C13): {valid, why (what is wrong, "" when nothing), x, y (the floor of its pad), z, size (half the side of the square it stands on), price, upkeep (a month), range (metres),
+    /// affordable, available (the guns can be built yet), from_month, pad_money, pad_cut, pad_fill (cubic metres), pad_max_cut, pad_max_fill (metres), pad_step (one key press of raising)}. It stands turned by <paramref name="angle"/>,
+    /// <paramref name="raise"/> metres above the mean ground.
     /// </summary>
-    public Godot.Collections.Dictionary BatteryPreview(float x, float z)
+    public Godot.Collections.Dictionary BatteryPreview(float x, float z, float angle, float raise)
     {
         var a = Sim.AntiAircraft;
-        string? why = Sim.WhyNotBattery(x, z);
+        var (pad, why) = Sim.PlanBattery(x, z, angle, raise);
         return new Godot.Collections.Dictionary
         {
-            ["valid"] = why == null, ["why"] = why ?? "", ["x"] = x, ["y"] = HeightAt(x, z), ["z"] = z, ["size"] = Sim.IndustryTuning.Types[Sim.BatteryType].Size,
-            ["price"] = a.Price, ["upkeep"] = a.UpkeepPerMonth, ["range"] = a.Range, ["affordable"] = Sim.CanAfford(a.Price),
+            ["valid"] = why == null, ["why"] = why ?? "", ["x"] = x, ["y"] = pad.Reason == null ? HeightAt(x, z) : pad.Height, ["z"] = z, ["size"] = Sim.IndustryTuning.Types[Sim.BatteryType].Size,
+            ["price"] = a.Price, ["upkeep"] = a.UpkeepPerMonth, ["range"] = a.Range, ["affordable"] = Sim.CanAfford(a.Price + pad.Money),
             ["available"] = Sim.MonthIndex >= a.FromMonth, ["from_month"] = a.FromMonth,
+            ["pad_money"] = pad.Money, ["pad_cut"] = pad.Cut, ["pad_fill"] = pad.Fill, ["pad_max_cut"] = pad.MaxCut, ["pad_max_fill"] = pad.MaxFill, ["pad_step"] = Sim.PadRaiseStep,
         };
     }
 
-    /// <summary>Builds an anti-aircraft battery at a place; false when refused, and <see cref="BatteryPreview"/> says why.</summary>
-    public bool BuildBattery(float x, float z) => Sim.Execute(new BuildBatteryCommand(x, z)) >= 0;
+    /// <summary>Builds an anti-aircraft battery at a place, turned and raised; false when refused, and <see cref="BatteryPreview"/> says why.</summary>
+    public bool BuildBattery(float x, float z, float angle, float raise)
+    {
+        if (Sim.Execute(new BuildBatteryCommand(x, z, angle, raise)) < 0) return false;
+        RebuildRoads(); // the pad moved the ground
+        return true;
+    }
 
     Node3D NewAircraft()
     {

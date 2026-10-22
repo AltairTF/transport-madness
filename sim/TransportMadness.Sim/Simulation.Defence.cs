@@ -65,14 +65,29 @@ public sealed partial class Simulation
         return null;
     }
 
-    /// <summary><see cref="BuildBatteryCommand"/>. Returns the id of the industry that is the new battery, -1 when refused.</summary>
-    int BuildBattery(float x, float z)
+    /// <summary>
+    /// The pad under a battery at (x, z) turned by <paramref name="angle"/>, raised by <paramref name="raise"/> metres, and why it cannot be built there (null when it can):
+    /// <see cref="WhyNotBattery"/>, else the pad, else the money for both.
+    /// </summary>
+    public (PadPlan Pad, string? Why) PlanBattery(float x, float z, float angle, float raise)
     {
-        if (WhyNotBattery(x, z) != null) return -1;
+        var why = WhyNotBattery(x, z);
+        var pad = _batteryType < 0 ? default : PlanPad(x, z, angle, _industryTuning.Types[_batteryType].Size, float.NaN, raise);
+        if (why == null && !pad.Ok) why = $"The pad is not possible: {pad.Reason}";
+        if (why == null && !CanAfford(_war.AntiAircraft.Price + pad.Money)) why = "Not enough money";
+        return (pad, why);
+    }
+
+    /// <summary><see cref="BuildBatteryCommand"/>. Returns the id of the industry that is the new battery, -1 when refused.</summary>
+    int BuildBattery(float x, float z, float angle, float raise)
+    {
+        var (pad, why) = PlanBattery(x, z, angle, raise);
+        if (why != null) return -1;
         var a = _war.AntiAircraft;
-        Charge(a.Price, LedgerEntry.Construction);
+        Charge(a.Price + pad.Money, LedgerEntry.Construction);
+        LevelPad(x, z, angle, _industryTuning.Types[_batteryType].Size, pad);
         float y = _net.Terrain?.HeightAt(x, z) ?? 0f;
-        var industry = new Industry(_industries.Count, _batteryType, x, y, z, 0f, _cargo.Count);
+        var industry = new Industry(_industries.Count, _batteryType, x, y, z, angle, _cargo.Count);
         _industries.Add(industry);
         SetAccessPoint(industry);
         StaffNewIndustry(industry);

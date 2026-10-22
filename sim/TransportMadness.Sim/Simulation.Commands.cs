@@ -105,7 +105,7 @@ public sealed partial class Simulation
             case RequestImportCommand c:
                 return RequestImport(c.Gateway, c.Cargo);
             case BuildBatteryCommand c:
-                return BuildBattery(c.X, c.Z);
+                return BuildBattery(c.X, c.Z, c.Angle, c.Raise);
             case SetPowerPurchaseCommand c:
                 return SetPowerPurchase(c.Megawatts);
             case SetRequisitionRuleCommand c:
