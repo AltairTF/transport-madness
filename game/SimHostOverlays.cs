@@ -39,6 +39,7 @@ public partial class SimHost
 
     // What the building colours are worked out from for the overlays that colour them.
     HashSet<int> _coveredBuildings = new();
+    Dictionary<int, float> _reachedBuildings = new(); // by building id: the best coverage of a building outside every circle, along the streets (M6h)
     HashSet<int> _coveredIndustries = new();
 
     /// <summary>The names of the overlays, for the HUD's bar.</summary>
@@ -192,15 +193,19 @@ public partial class SimHost
             case MapOverlay.Coverage:
             {
                 RefreshCovered();
-                float radius = Sim.Network.Tuning.Stations.CoverageRadius;
+                float radius = Sim.Network.Tuning.Stations.CoverageRadius, reach = Sim.Network.Tuning.Stations.ReachRadius;
+                var walks = new List<List<ReachRoad>>();
                 foreach (var station in Sim.Stations)
                 {
                     if (!station.Active || station.DockKind != 0) continue; // the stop at an industry covers that industry only
                     var p = StationPosition(station.Id);
                     quads += Ring(st, p.X, p.Z, radius, 2.5f, Neutral);
+                    if (station.Mode == StationMode.Road) walks.Add(Sim.ReachRoads(Sim.WalkReach(station.Node)));
                 }
-                Row(Neutral, $"What a station covers ({radius:0} m)");
+                quads += ReachGradient(st, walks);
+                Row(Neutral, $"What a station covers fully ({radius:0} m)");
                 Row(Good, "Covered building or industry");
+                Row(Fair, $"Reached along the streets: the chance falls to nothing at {reach:0} m of walking");
                 Row(Bad, "Not covered");
                 break;
             }
@@ -295,9 +300,12 @@ public partial class SimHost
     {
         _coveredBuildings = new HashSet<int>();
         _coveredIndustries = new HashSet<int>();
+        _reachedBuildings = new Dictionary<int, float>();
         foreach (var station in Sim.Stations)
         {
             if (!station.Active) continue;
+            foreach (var r in Sim.ReachOf(station))
+                if (!_reachedBuildings.TryGetValue(r.Building, out float known) || known < r.Coverage) _reachedBuildings[r.Building] = r.Coverage;
             foreach (int b in Sim.CoveredBy(station)) _coveredBuildings.Add(b);
             foreach (int i in Sim.IndustriesCoveredBy(station)) _coveredIndustries.Add(i);
         }
@@ -305,6 +313,13 @@ public partial class SimHost
 
     /// <summary>A strip over a road, slightly narrower than it, in <paramref name="colour"/>. Returns the quads added.</summary>
     int RoadStrip(SurfaceTool st, int roadId, Color colour)
+    {
+        var c = new Color(colour.R, colour.G, colour.B, 0.85f);
+        return RoadGradient(st, roadId, _ => c);
+    }
+
+    /// <summary>A strip over a road whose colour changes along it: <paramref name="colourAt"/> gives the colour (alpha 0 leaves a stretch out) at a distance along the road. Returns the quads added.</summary>
+    int RoadGradient(SurfaceTool st, int roadId, Func<float, Color> colourAt)
     {
         var net = Sim.Network;
         var id = new RoadId(roadId);
@@ -328,9 +343,15 @@ public partial class SimHost
             left[i] = new Vector3(x + nx * half, y, z + nz * half);
             right[i] = new Vector3(x - nx * half, y, z - nz * half);
         }
-        var c = new Color(colour.R, colour.G, colour.B, 0.85f);
-        for (int i = 0; i < n; i++) Quad(st, left[i], right[i], right[i + 1], left[i + 1], c);
-        return n;
+        int quads = 0;
+        for (int i = 0; i < n; i++)
+        {
+            var c = colourAt(g.Length * (i + 0.5f) / n);
+            if (c.A <= 0f) continue;
+            Quad(st, left[i], right[i], right[i + 1], left[i + 1], c);
+            quads++;
+        }
+        return quads;
     }
 
     /// <summary>A ring on the ground (radius <paramref name="radius"/>, <paramref name="width"/> wide). Returns the quads added.</summary>
@@ -413,7 +434,7 @@ public partial class SimHost
     {
         MapOverlay.None => own,
         MapOverlay.Connectivity => b.Type == BuildingType.Home && b.State == BuildingState.Active ? (b.Reached ? ReachedColour : CutOffColour) : own.Lerp(DimmedColour, 0.7f),
-        MapOverlay.Coverage => b.State == BuildingState.Active ? (_coveredBuildings.Contains(b.Id) ? Good : Bad) : own.Lerp(DimmedColour, 0.7f),
+        MapOverlay.Coverage => b.State == BuildingState.Active ? (_coveredBuildings.Contains(b.Id) ? Good : CoverageColour(_reachedBuildings.GetValueOrDefault(b.Id))) : own.Lerp(DimmedColour, 0.7f),
         _ => own.Lerp(DimmedColour, 0.7f),
     };
 }

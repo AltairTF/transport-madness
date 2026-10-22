@@ -6,8 +6,22 @@ public readonly record struct ReachedBuilding(int Building, float Coverage, floa
 /// <summary>A station that a building outside its circle is within walking reach of, along the streets (M6h).</summary>
 public readonly record struct ReachingStation(int Station, float Coverage, float Distance);
 
-/// <summary>A road with the walking distance from a station to each of its ends, <see cref="float.PositiveInfinity"/> for an end not reached (M6h).</summary>
-public readonly record struct ReachRoad(RoadId Road, float FromDistance, float ToDistance, float Length);
+/// <summary>
+/// A road with the walking distance from a station to each of its ends, <see cref="float.PositiveInfinity"/> for an end not reached (M6h). For the road a station that is not built yet would
+/// split, <see cref="SourceAlong"/> is where along it the station would stand (NaN for every other road): the walk at a point of it is the distance to there.
+/// </summary>
+public readonly record struct ReachRoad(RoadId Road, float FromDistance, float ToDistance, float Length, float SourceAlong = float.NaN)
+{
+    /// <summary>The walk in metres to the point <paramref name="s"/> metres along the road.</summary>
+    public float WalkAt(float s)
+    {
+        float d = MathF.Min(FromDistance + s, ToDistance + Length - s);
+        return float.IsNaN(SourceAlong) ? d : MathF.Min(d, MathF.Abs(s - SourceAlong));
+    }
+}
+
+/// <summary>What a station at a place would reach (M6h): the walk over the roads, and the buildings in its circle and outside it that its streets reach, for a preview.</summary>
+public sealed record StationReachPlan(Dictionary<int, float> Walk, RoadId? SourceRoad, float SourceAlong, float X, float Z, List<int> Circle, List<ReachedBuilding> Reached, int Industries);
 
 /// <summary>
 /// Coverage along the streets (M6h). Inside its circle (<c>stations.coverageRadius</c>) a station covers a building fully, as before. Beyond it coverage spreads along the roads: the
@@ -33,15 +47,21 @@ public sealed partial class Simulation
     }
 
     /// <summary>The walking distance along the roads from a node to every node within <c>stations.reachRadius</c>.</summary>
-    public Dictionary<int, float> WalkReach(int node)
+    public Dictionary<int, float> WalkReach(int node) => WalkReach(node < 0 ? Array.Empty<(int, float)>() : new[] { (node, 0f) });
+
+    /// <summary>The same from several starting nodes, each with the distance already walked to it (the two ends of a road that a station standing in the middle of it would split).</summary>
+    public Dictionary<int, float> WalkReach(IEnumerable<(int Node, float Distance)> seeds)
     {
         var distance = new Dictionary<int, float>();
-        if (node < 0) return distance;
         SyncNetwork();
         float limit = _stationTuning.ReachRadius;
         var queue = new PriorityQueue<int, float>();
-        distance[node] = 0f;
-        queue.Enqueue(node, 0f);
+        foreach (var (node, d0) in seeds)
+        {
+            if (node < 0 || d0 > limit || (distance.TryGetValue(node, out float known) && known <= d0)) continue;
+            distance[node] = d0;
+            queue.Enqueue(node, d0);
+        }
         while (queue.TryDequeue(out int n, out float d))
         {
             if (d > distance[n]) continue;
@@ -59,8 +79,8 @@ public sealed partial class Simulation
         return distance;
     }
 
-    /// <summary>The roads the walk reached, with the distance to each end (one entry for a road).</summary>
-    public List<ReachRoad> ReachRoads(Dictionary<int, float> distance)
+    /// <summary>The roads the walk reached, with the distance to each end (one entry for a road); <paramref name="sourceRoad"/> is the road a station not built yet would stand on.</summary>
+    public List<ReachRoad> ReachRoads(Dictionary<int, float> distance, RoadId? sourceRoad = null, float sourceAlong = float.NaN)
     {
         var seen = new HashSet<int>();
         var list = new List<ReachRoad>();
@@ -69,7 +89,8 @@ public sealed partial class Simulation
             {
                 var road = _net.GetRoad(id);
                 if (road.Retired || !seen.Add(id.Value)) continue;
-                list.Add(new ReachRoad(id, distance.GetValueOrDefault(road.From, float.PositiveInfinity), distance.GetValueOrDefault(road.To, float.PositiveInfinity), road.Length));
+                list.Add(new ReachRoad(id, distance.GetValueOrDefault(road.From, float.PositiveInfinity), distance.GetValueOrDefault(road.To, float.PositiveInfinity), road.Length,
+                    sourceRoad is { } source && source == id ? sourceAlong : float.NaN));
             }
         list.Sort((a, b) => a.Road.Value.CompareTo(b.Road.Value));
         return list;
@@ -158,5 +179,26 @@ public sealed partial class Simulation
         var (x, z) = PointOf(station);
         var (px, pz) = PlacePoint(place);
         return MathF.Sqrt((px - x) * (px - x) + (pz - z) * (pz - z));
+    }
+
+    /// <summary>
+    /// What a road station clicked for at (x, z) would reach, for the build preview: its walk over the roads (from its node, or from the two ends of the road it would split), the standing
+    /// buildings in its circle, those outside it that its streets reach and the industries in its circle. Null where no station can stand (<see cref="FindStationSite"/>).
+    /// </summary>
+    public StationReachPlan? PlanStationReach(float x, float z)
+    {
+        if (FindStationSite(x, z) is not { } site) return null;
+        Dictionary<int, float> walk;
+        RoadId? source = null;
+        if (site.Node >= 0) walk = WalkReach(site.Node);
+        else
+        {
+            var road = _net.GetRoad(site.Road);
+            walk = WalkReach(new[] { (road.From, site.Along), (road.To, road.Length - site.Along) });
+            source = site.Road;
+        }
+        float radius = _stationTuning.CoverageRadius;
+        var circle = BuildingsNear(site.X, site.Z, radius).Where(id => _buildings[id].State == BuildingState.Active).ToList();
+        return new StationReachPlan(walk, source, site.Along, site.X, site.Z, circle, BuildingsReached(site.X, site.Z, walk), IndustriesNear(site.X, site.Z, radius).Count);
     }
 }

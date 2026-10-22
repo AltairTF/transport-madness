@@ -8,6 +8,8 @@ extends Node3D
 ##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
 ##   --selftest-place             right click, drag, parallel roads, a turned and raised depot and the camera following, with simulated input on the hills map, print, quit
+##   --selftest-curve             the curved road preview with a third point almost on the line of the first two (a nearly whole circle of a huge radius), print the times, quit
+##   --selftest-reach             with --towns: the station tool over a town and the coverage map view, print and screenshot (--shot), quit
 ##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
@@ -63,7 +65,7 @@ func _ready() -> void:
 			return
 		_loaded = true
 	var map: String = Session.map
-	if _args.has("--hills") or _args.has("--selftest-hills") or _args.has("--selftest-place"):
+	if _args.has("--hills") or _args.has("--selftest-hills") or _args.has("--selftest-place") or _args.has("--selftest-curve"):
 		map = "hills"
 	if _args.has("--towns"):
 		map = "towns"
@@ -184,6 +186,10 @@ func _ready() -> void:
 		_selftest_lines()
 	if _args.has("--selftest-place"):
 		_selftest_place()
+	if _args.has("--selftest-reach"):
+		_selftest_reach()
+	if _args.has("--selftest-curve"):
+		_selftest_curve()
 
 	if _args.has("--bench"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -683,6 +689,68 @@ func _key(keycode: int, shift := false) -> void:
 	event.pressed = true
 	Input.parse_input_event(event)
 	await get_tree().process_frame
+
+
+## A curved road whose third point lies almost on the line through the first two: the arc through them is nearly a whole, huge circle. The preview must stay quick.
+func _selftest_curve() -> void:
+	rig.distance = 400.0
+	rig.pitch = -89.0
+	rig.position = Vector3.ZERO
+	rig._apply()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var camera: Camera3D = rig.get_node("Camera3D")
+	build_tool.set_tool("curve4")
+	build_tool._start = Vector3(-100, host.HeightAt(-100, 0), 0)
+	build_tool._mid = Vector3(0, host.HeightAt(0, 0), 0)
+	for end in [Vector3(100, 0, 0), Vector3(100, 0, 1), Vector3(-60, 0, 1), Vector3(-60, 0, 0.1), Vector3(-99, 0, 3), Vector3(50, 0, 40)]:
+		var screen: Vector2 = get_viewport().get_final_transform() * camera.unproject_position(end)
+		var t0 := Time.get_ticks_msec()
+		build_tool._update_preview(screen)
+		var dt := Time.get_ticks_msec() - t0
+		print("CURVE end %s preview took %d ms (ghost surfaces %d)" % [end, dt, build_tool._ghost.mesh.get_surface_count()])
+	get_tree().quit()
+
+
+func _selftest_reach() -> void:
+	await get_tree().process_frame
+	var towns: Array = host.GetTowns()
+	var town: Dictionary = towns[0]
+	var camera: Camera3D = rig.get_node("Camera3D")
+	rig.position = Vector3(town["x"], host.HeightAt(town["x"], town["z"]), town["z"])
+	rig.distance = 380.0
+	rig.pitch = -55.0
+	rig._apply()
+	await get_tree().process_frame
+	build_tool.message.connect(func(text: String) -> void: print("REACH message: ", text))
+	build_tool.set_tool("station")
+	var spot := Vector3.ZERO
+	var found := false
+	for dz in range(-120, 121, 10):
+		for dx in range(-120, 121, 10):
+			var site: Dictionary = host.StationPreview(town["x"] + dx, town["z"] + dz, false)
+			if site["valid"]:
+				spot = Vector3(site["x"], site["y"], site["z"])
+				found = true
+				break
+		if found:
+			break
+	print("REACH site found=%s at %s" % [found, spot])
+	var motion := InputEventMouseMotion.new()
+	motion.position = get_viewport().get_final_transform() * camera.unproject_position(spot)
+	Input.parse_input_event(motion)
+	for i in 5:
+		await get_tree().process_frame
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	await _mouse_at(camera, spot, MOUSE_BUTTON_LEFT, true)
+	build_tool.set_tool("pointer")
+	host.SetOverlay(4)
+	for i in 70:
+		await get_tree().process_frame
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-map.png"))
+	get_tree().quit()
 
 
 func _selftest_place() -> void:

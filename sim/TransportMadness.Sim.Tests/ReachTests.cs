@@ -136,4 +136,23 @@ public class ReachTests
         }
         Assert.InRange(rode / 400f, coverage - 0.08f, coverage + 0.08f);
     }
+
+    [Fact]
+    public void AStationNotBuiltYet_InTheMiddleOfARoad_ShowsWhatItWouldReach()
+    {
+        var (sim, a, near, outside, far, _) = World();
+        var plan = sim.PlanStationReach(150, 0)!;
+        Assert.NotNull(plan.SourceRoad);
+        Assert.Equal(50f, plan.SourceAlong, 0.5f);
+        Assert.Contains(near, plan.Circle);
+        var reached = plan.Reached.Single(r => r.Building == outside);
+        Assert.InRange(reached.Distance, 170f, 185f);
+        Assert.DoesNotContain(plan.Reached, r => r.Building == far);
+        // The road it would split is walked from where the station would stand, not from its ends.
+        var road = sim.ReachRoads(plan.Walk, plan.SourceRoad, plan.SourceAlong).Single(r => r.Road == plan.SourceRoad);
+        Assert.Equal(0f, road.WalkAt(plan.SourceAlong), 0.01f);
+        Assert.Equal(30f, road.WalkAt(plan.SourceAlong + 30f), 0.01f);
+        // A station that is built gives the same walk to the home.
+        Assert.Null(sim.PlanStationReach(1000, 1000));
+    }
 }

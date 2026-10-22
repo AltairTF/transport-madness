@@ -22,6 +22,8 @@ Status: raised by the developer on 2026-10-22 while playing M6g; written down, n
 
 ## 2. A preview of what a building will cover
 
+**Built for road stations 2026-10-22** (project-status 5.57): the circle, the reached streets and the buildings with their coverage, with counts; the Coverage map view shows the same. The anti-aircraft battery already drew its range; rail stations, depots and power are not done. What follows is the original request.
+
 **Seen.** A station is built blind: the only way to see what it covers is the Coverage map view afterwards (rings of 150 m, buildings in green and red).
 
 **Wanted.** While placing anything that has coverage, show it, so the best place can be chosen: for a station (and a station with bays, and a rail station) the area and the buildings and industries that would be covered, green for covered and red for not, with the count in the status line as now; for the anti-aircraft battery the range circle it already draws; for a stop at an industry the industry it covers. Moving the mouse updates it; it uses the same rule as the real coverage (item 3 changes the rule, and the preview must follow it).
@@ -32,7 +34,7 @@ Status: raised by the developer on 2026-10-22 while playing M6g; written down, n
 
 ## 3. Coverage along the streets, with a falloff
 
-**Sim built 2026-10-22** (project-status 5.56) with these decisions made with the developer: walked along the streets; full to 150 m and a line to 0 at 300 m; a chance drawn once per group, plus the walking time; the best station when two reach a building. The circle is untouched and only buildings and road stations get a reach. The map view and the preview are still to do. What follows is the original request.
+**Sim built 2026-10-22** (project-status 5.56) with these decisions made with the developer: walked along the streets; full to 150 m and a line to 0 at 300 m; a chance drawn once per group, plus the walking time; the best station when two reach a building. The circle is untouched and only buildings and road stations get a reach. The map view and the station preview were built next (5.57). What follows is the original request.
 
 **Seen** (the Cities: Skylines picture the developer shared): the service reaches along the streets and fades with distance, instead of a fixed circle. A house outside the circle of a bus stop but a reasonable walk away along a road can still use it, with a lower chance. More places are reached for a smaller share of use.
 

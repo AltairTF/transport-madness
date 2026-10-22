@@ -211,6 +211,8 @@ func _reset() -> void:
 	_preview.visible = false
 	_arc_preview.visible = false
 	_clear_ghosts()
+	if host != null:
+		host.ClearReachPreview()
 
 
 ## The preview follows the hold key as it goes down and up, not only when the mouse moves.
@@ -507,6 +509,8 @@ func _hover(screen: Vector2) -> void:
 
 func _update_preview(screen: Vector2) -> void:
 	_clear_ghosts()
+	if tool != "station" and tool != "station_bays":
+		host.ClearReachPreview()
 	if tool in LIGHT_TOOLS:
 		_hover_light(screen)
 		return
@@ -723,23 +727,32 @@ func _draw_ghost(target: MeshInstance3D, points: PackedVector3Array, kind: Strin
 	_ghost_strip(mesh, points, half - GHOST_EDGE_WIDTH, half, edge, GHOST_LIFT + 0.08)
 
 
-## Station tool: a marker where the station would stand, and what it costs.
+## Station tool: a marker where the station would stand, what it costs and the coverage it would give: its circle, the streets its walk reaches (green near it, fading to red) and a square over every building it covers.
 func _hover_station(screen: Vector2) -> void:
 	_arc_preview.visible = false
 	var target: Variant = _target_point(screen)
 	if target == null:
 		_preview.visible = false
+		host.ClearReachPreview()
 		return
 	var site: Dictionary = host.StationPreview(target.x, target.z, tool == "station_bays")
 	if not site["valid"]:
 		_preview.visible = false
+		host.ClearReachPreview()
 		message.emit("No room for a station here: click a road, away from its ends and from other stations")
 		return
 	_preview.visible = true
 	_preview.mesh.size = Vector3(STATION_PREVIEW_SIZE, 0.6, STATION_PREVIEW_SIZE) # a slab on the road at the node; the stops show on the lanes once it is built
 	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"], site["y"] + 0.4, site["z"]))
 	_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
-	message.emit("Station: cost %s   serves %d buildings and %d industries within %d m" % [_money(site["price"]), site["covered"], site["industries"], site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
+	var reach: Dictionary = host.StationReachPreview(target.x, target.z)
+	var text := "Station: %s   %d buildings in its %d m circle" % [_money(site["price"]), reach["full"], roundi(reach["radius"])]
+	if reach["reached"] > 0:
+		text += ", %d more along the streets (a lower chance, none past %d m)" % [reach["reached"], roundi(reach["reach"])]
+	text += ", %d industries" % reach["industries"]
+	if reach["full"] > 0 and reach["already"] > 0:
+		text += "   (%d already served)" % reach["already"]
+	message.emit(text + ("" if site["affordable"] else "   (not enough money)"))
 
 
 ## Line tool: the station under the mouse is added to the line being drawn.

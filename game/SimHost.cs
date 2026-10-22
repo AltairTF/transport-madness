@@ -317,11 +317,14 @@ public partial class SimHost : Node3D
     /// <summary>What an access point belongs to, for the build preview: the industry's type or the gateway's name.</summary>
     string AccessName(AccessRef target) => target.Depot ? $"Depot {target.Id + 1}" : target.Gateway ? Sim.Gateways[target.Id].Name : Sim.IndustryTuning.Types[Sim.Industries[target.Id].Type].Name;
 
-    /// <summary>Points along a road bending by <paramref name="sweep"/> radians, lying on the ground (for the build preview).</summary>
+    /// <summary>Points along a road bending by <paramref name="sweep"/> radians, lying on the ground (for the build preview): at most 601, and just the two ends for an arc of more than 20 km.</summary>
     public Vector3[] CurvePoints(float x0, float z0, float x1, float z1, float sweep)
     {
         var g = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
-        int n = Math.Max(2, (int)MathF.Ceiling(g.Length / 4f));
+        // A third point almost on the line of the first two makes an arc of a nearly whole circle of a huge radius: its length in the hundreds of millions of metres would be as many points.
+        if (!(g.Length < 20000f))
+            return new[] { new Vector3(x0, HeightAt(x0, z0), z0), new Vector3(x1, HeightAt(x1, z1), z1) };
+        int n = Math.Clamp((int)MathF.Ceiling(g.Length / 4f), 2, 600);
         var points = new Vector3[n + 1];
         for (int i = 0; i <= n; i++)
         {
