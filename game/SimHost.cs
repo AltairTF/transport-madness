@@ -61,6 +61,7 @@ public partial class SimHost : Node3D
     int _terrainVersion = -1;
     Terrain _terrain = null!, _terrainSource = null!;
     MeshInstance3D _water = null!;
+    MeshInstance3D _cutaway = null!; // the four sides and the bottom of the slice of world
     StandardMaterial3D _waterMaterial = null!, _deckMaterial = null!, _tunnelMaterial = null!, _tunnelHintMaterial = null!;
     StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!, _pathMaterial = null!, _depotIdleMaterial = null!;
     readonly StandardMaterial3D[] _depotLevelMaterials = new StandardMaterial3D[3];
@@ -103,10 +104,6 @@ public partial class SimHost : Node3D
         };
 
         // Beyond the edge of the terrain the world is just flat grass.
-        var ground = new MeshInstance3D { Name = "Ground", Mesh = new PlaneMesh { Size = new Vector2(20000, 20000) } };
-        ground.MaterialOverride = Flat(new Color(0.42f, 0.58f, 0.34f));
-        ground.Position = new Vector3(0, -8f, 0); // below the deepest lake bed
-        AddChild(ground);
         _waterMaterial = new StandardMaterial3D
         {
             AlbedoColor = new Color(0.16f, 0.4f, 0.62f, 0.72f),
@@ -117,6 +114,8 @@ public partial class SimHost : Node3D
         _water = new MeshInstance3D { Name = "Water", MaterialOverride = _waterMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_water);
         _terrainMaterial = new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 1f };
+        _cutaway = new MeshInstance3D { Name = "Cutaway", Position = new Vector3(0, -TerrainSink, 0) };
+        AddChild(_cutaway);
         _terrainRoot = new Node3D { Name = "Terrain", Position = new Vector3(0, -TerrainSink, 0) };
         AddChild(_terrainRoot);
 
@@ -1704,7 +1703,7 @@ public partial class SimHost : Node3D
                 Text = town.Name,
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 FixedSize = true,
-                PixelSize = 0.0014f * _labelScale,
+                PixelSize = 0.0014f * LabelSize * _labelScale,
                 FontSize = 36,
                 OutlineSize = 10,
                 NoDepthTest = true,
@@ -1718,7 +1717,7 @@ public partial class SimHost : Node3D
                 Text = gateway.Name,
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 FixedSize = true,
-                PixelSize = 0.0013f * _labelScale,
+                PixelSize = 0.0013f * LabelSize * _labelScale,
                 FontSize = 34,
                 OutlineSize = 9,
                 NoDepthTest = true,
@@ -1733,7 +1732,7 @@ public partial class SimHost : Node3D
                 Text = Sim.IndustryTuning.Types[industry.Type].Name,
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 FixedSize = true,
-                PixelSize = 0.0011f * _labelScale,
+                PixelSize = 0.0011f * LabelSize * _labelScale,
                 FontSize = 30,
                 OutlineSize = 8,
                 NoDepthTest = true,
@@ -1743,6 +1742,8 @@ public partial class SimHost : Node3D
         }
     }
 
+    /// <summary>How big the names in the world are drawn against the interface text: small, because they stay the same size on the screen however far the camera is and would cover the map.</summary>
+    const float LabelSize = 0.5f;
     float _labelScale = 1f;
 
     /// <summary>
@@ -1914,6 +1915,7 @@ public partial class SimHost : Node3D
             _terrainSource = _terrain;
             _water.Mesh = WaterMesh();
             _water.Position = Vector3.Zero;
+            _cutaway.Mesh = CutawayMesh();
             foreach (var child in _terrainRoot.GetChildren()) child.QueueFree();
             _terrainChunks = new MeshInstance3D?[side * side];
             _terrain.TakeChangedChunks(); // everything is built below
@@ -1921,6 +1923,67 @@ public partial class SimHost : Node3D
             return;
         }
         foreach (int c in _terrain.TakeChangedChunks()) BuildTerrainChunk(c);
+    }
+
+    const float CutawayDepth = 300f; // how far below the sea level the slice of world goes
+    static readonly Color TopsoilColour = new Color(0.33f, 0.45f, 0.24f).SrgbToLinear(), SoilColour = new Color(0.42f, 0.31f, 0.21f).SrgbToLinear(),
+        RockColour = new Color(0.40f, 0.37f, 0.34f).SrgbToLinear(), DeepRockColour = new Color(0.28f, 0.26f, 0.25f).SrgbToLinear(), CutWaterColour = new Color(0.16f, 0.4f, 0.62f, 0.72f).SrgbToLinear();
+
+    /// <summary>
+    /// The world as a slice cut out of the earth: a wall along each edge of the map from the ground down to <see cref="CutawayDepth"/> in layers (topsoil, soil, rock),
+    /// the water seen in section where a lake or the sea reaches the edge, and a bottom. Nothing is drawn beyond it.
+    /// </summary>
+    ArrayMesh CutawayMesh()
+    {
+        int cells = _terrain.Cells;
+        float cell = _terrain.CellSize, half = _terrain.HalfSize, bottom = -CutawayDepth;
+        var earth = new SurfaceTool();
+        earth.Begin(Mesh.PrimitiveType.Triangles);
+        var water = new SurfaceTool();
+        water.Begin(Mesh.PrimitiveType.Triangles);
+        void Quad(SurfaceTool st, Vector3 a0, Vector3 a1, Vector3 b1, Vector3 b0, Vector3 normal, Color top, Color low)
+        {
+            // a0 and a1 are the top corners, b0 and b1 the ones below them
+            Vector3[] v = { a0, a1, b1, a0, b1, b0 };
+            Color[] c = { top, top, low, top, low, low };
+            for (int k = 0; k < 6; k++) { st.SetNormal(normal); st.SetColor(c[k]); st.AddVertex(v[k]); }
+        }
+        // the four edges: along i or j, at the first or the last index, the outward normal
+        for (int edge = 0; edge < 4; edge++)
+        {
+            Vector3 normal = edge switch { 0 => new Vector3(0, 0, -1), 1 => new Vector3(0, 0, 1), 2 => new Vector3(-1, 0, 0), _ => new Vector3(1, 0, 0) };
+            for (int k = 0; k < cells; k++)
+            {
+                (int i, int j) p0 = edge switch { 0 => (k, 0), 1 => (k, cells), 2 => (0, k), _ => (cells, k) };
+                (int i, int j) p1 = edge switch { 0 => (k + 1, 0), 1 => (k + 1, cells), 2 => (0, k + 1), _ => (cells, k + 1) };
+                float h0 = _terrain.GetSample(p0.i, p0.j), h1 = _terrain.GetSample(p1.i, p1.j);
+                float x0 = p0.i * cell - half, z0 = p0.j * cell - half, x1 = p1.i * cell - half, z1 = p1.j * cell - half;
+                // layers follow the surface: the thickness of each is measured down from the ground at that end
+                float[] depth = { 0f, 1.5f, 14f };
+                Color[] shade = { TopsoilColour, SoilColour, RockColour };
+                for (int layer = 0; layer < 3; layer++)
+                {
+                    float top0 = h0 - depth[layer], top1 = h1 - depth[layer];
+                    float low0 = layer < 2 ? h0 - depth[layer + 1] : bottom, low1 = layer < 2 ? h1 - depth[layer + 1] : bottom;
+                    var lowColour = layer < 2 ? shade[layer + 1].Lerp(shade[layer], 0.5f) : DeepRockColour;
+                    Quad(earth, new Vector3(x0, top0, z0), new Vector3(x1, top1, z1), new Vector3(x1, low1, z1), new Vector3(x0, low0, z0), normal, shade[layer], layer == 0 ? shade[0] : lowColour.Lerp(shade[layer], 0.4f));
+                }
+                float w0 = _terrain.WaterSurfaceAtSample(p0.i, p0.j) - 0.01f + TerrainSink, w1 = _terrain.WaterSurfaceAtSample(p1.i, p1.j) - 0.01f + TerrainSink;
+                if (w0 > h0 || w1 > h1)
+                    Quad(water, new Vector3(x0, Math.Max(w0, h0), z0), new Vector3(x1, Math.Max(w1, h1), z1), new Vector3(x1, h1, z1), new Vector3(x0, h0, z0), normal, CutWaterColour, CutWaterColour);
+            }
+        }
+        var floor = new[] { new Vector3(-half, bottom, -half), new Vector3(half, bottom, -half), new Vector3(half, bottom, half), new Vector3(-half, bottom, half) };
+        foreach (int k in new[] { 0, 1, 2, 0, 2, 3 }) { earth.SetNormal(Vector3.Down); earth.SetColor(DeepRockColour); earth.AddVertex(floor[k]); }
+        var mesh = earth.Commit();
+        mesh.SurfaceSetMaterial(0, new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 1f, CullMode = BaseMaterial3D.CullModeEnum.Disabled });
+        var wallWater = water.Commit();
+        if (wallWater.GetSurfaceCount() > 0)
+        {
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, wallWater.SurfaceGetArrays(0));
+            mesh.SurfaceSetMaterial(1, new StandardMaterial3D { VertexColorUseAsAlbedo = true, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, CullMode = BaseMaterial3D.CullModeEnum.Disabled, Roughness = 0.2f });
+        }
+        return mesh;
     }
 
     /// <summary>One quad over the whole map at the height of the water surface, which tilts with the fall toward the sea.</summary>
