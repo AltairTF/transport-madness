@@ -99,6 +99,17 @@ func _display_tab() -> Control:
 		Settings.msaa = index
 		_commit())
 	_row(grid, "Anti-aliasing", msaa)
+
+	var render := OptionButton.new()
+	render.add_item("Automatic")
+	for step in Settings.RENDER_SCALES:
+		render.add_item("%d %%" % roundi(step * 100.0))
+	render.selected = 0 if Settings.render_scale <= 0.0 else 1 + maxi(0, Settings.RENDER_SCALES.find(Settings.render_scale))
+	render.tooltip_text = "How big the 3D picture is drawn, against the window; the interface stays sharp. Automatic keeps it near 8 million pixels, which a very large window needs to hold 60 frames a second."
+	render.item_selected.connect(func(index: int) -> void:
+		Settings.render_scale = 0.0 if index == 0 else Settings.RENDER_SCALES[index - 1]
+		_commit())
+	_row(grid, "3D resolution", render)
 	return page
 
 

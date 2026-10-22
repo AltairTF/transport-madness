@@ -14,6 +14,8 @@ const RESOLUTIONS: Array[Vector2i] = [
 	Vector2i(3840, 2160), Vector2i(5120, 1440)]
 const MIN_WINDOW := Vector2i(960, 540)
 const UI_SCALES: Array[float] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0] ## the player's interface size: 100 % is the size of the interface of a 1920 x 1080 screen, whatever the window
+const RENDER_SCALES: Array[float] = [1.0, 0.85, 0.75, 0.66, 0.5]
+const AUTO_RENDER_PIXELS := 8.0e6 ## automatic 3D size: a window with more pixels than this is drawn smaller and scaled up (the performance log of 2026-10-22: 4471 x 2515 took 16.5 ms, 0.85 took 14.6)
 const REFERENCE_HEIGHT := 1080.0
 const WINDOW_FILL := 0.92 ## share of the free screen area a first-run window may take (the title bar needs room)
 
@@ -22,6 +24,7 @@ var resolution := Vector2i.ZERO ## windowed size in logical points (a pixel size
 var vsync := true
 var ui_scale := 1.0
 var msaa := Viewport.MSAA_4X
+var render_scale := 0.0 ## the 3D picture's size against the window: 0 is automatic (about 8 million pixels at most), or one of RENDER_SCALES
 var master_volume := 1.0
 var music_volume := 0.8
 var effects_volume := 0.8
@@ -37,6 +40,7 @@ func _ready() -> void:
 	# A command line run (self-tests, benchmark) keeps the project's own window so its numbers stay comparable.
 	if OS.get_cmdline_user_args().is_empty():
 		apply()
+		get_window().size_changed.connect(apply_render_scale)
 
 
 ## The scale of the interface in window pixels: the player's choice times the display's own scale (2 on a retina screen), so a bigger window shows more of the map instead of bigger buttons.
@@ -80,6 +84,7 @@ func apply() -> void:
 	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
 	window.content_scale_factor = interface_factor()
 	window.msaa_3d = msaa as Viewport.MSAA
+	apply_render_scale()
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(master_volume, 0.0001)))
 	if fullscreen:
@@ -93,6 +98,21 @@ func apply() -> void:
 	changed.emit()
 
 
+## The size the 3D picture is drawn at, as a share of the window: the chosen one, or for Automatic the largest that stays within AUTO_RENDER_PIXELS.
+func effective_render_scale() -> float:
+	if render_scale > 0.0:
+		return render_scale
+	var size := get_window().size
+	return clampf(sqrt(AUTO_RENDER_PIXELS / maxf(1.0, float(size.x) * float(size.y))), 0.5, 1.0)
+
+
+func apply_render_scale() -> void:
+	var window := get_window()
+	var scale := effective_render_scale()
+	window.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if scale < 0.99 else Viewport.SCALING_3D_MODE_BILINEAR
+	window.scaling_3d_scale = scale
+
+
 func save() -> void:
 	var file := ConfigFile.new()
 	file.set_value("display", "fullscreen", fullscreen)
@@ -100,6 +120,7 @@ func save() -> void:
 	file.set_value("display", "vsync", vsync)
 	file.set_value("display", "ui_scale", ui_scale)
 	file.set_value("display", "msaa", msaa)
+	file.set_value("display", "render_scale", render_scale)
 	file.set_value("audio", "master", master_volume)
 	file.set_value("audio", "music", music_volume)
 	file.set_value("audio", "effects", effects_volume)
@@ -117,6 +138,7 @@ func _load() -> void:
 	vsync = file.get_value("display", "vsync", vsync)
 	ui_scale = _nearest_scale(float(file.get_value("display", "ui_scale", ui_scale)))
 	msaa = file.get_value("display", "msaa", msaa)
+	render_scale = float(file.get_value("display", "render_scale", render_scale))
 	master_volume = file.get_value("audio", "master", master_volume)
 	music_volume = file.get_value("audio", "music", music_volume)
 	effects_volume = file.get_value("audio", "effects", effects_volume)
