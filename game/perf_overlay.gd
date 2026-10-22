@@ -385,6 +385,15 @@ func _build() -> void:
 				_event(name, on))
 			grid.add_child(check)
 			_checks[name] = check
+	var all_row := HBoxContainer.new()
+	right.add_child(all_row)
+	for entry in [["All layers off", false], ["All on", true]]:
+		var button := Button.new()
+		button.text = entry[0]
+		button.pressed.connect(func() -> void:
+			for name in _checks:
+				_checks[name].button_pressed = entry[1]) # each box logs its own switch
+		all_row.add_child(button)
 	_vsync_check = CheckBox.new()
 	_vsync_check.text = "vsync"
 	_vsync_check.button_pressed = DisplayServer.window_get_vsync_mode() != DisplayServer.VSYNC_DISABLED
