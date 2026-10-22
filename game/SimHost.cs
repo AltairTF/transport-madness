@@ -1705,6 +1705,7 @@ public partial class SimHost : Node3D
                 FixedSize = true,
                 PixelSize = 0.0014f * LabelSize * _labelScale,
                 FontSize = 36,
+                VisibilityRangeEnd = 4500f, VisibilityRangeEndMargin = 450f, VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Self,
                 OutlineSize = 10,
                 NoDepthTest = true,
                 Position = new Vector3(town.X, HeightAt(town.X, town.Z) + 70f, town.Z),
@@ -1719,6 +1720,7 @@ public partial class SimHost : Node3D
                 FixedSize = true,
                 PixelSize = 0.0013f * LabelSize * _labelScale,
                 FontSize = 34,
+                VisibilityRangeEnd = 3000f, VisibilityRangeEndMargin = 300f, VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Self,
                 OutlineSize = 9,
                 NoDepthTest = true,
                 Modulate = gateway.Kind == GatewayKind.Road ? GatewayRoadColour.Lightened(0.4f) : GatewayRailColour.Lightened(0.4f),
@@ -1734,6 +1736,7 @@ public partial class SimHost : Node3D
                 FixedSize = true,
                 PixelSize = 0.0011f * LabelSize * _labelScale,
                 FontSize = 30,
+                VisibilityRangeEnd = 1500f, VisibilityRangeEndMargin = 150f, VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Self,
                 OutlineSize = 8,
                 NoDepthTest = true,
                 Modulate = new Color(0.9f, 0.95f, 0.8f),
@@ -1743,7 +1746,8 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>How big the names in the world are drawn against the interface text: small, because they stay the same size on the screen however far the camera is and would cover the map.</summary>
-    const float LabelSize = 0.5f;
+    const float LabelSize = 0.5f; // and each kind fades out beyond a camera distance (towns 4.5 km, gateways 3 km, industries 1.5 km) so the whole map can be seen without names
+
     float _labelScale = 1f;
 
     /// <summary>

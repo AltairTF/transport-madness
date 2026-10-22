@@ -782,7 +782,7 @@ The rest of what M6g left before M7 (the developer chose these and left undo out
 - Known: the Access point marks (door, pad, post) are still the whitebox ones and stand by the Models; Kenney homes have a green roof whatever the town; industries are 2 to 3 times as tall as the tuning height says in places (chimneys), and the heights used by the stations window text are unchanged.
 
 ### 5.63 Names half the size and the world as a slice (2026-10-22)
-- The names of towns, gateways and industries are drawn at half the size they had (`SimHost.LabelSize` 0.5): they keep one size on the screen at any zoom and covered the map. Not capped by distance; zoomed far out the names still overlap.
+- The names of towns, gateways and industries are drawn at half the size they had (`SimHost.LabelSize` 0.5): they keep one size on the screen at any zoom and covered the map. Each kind also fades out beyond a camera distance (`VisibilityRangeEnd`: towns 4.5 km, gateways 3 km, industries 1.5 km), so the whole map is seen without names; seen at 9 km (none) and 3.5 km (towns only).
 - The big green plane under the world is gone. `SimHost.CutawayMesh` draws the world as a slice: a wall down each edge (topsoil, soil and rock layers following the ground, 300 m deep), the water in section where it reaches an edge, a bottom, and the sky colour beyond. Built with the terrain; seen in one screenshot from far away, not from close or under water.
 
 ## 6. Game layer (`game/`)
