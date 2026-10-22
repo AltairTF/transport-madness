@@ -48,6 +48,8 @@ Status: raised by the developer on 2026-10-22 while playing M6g; written down, n
 
 ## 4. A ghost road for the build preview
 
+**Built 2026-10-22** (project-status 5.54): the ghost reuses the planned stretches with its own translucent drawing rather than the real road mesh code; paths to access points and a depot's path keep their strips, and a rail track has a ghost with two rails. What follows is the original request.
+
 **Seen.** While drawing a road the preview is a thin pale green box that is almost invisible on the grass (the picture of the avenue tool).
 
 **Wanted.** The preview is the road itself in a ghost mode: the same width, the lane markings, the median of an avenue, the junction discs at its ends and where it meets a road, the bridge and tunnel stretches, the Paths to access points, the earthworks as now, drawn translucent and tinted green when it can be built and red when not. The same for tracks and for the parallel road or track beside it.

@@ -26,6 +26,14 @@ const TUNNEL_COLOR := Color(0.7, 0.45, 1.0, 0.85)
 const PATH_COLOR := Color(0.95, 0.78, 0.45, 0.85)   ## a stone path to an access point
 const PATH_BLOCKED_COLOR := Color(0.95, 0.25, 0.25, 0.85)
 const PATH_WIDTH := 5.0
+const GHOST_SURFACE := {"valid": Color(0.08, 0.22, 0.22, 0.82), "invalid": Color(0.38, 0.08, 0.08, 0.80)} ## the ghost road's surface: dark like asphalt, tinted by whether it can be built
+const GHOST_EDGE := {"valid": Color(0.45, 1.0, 0.92, 1.0), "invalid": Color(1.0, 0.3, 0.3, 1.0)}      ## its two edge lines, bright so it reads on any ground
+const GHOST_LINE := Color(1.0, 1.0, 0.9, 1.0)
+const GHOST_MEDIAN := Color(0.75, 0.8, 0.72, 0.85)
+const GHOST_LIFT := 0.4
+const GHOST_DISC_RADIUS := 8.5 ## as the discs the real roads have at their nodes
+const GHOST_EDGE_WIDTH := 1.4
+const MEDIAN_WIDTH := 2.0
 const EARTH_FULL_AT := 2.0 ## metres of fill or cut at which the earthwork strip is at full strength
 
 signal message(text: String)
@@ -47,8 +55,8 @@ const PARALLEL_GAP := 4.0 ## metres of ground between a road and the parallel ro
 const PARALLEL_RAIL_GAP := 3.0
 var _parallel := 0        ## 0 off, 1 a second road on one side of the one drawn, -1 on the other
 var _drag_from := Vector2(-1.0, -1.0) ## where the left button went down on the press that started a road, (-1, -1) when that press is not a possible drag
-var _twin_preview: MeshInstance3D ## the parallel road's box
-var _twin_material := StandardMaterial3D.new()
+var _ghost: MeshInstance3D ## the road, track or path being planned drawn as the road it would be (vertex colours, translucent)
+var _twin_ghost: MeshInstance3D ## the same for the parallel one
 const PLACE_TOOLS := ["depot", "battery"] ## buildings put on the ground that can be turned and raised
 const TURN_STEP := deg_to_rad(15.0)
 var _turned := false      ## the player has turned the building by hand, so it faces _angle instead of the way the place gives it
@@ -81,13 +89,19 @@ func setup(sim_host: Node3D, cam: Camera3D) -> void:
 	_preview.material_override = _material
 	_preview.visible = false
 	add_child(_preview)
-	_twin_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_twin_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_twin_preview = MeshInstance3D.new()
-	_twin_preview.mesh = BoxMesh.new()
-	_twin_preview.material_override = _twin_material
-	_twin_preview.visible = false
-	add_child(_twin_preview)
+	var ghost_material := StandardMaterial3D.new()
+	ghost_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	ghost_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ghost_material.vertex_color_use_as_albedo = true
+	ghost_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_ghost = MeshInstance3D.new()
+	_ghost.mesh = ImmediateMesh.new()
+	_ghost.material_override = ghost_material
+	add_child(_ghost)
+	_twin_ghost = MeshInstance3D.new()
+	_twin_ghost.mesh = ImmediateMesh.new()
+	_twin_ghost.material_override = ghost_material
+	add_child(_twin_ghost)
 	_arc_preview = MeshInstance3D.new()
 	_arc_preview.mesh = ImmediateMesh.new()
 	_arc_preview.material_override = _material
@@ -196,7 +210,7 @@ func _reset() -> void:
 	_drag_from = Vector2(-1.0, -1.0)
 	_preview.visible = false
 	_arc_preview.visible = false
-	_twin_preview.visible = false
+	_clear_ghosts()
 
 
 ## The preview follows the hold key as it goes down and up, not only when the mouse moves.
@@ -492,6 +506,7 @@ func _hover(screen: Vector2) -> void:
 
 
 func _update_preview(screen: Vector2) -> void:
+	_clear_ghosts()
 	if tool in LIGHT_TOOLS:
 		_hover_light(screen)
 		return
@@ -519,18 +534,21 @@ func _update_preview(screen: Vector2) -> void:
 	if tool == "depot":
 		_hover_depot(screen)
 		return
-	_twin_preview.visible = false
 	var target: Variant = _target_point(screen)
 	if target == null:
 		_preview.visible = false
 		_arc_preview.visible = false
 		return
 	if _start == null:
-		_preview.visible = true
 		_arc_preview.visible = false
-		_preview.mesh.size = Vector3(4, 4, 4)
-		_preview.transform = Transform3D(Basis.IDENTITY, target + Vector3(0, 2, 0))
-		_material.albedo_color = ROAD_COLORS["valid"]
+		if _is_rail_tool():
+			_preview.visible = true
+			_preview.mesh.size = Vector3(4, 4, 4)
+			_preview.transform = Transform3D(Basis.IDENTITY, target + Vector3(0, 2, 0))
+			_material.albedo_color = ROAD_COLORS["valid"]
+		else:
+			_preview.visible = false
+			_ghost_disc(_ghost, target, true) # where the road would start: the disc a node has
 		return
 
 	var sweep := 0.0
@@ -549,28 +567,25 @@ func _update_preview(screen: Vector2) -> void:
 	_material.albedo_color = ROAD_COLORS["valid"] if valid and cost["affordable"] else ROAD_COLORS["invalid"]
 
 	var spurs: Array = [] if join.is_empty() else join["spurs"]
+	_preview.visible = false
+	var ok: bool = valid and cost["affordable"]
+	var kind := _ghost_kind()
 	if not runs.is_empty():
-		_preview.visible = false
-		_draw_runs(runs, width)
+		_draw_earthworks(runs, width)
+		_draw_ghost(_ghost, _visible_surface_of(runs), kind, ok)
 		for spur in spurs:
 			_draw_spur(spur)
-	elif absf(sweep) > 0.0001:
-		_preview.visible = false
-		_draw_arc(host.CurvePoints(origin.x, origin.z, target.x, target.z, sweep), width)
 	else:
 		_arc_preview.visible = false
-		_preview.visible = true
-		_preview.mesh.size = Vector3(maxf(offset.length(), 0.1), 0.4, width)
-		# Lies along the planned road, which may climb: x runs start to end, z stays horizontal.
-		var along := offset.normalized() if offset.length() > 0.001 else Vector3.RIGHT
-		var across := Vector3(-along.z, 0.0, along.x).normalized()
-		_preview.transform = Transform3D(Basis(along, across.cross(along), across), (origin + target) * 0.5 + Vector3(0, 0.3, 0))
+		_draw_ghost(_ghost, _plain_points(origin, target, sweep), kind, ok)
 
 	var twin: Variant = _twin_ends(_start, target)
 	var twin_cost := {}
 	if twin != null:
 		twin_cost = _estimate(twin[0], twin[1], 0.0)
-		_draw_twin(twin[0], twin[1], width, twin_cost.get("valid", false) and twin_cost.get("affordable", false))
+		var twin_runs: Array = [] if _is_rail_tool() else host.RoadRuns(twin[0].x, twin[0].z, twin[1].x, twin[1].z, 0.0, _road_type())
+		var twin_points := _visible_surface_of(twin_runs) if not twin_runs.is_empty() else _plain_points(twin[0], twin[1], 0.0)
+		_draw_ghost(_twin_ghost, twin_points, kind, twin_cost.get("valid", false) and twin_cost.get("affordable", false))
 	if valid:
 		var text := "%d m   grade %.1f%%   cut %d m3   fill %d m3   cost %s" % [
 			cost["length"], 100.0 * offset.y / maxf(cost["length"], 0.1), cost["cut"], cost["fill"], _money(cost["money"])]
@@ -602,15 +617,110 @@ func _update_preview(screen: Vector2) -> void:
 		message.emit("Can't build there: too short, too steep (max 12%), curve too tight, in water, or too close to a junction")
 
 
-## The box of the parallel road or track, green when it can be built and paid for and red when not.
-func _draw_twin(a: Vector3, b: Vector3, width: float, ok: bool) -> void:
-	var offset := b - a
-	_twin_material.albedo_color = ROAD_COLORS["valid"] if ok else ROAD_COLORS["invalid"]
-	_twin_preview.visible = true
-	_twin_preview.mesh.size = Vector3(maxf(offset.length(), 0.1), 0.4, width)
-	var along := offset.normalized() if offset.length() > 0.001 else Vector3.RIGHT
-	var across := Vector3(-along.z, 0.0, along.x).normalized()
-	_twin_preview.transform = Transform3D(Basis(along, across.cross(along), across), (a + b) * 0.5 + Vector3(0, 0.3, 0))
+## What the ghost is made like: "road2", "road4", "rail" (the stone path to an access point is drawn by _draw_spur and the depot's by _draw_runs).
+func _ghost_kind() -> String:
+	if _is_rail_tool():
+		return "rail"
+	return "road4" if _road_type() == 1 else "road2"
+
+
+func _clear_ghosts() -> void:
+	_ghost.mesh.clear_surfaces()
+	_twin_ghost.mesh.clear_surfaces()
+
+
+## The centre line of the planned stretches joined end to end.
+func _surface_of(runs: Array) -> PackedVector3Array:
+	var surface := PackedVector3Array()
+	for run in runs:
+		var road: PackedVector3Array = run["road"]
+		for i in road.size():
+			if i == 0 and not surface.is_empty():
+				continue
+			surface.append(road[i])
+	return surface
+
+
+## The same lifted to the ground where the road runs below it (a cutting, a tunnel), so the ghost is not hidden by the earth it would dig out.
+func _visible_surface_of(runs: Array) -> PackedVector3Array:
+	var surface := PackedVector3Array()
+	for run in runs:
+		var road: PackedVector3Array = run["road"]
+		var ground: PackedVector3Array = run["ground"]
+		for i in road.size():
+			if i == 0 and not surface.is_empty():
+				continue
+			var p := road[i]
+			if i < ground.size():
+				p.y = maxf(p.y, ground[i].y)
+			surface.append(p)
+	return surface
+
+
+## A centre line when the simulation gave no planned stretches (a rail track, or a road that cannot be built): the curve, or the straight line laid on the ground.
+func _plain_points(a: Vector3, b: Vector3, sweep: float) -> PackedVector3Array:
+	if absf(sweep) > 0.0001:
+		return host.CurvePoints(a.x, a.z, b.x, b.z, sweep)
+	var points := PackedVector3Array()
+	var steps := maxi(1, ceili(a.distance_to(b) / 5.0))
+	for i in steps + 1:
+		var t := float(i) / steps
+		points.append(_ground(lerpf(a.x, b.x, t), lerpf(a.z, b.z, t)))
+	return points
+
+
+## A flat strip between two sideways offsets (metres right of the centre line) along it.
+func _ghost_strip(mesh: ImmediateMesh, points: PackedVector3Array, from: float, to: float, color: Color, lift: float) -> void:
+	if points.size() < 2:
+		return
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	for i in points.size():
+		var side := _side(points, i)
+		mesh.surface_set_color(color)
+		mesh.surface_add_vertex(points[i] + side * from + Vector3(0, lift, 0))
+		mesh.surface_set_color(color)
+		mesh.surface_add_vertex(points[i] + side * to + Vector3(0, lift, 0))
+	mesh.surface_end()
+
+
+## The disc a road node has, at a point.
+func _ghost_disc(target: MeshInstance3D, centre: Vector3, ok: bool, lift := GHOST_LIFT) -> void:
+	var mesh: ImmediateMesh = target.mesh
+	var color: Color = GHOST_SURFACE["valid" if ok else "invalid"]
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	const SEGMENTS := 24
+	var top := centre + Vector3(0, lift, 0)
+	for i in SEGMENTS:
+		var a0 := TAU * i / SEGMENTS
+		var a1 := TAU * (i + 1) / SEGMENTS
+		for corner in [top, top + Vector3(cos(a0), 0, sin(a0)) * GHOST_DISC_RADIUS, top + Vector3(cos(a1), 0, sin(a1)) * GHOST_DISC_RADIUS]:
+			mesh.surface_set_color(color)
+			mesh.surface_add_vertex(corner)
+	mesh.surface_end()
+
+
+## The planned road drawn as the road it would be, translucent: the dark surface, the lane line or the median, the two edge lines in green or red, and the discs at its ends.
+## A rail track has its two rails, a path is a plain stone strip.
+func _draw_ghost(target: MeshInstance3D, points: PackedVector3Array, kind: String, ok: bool) -> void:
+	if points.size() < 2:
+		return
+	var mesh: ImmediateMesh = target.mesh
+	var tint := "valid" if ok else "invalid"
+	var edge: Color = GHOST_EDGE[tint]
+	var half := RAIL_WIDTH * 0.5 if kind == "rail" else (8.0 if kind == "road4" else 3.5)
+	_ghost_disc(target, points[0], ok)
+	_ghost_disc(target, points[points.size() - 1], ok)
+	_ghost_strip(mesh, points, -half, half, GHOST_SURFACE[tint], GHOST_LIFT + 0.02)
+	match kind:
+		"road4":
+			_ghost_strip(mesh, points, -MEDIAN_WIDTH * 0.5, MEDIAN_WIDTH * 0.5, GHOST_MEDIAN, GHOST_LIFT + 0.06)
+		"road2":
+			_ghost_strip(mesh, points, -0.12, 0.12, GHOST_LINE, GHOST_LIFT + 0.06)
+		"rail":
+			_ghost_strip(mesh, points, -1.0, -0.6, GHOST_LINE, GHOST_LIFT + 0.06)
+			_ghost_strip(mesh, points, 0.6, 1.0, GHOST_LINE, GHOST_LIFT + 0.06)
+	_ghost_strip(mesh, points, -half, -half + GHOST_EDGE_WIDTH, edge, GHOST_LIFT + 0.08)
+	_ghost_strip(mesh, points, half - GHOST_EDGE_WIDTH, half, edge, GHOST_LIFT + 0.08)
 
 
 ## Station tool: a marker where the station would stand, and what it costs.
@@ -918,15 +1028,17 @@ func _click_depot(screen: Vector2) -> void:
 
 ## A planned road from the simulation's stretches (RoadRuns): the road surface in the usual colour, with the earthworks, bridges and tunnels marked.
 func _draw_runs(runs: Array, width: float) -> void:
-	var surface := PackedVector3Array()
-	for run in runs:
-		var road: PackedVector3Array = run["road"]
-		for i in road.size():
-			if i == 0 and not surface.is_empty():
-				continue
-			surface.append(road[i])
-	_draw_arc(surface, width)
+	_draw_arc(_surface_of(runs), width)
+	_draw_earthworks(runs, width, false)
+
+
+## The earthworks, bridges and tunnels of planned stretches, drawn under whatever is drawn for the road itself (the ghost, or the plain strip of _draw_runs).
+func _draw_earthworks(runs: Array, width: float, clear := true) -> void:
 	var mesh: ImmediateMesh = _earth_preview.mesh
+	if clear:
+		_arc_preview.mesh.clear_surfaces()
+		mesh.clear_surfaces()
+	_arc_preview.visible = true
 	for run in runs:
 		var road: PackedVector3Array = run["road"]
 		var ground: PackedVector3Array = run["ground"]

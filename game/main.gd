@@ -792,6 +792,25 @@ func _selftest_place() -> void:
 			await get_tree().process_frame
 		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-depot.png"))
 
+	# The ghost road: an avenue with a parallel one, on the move, then a 2-lane road that cannot be built.
+	if _args.has("--shot"):
+		build_tool.set_tool("road4")
+		await _key(KEY_P)
+		rig.stop_following()
+		rig.position = Vector3(-220, host.HeightAt(-220, -170), -170)
+		rig.distance = 220.0
+		rig.pitch = -45.0
+		rig._apply()
+		await get_tree().process_frame
+		await _mouse_at(camera, Vector3(-300, 0, -200), MOUSE_BUTTON_LEFT, true)
+		var motion2 := InputEventMouseMotion.new()
+		motion2.position = get_viewport().get_final_transform() * camera.unproject_position(Vector3(-160, 0, -150))
+		Input.parse_input_event(motion2)
+		for i in 4:
+			await get_tree().process_frame
+		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-ghost.png"))
+		build_tool.set_tool("pointer")
+
 	# The camera follows a point until it is moved by hand.
 	var target := [Vector3(300, 0, 300)]
 	rig.follow(func() -> Variant: return target[0])
