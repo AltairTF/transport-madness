@@ -61,6 +61,7 @@ const StationsWindow := preload("res://game/ui/stations_window.gd")
 const TownsWindow := preload("res://game/ui/towns_window.gd")
 const VehiclesWindow := preload("res://game/ui/vehicles_window.gd")
 const DepotsWindow := preload("res://game/ui/depots_window.gd")
+const Icons := preload("res://game/ui/icons.gd")
 
 const SPEEDS := [["||", 0.0], ["1x", 1.0], ["2x", 2.0], ["4x", 4.0], ["8x", 8.0]]
 const TOOL_CATEGORIES := [
@@ -535,6 +536,7 @@ func _build_bottom() -> void:
 		for entry in category["tools"]:
 			var b := Kit.button(entry[0], _on_tool_pressed.bind(entry[1]), entry[2])
 			b.toggle_mode = true
+			Icons.put(b, entry[1])
 			r.add_child(b)
 			_tool_buttons[entry[1]] = b
 	for group in INFO_GROUPS:
@@ -542,6 +544,7 @@ func _build_bottom() -> void:
 		for entry in group[1]:
 			var b := Kit.button(entry[1], toggle_window.bind(entry[0]))
 			b.toggle_mode = true
+			Icons.put(b, entry[0])
 			r.add_child(b)
 			_window_buttons[entry[0]] = b
 
@@ -553,6 +556,7 @@ func _build_bottom() -> void:
 	bar.add_child(row)
 	_pointer_button = Kit.button("Pointer", _on_tool_pressed.bind("pointer"), "No tool: look around, click something to open its window (Esc)")
 	_pointer_button.toggle_mode = true
+	Icons.put(_pointer_button, "pointer")
 	row.add_child(_pointer_button)
 	row.add_child(VSeparator.new())
 	for i in TOOL_CATEGORIES.size():
@@ -578,6 +582,7 @@ func _group_button(group: String, action: String) -> Button:
 	var b := Kit.button(group, _toggle_group.bind(group))
 	b.toggle_mode = true
 	b.set_meta("action", action)
+	Icons.put(b, group)
 	_group_buttons[group] = b
 	return b
 

@@ -35,7 +35,7 @@ Last updated: 2026-10-21, after M6f (free-standing depots 5.49, stops at industr
 | M6 Save/load, overlays, balancing, the interface | Done: M6a save and load (5.44), M6b overlays (5.45), M6c balance (5.46), M6d the interface (5.47); M6a, M6b and M6d seen in the .NET editor through the bridge, not played by hand (`docs/m6-plan.md`) |
 | M6e Roads stay where put, Paths to access points, preview of terrain and bridges, whiteboxes | Done (5.48; seen in the editor through the bridge, not played by hand; `docs/m6e-plan.md`) |
 | M6f Free-standing depots, stops at industries with load and unload options, the line preview | Done (5.49, 5.50; seen in the editor through the bridge, not played by hand; `docs/m6f-plan.md`) |
-| M7 Art | M7a to M7f built (`docs/m7-plan.md`); M7g icons next; audio postponed |
+| M7 Art | M7a to M7g built (`docs/m7-plan.md`); audio postponed |
 
 What has been played. The developer played M0 to M5 and the campaign slices C2 to C9 in the 3D game on 2026-10-21 and found them working; the interface is awkward and hard to reach (many buttons and windows) and is to be dealt with after the features are done. Not played: the road signs and sign tools (5.22) and the presentation of raids (section 11). Remarks in section 5 and in section 10 that a slice was "not played" describe the state when it was written. Nothing in this environment can run the 3D game: the Godot available here has no .NET support (section 3).
 
@@ -1031,6 +1031,11 @@ Engineering:
 ## 11. What comes next
 
 Everything is built that was planned before M6 (M0 to M5, the campaign, the access points, residents as workers, dynamic raids, anti-aircraft, civilians taking cover, rebuilding, the requisition rule and the call-up capacity). The developer played the 3D side on 2026-10-21 and found it working; balance is ok for now; the interface is awkward and hard to reach and is deferred until the features are done. The decisions and the open points are in `docs/campaign-plan.md` ("Decided with the developer, 2026-10-21" and "Open"); this section is the summary.
+
+### 5.69 M7g: interface icons (2026-10-22)
+- **Pack:** game-icons.net (CC BY 3.0), chosen and approved by the developer on 2026-10-22 over Kenney's CC0 packs for its train, bus, signal and anti-aircraft shapes. `data/icons.json` maps a button key (a tool, a window or a group name, plus "pointer") to an icon; `tools/make_icons.py <unzipped game-icons folder>` copies the 54 SVGs into `game/assets/icons/game-icons/` and drops the black square each ships with. The pack itself stays in `../transport-madness-packs/game-icons/`. One row in `CREDITS.md` (so the Credits screen shows it).
+- **Code:** `game/ui/icons.gd` (`Icons.put(button, key)`, a button with no entry stays text only); the pointer, group, tool and window buttons of the bottom bar call it. `ui_theme.gd` tints the icon with the text colour per state and sets `icon_max_width` 22 and a gap of 8 on Button, OptionButton and CheckBox. Icons sit beside the text, never in place of it; the settings and menu buttons have none.
+- **Checked:** the real game with screenshots (the bottom bar shows the pointer and the ten groups with icons); `--selftest-models` still passes. **Not looked at:** the open tool and window rows (same call, but no screenshot had one open), tooltips. Some shapes are busy at 22 px (Network, Region, Rail); change them in `data/icons.json` and run the script again.
 
 ### Before M6: nothing is left (decided with the developer on 2026-10-21; C10 to C15 are built, 5.36 to 5.43)
 

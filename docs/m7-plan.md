@@ -1,6 +1,6 @@
 # M7: art (models, materials, light and interface icons)
 
-Status: planned 2026-10-22 in a grilling interview with the developer; M7a to M7e built 2026-10-22 (project-status 5.60 to 5.66; M7d with the Models the packs lacked made from plain shapes, `tools/make_models.gd`), M7f and M7g not. Replaces the M7 paragraph of `m6-plan.md`. **Audio is not in this plan**: the developer postponed it to after the art (sound effects, ambience and music will get a plan of their own).
+Status: planned 2026-10-22 in a grilling interview with the developer; M7a to M7e built 2026-10-22 (project-status 5.60 to 5.66; M7d with the Models the packs lacked made from plain shapes, `tools/make_models.gd`), M7f built 2026-10-22, M7g built 2026-10-22 (5.69). Replaces the M7 paragraph of `m6-plan.md`. **Audio is not in this plan**: the developer postponed it to after the art (sound effects, ambience and music will get a plan of their own).
 
 The aim of the milestone: the whitebox game becomes a game with models, materials and a lit scene, **working end to end with existing assets**, even where they do not match the period. Period-correct art is a later milestone (M8).
 
