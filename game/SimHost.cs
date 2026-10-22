@@ -491,6 +491,22 @@ public partial class SimHost : Node3D
         return true;
     }
 
+    /// <summary>Adds to a preview the cells its pad changes, for the green (fill) and orange (cut) squares: pad_cells (x, ground height, z), pad_deltas (metres, negative for a cut) and cell (the side of a square).</summary>
+    void AddPadCells(Godot.Collections.Dictionary preview, PadPlan pad)
+    {
+        var cells = Sim.PadCells(pad);
+        var position = new Vector3[cells.Count];
+        var delta = new float[cells.Count];
+        for (int i = 0; i < cells.Count; i++)
+        {
+            position[i] = new Vector3(cells[i].X, HeightAt(cells[i].X, cells[i].Z), cells[i].Z);
+            delta[i] = cells[i].Delta;
+        }
+        preview["pad_cells"] = position;
+        preview["pad_deltas"] = delta;
+        preview["cell"] = _terrain.CellSize;
+    }
+
     /// <summary>How many metres one press of the raise and lower keys moves the floor of a building being placed.</summary>
     public float PadRaiseStep() => Sim.PadRaiseStep;
 
@@ -510,6 +526,7 @@ public partial class SimHost : Node3D
             ["pad_money"] = plan.PadMoney, ["pad_cut"] = plan.Pad.Cut, ["pad_fill"] = plan.Pad.Fill, ["pad_max_cut"] = plan.Pad.MaxCut, ["pad_max_fill"] = plan.Pad.MaxFill,
             ["pad_height"] = plan.Pad.Height, ["pad_step"] = Sim.PadRaiseStep,
         };
+        AddPadCells(result, plan.Pad);
         if (!plan.Valid) return result;
         long price = Sim.DepotPrice(false, lvl);
         bool path = plan.Connection == DepotConnection.Path;
@@ -838,7 +855,7 @@ public partial class SimHost : Node3D
     /// Open stations: for each {id, name, x, y, z, waiting, accepts, waiting_for, lines, homes, shops, workplaces, industries,
     /// boarded, alighted, gave_up, boarded_today, alighted_today, gave_up_today} where waiting is the units of each cargo and accepts
     /// whether the station takes it, in the order of <see cref="GetCargoNames"/>, waiting_for the people queueing for a ride as {name, count}
-    /// by the station they are going to, lines the {name, color} of the lines that stop here, and the counts of homes, shops, other workplaces
+    /// by the station they are going to, lines the {name, color} of the lines that stop here, and the counts of homes, shops, other workplaces (and reached, share: the buildings outside its circle that its streets reach and their coverage added up)
     /// and industries it covers; the people counts are for the day before, and for today so far.
     /// </summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetStations()
@@ -872,6 +889,7 @@ public partial class SimHost : Node3D
                 ["id"] = station.Id, ["name"] = StationName(station.Id), ["x"] = p.X, ["y"] = p.Y, ["z"] = p.Z, ["rail"] = station.Mode == StationMode.Rail, ["bays"] = station.HasBays, ["in_bay"] = station.InBay, ["bay_price"] = Sim.StationBayPrice,
                 ["waiting"] = waiting, ["accepts"] = accepts, ["waiting_for"] = waitingFor, ["lines"] = lines,
                 ["homes"] = homes, ["shops"] = shops, ["workplaces"] = workplaces, ["industries"] = Sim.IndustriesCoveredBy(station).Count,
+                ["reached"] = Sim.ReachOf(station).Count, ["reached_share"] = Sim.ReachOf(station).Sum(r => r.Coverage),
                 ["shut_days"] = Math.Max(0f, (station.ShutUntil - Sim.Tick) * Simulation.StepSeconds / Sim.DayLengthSeconds), ["boarded"] = station.Yesterday.Boarded, ["alighted"] = station.Yesterday.Alighted, ["gave_up"] = station.Yesterday.GaveUp,
                 ["boarded_today"] = station.Today.Boarded, ["alighted_today"] = station.Today.Alighted, ["gave_up_today"] = station.Today.GaveUp,
             });

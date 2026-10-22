@@ -29,6 +29,8 @@ static func text_of(station: Dictionary, cargo_names: Array) -> String:
 	if station["bays"]:
 		text = "bays   %d in use\n%s" % [station["in_bay"], text]
 	text += "\ncovers   %d homes   %d shops   %d other workplaces   %d industries" % [station["homes"], station["shops"], station["workplaces"], station["industries"]]
+	if station.get("reached", 0) > 0:
+		text += "\nreaches   %d more buildings along the streets (about %.0f at full coverage)" % [station["reached"], station["reached_share"]]
 	text += "\nwaiting   %s\naccepts   %s" % ["nothing" if waiting.is_empty() else waiting, "nothing" if accepts.is_empty() else accepts]
 	if station.get("shut_days", 0.0) > 0.0:
 		text += "\nBombed: shut for %s more days, nothing is loaded or unloaded." % str(snappedf(station["shut_days"], 0.1))

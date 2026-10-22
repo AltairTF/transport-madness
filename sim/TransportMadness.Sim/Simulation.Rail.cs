@@ -18,6 +18,9 @@ public enum TrainStatus : byte
     Servicing,
 }
 
+/// <summary>Where a rail depot would stand and what it costs (M6g): <see cref="X"/>, <see cref="Z"/> is the middle of its building, <see cref="Angle"/> the way it points away from its node, <see cref="Pad"/> its levelled ground.</summary>
+public readonly record struct RailDepotPlan(bool Valid, string Reason, int Node, float NodeX, float NodeZ, float X, float Z, float Angle, PadPlan Pad, long Price);
+
 /// <summary>A depot on the rail network: trains are bought here and appear here.</summary>
 public sealed class RailDepot
 {
@@ -36,6 +39,12 @@ public sealed class RailDepot
     public bool Active { get; internal set; } = true;
     /// <summary>The tick until which a raid keeps it shut, 0 when it is not (C12).</summary>
     public long ShutUntil { get; internal set; }
+    /// <summary>Whether it stands where <see cref="X"/>, <see cref="Z"/> and <see cref="Angle"/> say (a depot built since M6g); an older one is drawn at the old offset from its node.</summary>
+    public bool Placed { get; internal set; }
+    /// <summary>The middle of its building, and the way it points away from its node (radians).</summary>
+    public float X { get; internal set; }
+    public float Z { get; internal set; }
+    public float Angle { get; internal set; }
 }
 
 /// <summary>One track travelled in one direction as part of a train's route.</summary>
@@ -495,15 +504,55 @@ public sealed partial class Simulation
         _ => _railTuning.DepotComplexPrice,
     };
 
-    int BuildRailDepot(AddRailDepotCommand c)
+    /// <summary>
+    /// Where a rail depot clicked for at (x, z) would stand (M6g): at the track node near the click, its building <c>rail.depotReach</c> from the node in the direction
+    /// <paramref name="angle"/> (NaN: the free side, the direction farthest from every track at the node), on a levelled pad <paramref name="raise"/> metres above the node's height.
+    /// </summary>
+    public RailDepotPlan PlanRailDepot(float x, float z, DepotLevel level, float angle, float raise)
     {
         SyncRail();
-        int node = _rail.FindNodeNear(c.X, c.Z, _railTuning.SnapRadius, withTracksOnly: true);
-        if (node < 0) return -1;
+        RailDepotPlan Invalid(string why) => new(false, why, -1, x, z, x, z, 0f, default, 0);
+        int node = _rail.FindNodeNear(x, z, _railTuning.SnapRadius, withTracksOnly: true);
+        if (node < 0) return Invalid("click a track junction or end");
+        var (nx, nz) = _rail.GetNode(node);
         foreach (var depot in _railDepots)
-            if (depot.Active && depot.Node == node) return -1;
-        if (!Enum.IsDefined(c.Level) || !TrySpend(RailDepotPrice(c.Level), LedgerEntry.Depots)) return -1;
-        _railDepots.Add(new RailDepot(_railDepots.Count, node, c.Level));
+            if (depot.Active && depot.Node == node) return Invalid("a depot has this node already");
+        if (!Enum.IsDefined(level)) return Invalid("no such level");
+        if (float.IsNaN(angle)) angle = FreeSideOf(node);
+        float cx = nx + MathF.Cos(angle) * _railTuning.DepotReach, cz = nz + MathF.Sin(angle) * _railTuning.DepotReach;
+        if (_net.Terrain is { } terrain && terrain.IsWater(cx, cz)) return Invalid("it cannot stand in water");
+        var pad = PlanPad(cx, cz, angle, _railTuning.DepotHalfLength, _railTuning.DepotHalfWidth, _rail.GetNodeHeight(node), raise);
+        long price = RailDepotPrice(level);
+        string reason = pad.Ok ? "" : pad.Reason;
+        return new RailDepotPlan(pad.Ok, reason, node, nx, nz, cx, cz, angle, pad, price);
+    }
+
+    /// <summary>The direction out of a node (of the eight of the compass) that is farthest from every track that leaves it.</summary>
+    float FreeSideOf(int node)
+    {
+        var headings = _rail.TracksAt(node).Select(t => _rail.HeadingOutOf(t, node)).ToList();
+        float best = 0f, bestGap = -1f;
+        for (int k = 0; k < 8; k++)
+        {
+            float a = k * MathF.PI / 4f, gap = MathF.PI;
+            foreach (float h in headings)
+            {
+                float d = MathF.Abs(MathF.IEEERemainder(a - h, MathF.Tau));
+                gap = MathF.Min(gap, d);
+            }
+            if (gap > bestGap + 1e-4f) { bestGap = gap; best = a; }
+        }
+        return best;
+    }
+
+    int BuildRailDepot(AddRailDepotCommand c)
+    {
+        var plan = PlanRailDepot(c.X, c.Z, c.Level, c.Angle, c.Raise);
+        if (!plan.Valid || !CanAfford(plan.Price + plan.Pad.Money)) return -1;
+        TrySpend(plan.Price, LedgerEntry.Depots);
+        if (plan.Pad.Money > 0) Charge(plan.Pad.Money, LedgerEntry.Construction);
+        _railDepots.Add(new RailDepot(_railDepots.Count, plan.Node, c.Level) { Placed = true, X = plan.X, Z = plan.Z, Angle = plan.Angle });
+        LevelPad(plan.X, plan.Z, plan.Angle, _railTuning.DepotHalfLength, _railTuning.DepotHalfWidth, plan.Pad);
         _railBoundaryDirty = true;
         SyncRail();
         return _railDepots.Count - 1;

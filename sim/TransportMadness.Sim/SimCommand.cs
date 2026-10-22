@@ -138,7 +138,7 @@ public sealed record RemoveSignalCommand(int Signal) : SimCommand;
 public sealed record BuildRailStationCommand(float X, float Z) : SimCommand;
 
 /// <summary>Places a rail depot at the rail node near (X, Z). Result: the depot id, -1 when refused.</summary>
-public sealed record AddRailDepotCommand(float X, float Z, DepotLevel Level = DepotLevel.Simple) : SimCommand;
+public sealed record AddRailDepotCommand(float X, float Z, DepotLevel Level = DepotLevel.Simple, float Angle = float.NaN, float Raise = 0f) : SimCommand;
 
 /// <summary>Buys a train (a locomotive and <paramref name="Wagons"/> wagons, by their ids in the tuning file) at a rail depot for a rail line. Result: the train id, -1 when refused.</summary>
 /// <remarks>With <see cref="NearestDepot"/> for the depot, the rail depot with the quickest way to the line's first station that can take the train is used.</remarks>

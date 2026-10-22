@@ -456,6 +456,9 @@
     "stationPrice": 20000,
     "stationUpkeepPerDay": 500.0,
     "depotPrice": 30000,             // a Simple rail depot; the Workshop and Complex levels cost these
+    "depotHalfLength": 8.0,          // its building: half its length (away from the node), half its width, and how far its middle is from the node (the ground under it is a levelled pad)
+    "depotHalfWidth": 6.0,
+    "depotReach": 16.0,
     "depotWorkshopPrice": 70000,
     "depotComplexPrice": 150000,
     "snapRadius": 14.0,             // a click this close to a rail node or a track's centre line picks it

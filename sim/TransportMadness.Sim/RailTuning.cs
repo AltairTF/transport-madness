@@ -30,6 +30,10 @@ public sealed record RailTuning
     public required long StationPrice { get; init; }
     public required float StationUpkeepPerDay { get; init; }
     public required long DepotPrice { get; init; }
+    /// <summary>A rail depot's building (M6g): half its length, in the direction away from its node, and half its width, and how far its middle stands from the node; its ground is levelled as a pad.</summary>
+    public required float DepotHalfLength { get; init; }
+    public required float DepotHalfWidth { get; init; }
+    public required float DepotReach { get; init; }
     public required long DepotWorkshopPrice { get; init; }
     public required long DepotComplexPrice { get; init; }
     public required float SnapRadius { get; init; }

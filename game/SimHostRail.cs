@@ -186,7 +186,35 @@ public partial class SimHost
 
     public int BuildRailStation(float x, float z) => Sim.Execute(new BuildRailStationCommand(x, z));
 
-    public bool BuildRailDepot(float x, float z) => Sim.Execute(new AddRailDepotCommand(x, z)) >= 0;
+    public int Sim_RailDepotCount() => Sim.RailDepots.Count;
+
+    /// <summary>Builds a rail depot at the track node near (x, z), its building turned by <paramref name="angle"/> (NaN: the free side of the node) and its floor <paramref name="raise"/> metres up.</summary>
+    public bool BuildRailDepot(float x, float z, float angle, float raise)
+    {
+        if (Sim.Execute(new AddRailDepotCommand(x, z, DepotLevel.Simple, angle, raise)) < 0) return false;
+        RebuildRoads(); // the pad moved the ground
+        return true;
+    }
+
+    /// <summary>
+    /// What a rail depot clicked for at (x, z) would be: {valid, why, x, y (the floor of its pad), z (the middle of its building), angle, size, node_x, node_z, price, pad_money, pad_cut, pad_fill,
+    /// pad_max_cut, pad_max_fill, pad_step, pad_cells, pad_deltas, cell, affordable}.
+    /// </summary>
+    public Godot.Collections.Dictionary RailDepotPreview(float x, float z, float angle, float raise)
+    {
+        var plan = Sim.PlanRailDepot(x, z, DepotLevel.Simple, angle, raise);
+        var rail = Sim.Network.Tuning.Rail;
+        var preview = new Godot.Collections.Dictionary
+        {
+            ["valid"] = plan.Valid, ["why"] = plan.Reason, ["x"] = plan.X, ["z"] = plan.Z, ["angle"] = plan.Angle, ["node_x"] = plan.NodeX, ["node_z"] = plan.NodeZ,
+            ["y"] = plan.Pad.Reason == null ? HeightAt(plan.X, plan.Z) : plan.Pad.Height,
+            ["size"] = new Vector3(rail.DepotHalfLength * 2f, _whitebox.RailDepot.Size.Y, rail.DepotHalfWidth * 2f),
+            ["price"] = plan.Price, ["pad_money"] = plan.Pad.Money, ["pad_cut"] = plan.Pad.Cut, ["pad_fill"] = plan.Pad.Fill, ["pad_max_cut"] = plan.Pad.MaxCut, ["pad_max_fill"] = plan.Pad.MaxFill,
+            ["pad_step"] = Sim.PadRaiseStep, ["affordable"] = Sim.CanAfford(plan.Price + plan.Pad.Money),
+        };
+        AddPadCells(preview, plan.Pad);
+        return preview;
+    }
 
     /// <summary>What can be bought for a rail line: for each {id, label, price, upkeep, capacity, cargo}.</summary>
     public Godot.Collections.Array<Godot.Collections.Dictionary> GetTrainOptions()
@@ -371,6 +399,16 @@ public partial class SimHost
             if (!depot.Active) continue;
             var (x, z) = rail.GetNode(depot.Node);
             var block = _whitebox.RailDepot;
+            if (depot.Placed)
+            {
+                // Built since M6g: where its pad is, turned the way the player chose.
+                var tuning = Sim.Network.Tuning.Rail;
+                var placed = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(tuning.DepotHalfLength * 2f, block.Size.Y, tuning.DepotHalfWidth * 2f) }, MaterialOverride = _railDepotMaterial };
+                placed.Position = new Vector3(depot.X, HeightAt(depot.X, depot.Z) + block.Size.Y * 0.5f, depot.Z);
+                placed.Rotation = new Vector3(0f, -depot.Angle, 0f);
+                _railRoot.AddChild(placed);
+                continue;
+            }
             var building = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _railDepotMaterial };
             building.Position = new Vector3(x + block.Offset.X, rail.GetNodeHeight(depot.Node) + block.Size.Y * 0.5f, z + block.Offset.Y);
             _railRoot.AddChild(building);

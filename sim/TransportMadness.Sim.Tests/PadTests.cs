@@ -190,3 +190,63 @@ public class PadTests
         Assert.Equal(snapped.Z, sim.PlanDepot(500, 112, free: true, angle: 0f).Z + 2f, 0.01f); // a free one stands where the mouse is (z = 112), the snapped one at 114
     }
 }
+
+/// <summary>A rail depot stands on a levelled pad beside its node, turned and raised by the player (M6g).</summary>
+public class RailDepotPadTests
+{
+    static Simulation World(float rise = 0.1f)
+    {
+        var terrain = Terrain.Create(512, 8f, (_, z) => 5f + rise * z); // level along the track, rising to the south
+        var sim = new Simulation(new RoadNetwork(terrain, Tuning.Load()), 7, IncidentFrequency.Off);
+        sim.Company.Money = 10_000_000;
+        Assert.True(sim.Execute(new BuildTrackCommand(200, 0, 500, 0)) > 0);
+        return sim;
+    }
+
+    [Fact]
+    public void ARailDepot_DefaultsToTheFreeSideOfItsNode_AndLevelsItsGround()
+    {
+        var sim = World();
+        var plan = sim.PlanRailDepot(200, 0, DepotLevel.Simple, float.NaN, 0f);
+        Assert.True(plan.Valid, plan.Reason);
+        // The track leaves the node toward +x; the free side is the opposite direction or a side, never along the track.
+        Assert.True(MathF.Abs(MathF.Cos(plan.Angle)) < 0.8f || MathF.Cos(plan.Angle) < 0f);
+        float node = sim.Rail.GetNodeHeight(plan.Node);
+        Assert.Equal(node, plan.Pad.Height, 0.001f);
+        long before = sim.Company.Money;
+        int id = sim.Execute(new AddRailDepotCommand(200, 0));
+        Assert.True(id >= 0);
+        var depot = sim.RailDepots[id];
+        Assert.True(depot.Placed);
+        Assert.Equal(plan.X, depot.X, 0.001f);
+        Assert.Equal(before - sim.RailDepotPrice(DepotLevel.Simple) - plan.Pad.Money, sim.Company.Money);
+        Assert.Equal(node, sim.Network.Terrain!.HeightAt(depot.X, depot.Z), 0.001f);
+    }
+
+    [Fact]
+    public void ATurnedAndRaisedRailDepot_StandsWhereItWasTurned_AtTheRaisedHeight()
+    {
+        var sim = World();
+        float south = MathF.PI / 2f;
+        var plan = sim.PlanRailDepot(200, 0, DepotLevel.Simple, south, 1.5f);
+        Assert.True(plan.Valid, plan.Reason);
+        Assert.Equal(south, plan.Angle, 0.0001f);
+        Assert.Equal(200f, plan.X, 0.5f);
+        Assert.Equal(sim.Rail.GetNodeHeight(plan.Node) + 1.5f, plan.Pad.Height, 0.001f);
+        Assert.True(sim.Execute(new AddRailDepotCommand(200, 0, DepotLevel.Simple, south, 1.5f)) >= 0);
+        Assert.Equal(plan.Pad.Height, sim.Network.Terrain!.HeightAt(plan.X, plan.Z), 0.001f);
+    }
+
+    [Fact]
+    public void ARailDepotOnTooSteepAGround_IsRefused_AndASecondAtTheSameNodeToo()
+    {
+        var steep = World(0.6f);
+        var plan = steep.PlanRailDepot(200, 0, DepotLevel.Simple, MathF.PI / 2f, 0f);
+        Assert.False(plan.Valid);
+        Assert.Equal(-1, steep.Execute(new AddRailDepotCommand(200, 0, DepotLevel.Simple, MathF.PI / 2f)));
+
+        var sim = World();
+        Assert.True(sim.Execute(new AddRailDepotCommand(200, 0)) >= 0);
+        Assert.False(sim.PlanRailDepot(200, 0, DepotLevel.Simple, float.NaN, 0f).Valid);
+    }
+}

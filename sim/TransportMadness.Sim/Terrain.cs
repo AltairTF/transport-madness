@@ -230,53 +230,74 @@ public sealed class Terrain
     /// to the old ground over <paramref name="shoulder"/> metres (as <see cref="CarvePath"/> does for a road). Samples for which <paramref name="skip"/> is true (under a road)
     /// are left alone. With <paramref name="apply"/> false nothing changes and the result is what it would change.
     /// </summary>
-    public PadChange LevelPad(float x, float z, float angle, float half, float height, float shoulder, bool apply, Func<float, float, bool>? skip = null)
+    public PadChange LevelPad(float x, float z, float angle, float half, float height, float shoulder, bool apply, Func<float, float, bool>? skip = null) =>
+        LevelPad(x, z, angle, half, half, height, shoulder, apply, skip);
+
+    /// <summary>The same for a rectangle: <paramref name="halfAlong"/> along the direction <paramref name="angle"/> and <paramref name="halfAcross"/> across it.</summary>
+    public PadChange LevelPad(float x, float z, float angle, float halfAlong, float halfAcross, float height, float shoulder, bool apply, Func<float, float, bool>? skip = null)
     {
-        half += CellSize; // every sample that bilinear interpolation reads under the footprint is level
-        float reach = half * 1.4143f + shoulder;
+        var change = default(PadChange);
+        foreach (var (_, _, delta, i, j) in PadSamples(x, z, angle, halfAlong, halfAcross, height, shoulder, skip))
+        {
+            float area = CellSize * CellSize;
+            if (delta < 0f) change = change with { Cut = change.Cut - delta * area, MaxCut = MathF.Max(change.MaxCut, -delta) };
+            else change = change with { Fill = change.Fill + delta * area, MaxFill = MathF.Max(change.MaxFill, delta) };
+            if (apply) _heights[j * Samples + i] += delta;
+        }
+        if (apply && (change.Cut > 0f || change.Fill > 0f))
+        {
+            Version++;
+            float reach = (MathF.Max(halfAlong, halfAcross) + CellSize) * 1.4143f + shoulder;
+            MarkChanged(Clamp((int)MathF.Floor((x - reach) / CellSize + Cells * 0.5f)), Clamp((int)MathF.Ceiling((x + reach) / CellSize + Cells * 0.5f)),
+                Clamp((int)MathF.Floor((z - reach) / CellSize + Cells * 0.5f)), Clamp((int)MathF.Ceiling((z + reach) / CellSize + Cells * 0.5f)));
+        }
+        return change;
+    }
+
+    /// <summary>
+    /// The height samples a pad changes: the world place of each, how much it would change (negative: cut) and its indices. Every sample that bilinear interpolation reads under the
+    /// footprint is level (the footprint is a cell larger), and the ground blends back over <paramref name="shoulder"/> metres. A sample for which <paramref name="skip"/> is true is left out.
+    /// </summary>
+    public IEnumerable<(float X, float Z, float Delta, int I, int J)> PadSamples(float x, float z, float angle, float halfAlong, float halfAcross, float height, float shoulder, Func<float, float, bool>? skip = null)
+    {
+        halfAlong += CellSize;
+        halfAcross += CellSize;
+        float reach = MathF.Max(halfAlong, halfAcross) * 1.4143f + shoulder;
         int iMin = Clamp((int)MathF.Floor((x - reach) / CellSize + Cells * 0.5f));
         int iMax = Clamp((int)MathF.Ceiling((x + reach) / CellSize + Cells * 0.5f));
         int jMin = Clamp((int)MathF.Floor((z - reach) / CellSize + Cells * 0.5f));
         int jMax = Clamp((int)MathF.Ceiling((z + reach) / CellSize + Cells * 0.5f));
-        float cos = MathF.Cos(angle), sin = MathF.Sin(angle), area = CellSize * CellSize;
-        float cut = 0f, fill = 0f, maxCut = 0f, maxFill = 0f;
-        bool changed = false;
+        float cos = MathF.Cos(angle), sin = MathF.Sin(angle);
         for (int j = jMin; j <= jMax; j++)
             for (int i = iMin; i <= iMax; i++)
             {
                 float px = (i - Cells * 0.5f) * CellSize, pz = (j - Cells * 0.5f) * CellSize;
                 float dx = px - x, dz = pz - z;
                 float lx = MathF.Abs(dx * cos + dz * sin), lz = MathF.Abs(-dx * sin + dz * cos);
-                float ox = MathF.Max(lx - half, 0f), oz = MathF.Max(lz - half, 0f);
+                float ox = MathF.Max(lx - halfAlong, 0f), oz = MathF.Max(lz - halfAcross, 0f);
                 float distance = MathF.Sqrt(ox * ox + oz * oz);
                 if (distance >= shoulder) continue;
                 if (skip != null && skip(px, pz)) continue;
                 float blend = distance <= 0f ? 1f : 1f - distance / shoulder;
                 blend = blend * blend * (3f - 2f * blend);
-                ref float h = ref _heights[j * Samples + i];
-                float delta = (height - h) * blend;
+                float delta = (height - _heights[j * Samples + i]) * blend;
                 if (delta == 0f) continue;
-                if (delta < 0f) { cut -= delta * area; maxCut = MathF.Max(maxCut, -delta); }
-                else { fill += delta * area; maxFill = MathF.Max(maxFill, delta); }
-                if (apply) { h += delta; changed = true; }
+                yield return (px, pz, delta, i, j);
             }
-        if (changed)
-        {
-            Version++;
-            MarkChanged(iMin, iMax, jMin, jMax);
-        }
-        return new PadChange(cut, fill, maxCut, maxFill);
     }
 
     /// <summary>The mean height of the ground under a square (a grid of points across it), the pad height when the player has not raised or lowered it.</summary>
-    public float MeanHeight(float x, float z, float angle, float half)
+    public float MeanHeight(float x, float z, float angle, float half) => MeanHeight(x, z, angle, half, half);
+
+    /// <summary>The same for a rectangle.</summary>
+    public float MeanHeight(float x, float z, float angle, float halfAlong, float halfAcross)
     {
         float cos = MathF.Cos(angle), sin = MathF.Sin(angle), sum = 0f;
         const int n = 5;
         for (int a = 0; a < n; a++)
             for (int b = 0; b < n; b++)
             {
-                float lx = (a / (n - 1f) * 2f - 1f) * half, lz = (b / (n - 1f) * 2f - 1f) * half;
+                float lx = (a / (n - 1f) * 2f - 1f) * halfAlong, lz = (b / (n - 1f) * 2f - 1f) * halfAcross;
                 sum += HeightAt(x + lx * cos - lz * sin, z + lx * sin + lz * cos);
             }
         return sum / (n * n);

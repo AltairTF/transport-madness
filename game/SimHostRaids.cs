@@ -79,13 +79,15 @@ public partial class SimHost
     {
         var a = Sim.AntiAircraft;
         var (pad, why) = Sim.PlanBattery(x, z, angle, raise);
-        return new Godot.Collections.Dictionary
+        var preview = new Godot.Collections.Dictionary
         {
             ["valid"] = why == null, ["why"] = why ?? "", ["x"] = x, ["y"] = pad.Reason == null ? HeightAt(x, z) : pad.Height, ["z"] = z, ["size"] = Sim.IndustryTuning.Types[Sim.BatteryType].Size,
             ["price"] = a.Price, ["upkeep"] = a.UpkeepPerMonth, ["range"] = a.Range, ["affordable"] = Sim.CanAfford(a.Price + pad.Money),
             ["available"] = Sim.MonthIndex >= a.FromMonth, ["from_month"] = a.FromMonth,
             ["pad_money"] = pad.Money, ["pad_cut"] = pad.Cut, ["pad_fill"] = pad.Fill, ["pad_max_cut"] = pad.MaxCut, ["pad_max_fill"] = pad.MaxFill, ["pad_step"] = Sim.PadRaiseStep,
         };
+        AddPadCells(preview, pad);
+        return preview;
     }
 
     /// <summary>Builds an anti-aircraft battery at a place, turned and raised; false when refused, and <see cref="BatteryPreview"/> says why.</summary>

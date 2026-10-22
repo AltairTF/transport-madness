@@ -8,6 +8,7 @@ extends Node3D
 ##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
 ##   --selftest-place             right click, drag, parallel roads, a turned and raised depot and the camera following, with simulated input on the hills map, print, quit
+##   --selftest-rail              with --towns: a track beside a town, then the rail depot tool (turned and raised, with its pad) and the rail station tool (with its coverage), print and screenshot (--shot), quit
 ##   --selftest-curve             the curved road preview with a third point almost on the line of the first two (a nearly whole circle of a huge radius), print the times, quit
 ##   --selftest-reach             with --towns: the station tool over a town and the coverage map view, print and screenshot (--shot), quit
 ##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
@@ -190,6 +191,8 @@ func _ready() -> void:
 		_selftest_reach()
 	if _args.has("--selftest-curve"):
 		_selftest_curve()
+	if _args.has("--selftest-rail"):
+		_selftest_rail()
 
 	if _args.has("--bench"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -709,6 +712,52 @@ func _selftest_curve() -> void:
 		build_tool._update_preview(screen)
 		var dt := Time.get_ticks_msec() - t0
 		print("CURVE end %s preview took %d ms (ghost surfaces %d)" % [end, dt, build_tool._ghost.mesh.get_surface_count()])
+	get_tree().quit()
+
+
+func _selftest_rail() -> void:
+	await get_tree().process_frame
+	var town: Dictionary = host.GetTowns()[0]
+	var camera: Camera3D = rig.get_node("Camera3D")
+	build_tool.message.connect(func(text: String) -> void: print("RAIL message: ", text))
+	var built := false
+	var base := Vector3.ZERO
+	for dz in [-260, 260, -330, 330, -400, 400]:
+		if host.BuildTrack(town["x"] - 220, town["z"] + dz, town["x"] + 220, town["z"] + dz, 0.0):
+			built = true
+			base = Vector3(town["x"], 0, town["z"] + dz)
+			break
+	print("RAIL track built=%s at %s" % [built, base])
+	rig.position = Vector3(base.x, host.HeightAt(base.x, base.z), base.z)
+	rig.distance = 330.0
+	rig.pitch = -55.0
+	rig._apply()
+	await get_tree().process_frame
+	# The rail depot at the west end of the track, turned south and raised.
+	build_tool.set_tool("rail_depot")
+	build_tool._turned = true
+	build_tool._angle = PI / 2.0
+	build_tool._raise = 1.0
+	var end := Vector3(base.x - 220, 0, base.z)
+	var motion := InputEventMouseMotion.new()
+	motion.position = get_viewport().get_final_transform() * camera.unproject_position(Vector3(end.x, host.HeightAt(end.x, end.z), end.z))
+	Input.parse_input_event(motion)
+	for i in 5:
+		await get_tree().process_frame
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	await _mouse_at(camera, Vector3(end.x, host.HeightAt(end.x, end.z), end.z), MOUSE_BUTTON_LEFT, true)
+	print("RAIL depots after click: %d" % host.Sim_RailDepotCount())
+	# The rail station in the middle, with its coverage.
+	build_tool.set_tool("rail_station")
+	var mid := Vector3(base.x, host.HeightAt(base.x, base.z), base.z)
+	var motion2 := InputEventMouseMotion.new()
+	motion2.position = get_viewport().get_final_transform() * camera.unproject_position(mid)
+	Input.parse_input_event(motion2)
+	for i in 5:
+		await get_tree().process_frame
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-station.png"))
 	get_tree().quit()
 
 

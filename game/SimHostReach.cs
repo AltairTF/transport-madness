@@ -80,6 +80,30 @@ public partial class SimHost
             return new Godot.Collections.Dictionary { ["valid"] = false };
         }
         int key = HashCode.Combine(plan.SourceRoad?.Value ?? -1, (int)MathF.Round(plan.SourceAlong * 2f), (int)MathF.Round(plan.X), (int)MathF.Round(plan.Z), Sim.Network.Version, Sim.Stations.Count, Sim.BuildingsVersion);
+        return ShowReach(key, plan.X, plan.Z, Sim.ReachRoads(plan.Walk, plan.SourceRoad, plan.SourceAlong), plan.Circle, plan.Reached, plan.Industries);
+    }
+
+    /// <summary>
+    /// The coverage a rail station clicked for at (x, z) would give: its circle and the buildings in it (a rail station stands off the roads, so there is no reach along the streets);
+    /// the same summary as <see cref="StationReachPreview"/>.
+    /// </summary>
+    public Godot.Collections.Dictionary RailStationReachPreview(float x, float z)
+    {
+        if (Sim.FindRailStationSite(x, z) is not { } site)
+        {
+            ClearReachPreview();
+            return new Godot.Collections.Dictionary { ["valid"] = false };
+        }
+        float radius = Sim.Network.Tuning.Stations.CoverageRadius;
+        var circle = Sim.BuildingsNear(site.X, site.Z, radius).Where(id => Sim.Buildings[id].State == BuildingState.Active).ToList();
+        int industries = Sim.IndustriesNear(site.X, site.Z, radius).Count + Sim.GatewaysNear(site.X, site.Z, radius, GatewayKind.Rail).Count;
+        int key = HashCode.Combine(site.Node, (int)MathF.Round(site.X), (int)MathF.Round(site.Z), 7919, Sim.Stations.Count, Sim.BuildingsVersion);
+        return ShowReach(key, site.X, site.Z, new List<ReachRoad>(), circle, new List<ReachedBuilding>(), industries);
+    }
+
+    /// <summary>Draws a station's coverage (the circle, the reached streets, a square over each building) and sums it up; drawn again only when <paramref name="key"/> changes.</summary>
+    Godot.Collections.Dictionary ShowReach(int key, float x, float z, List<ReachRoad> roads, List<int> circle, List<ReachedBuilding> reached, int industries)
+    {
         if (key == _reachPreviewKey && _reachMesh?.Mesh != null) return _reachSummary;
         _reachPreviewKey = key;
 
@@ -91,11 +115,11 @@ public partial class SimHost
         }
         var st = new SurfaceTool();
         st.Begin(Mesh.PrimitiveType.Triangles);
-        int quads = Ring(st, plan.X, plan.Z, Sim.Network.Tuning.Stations.CoverageRadius, 2.5f, Neutral);
-        quads += ReachGradient(st, new[] { Sim.ReachRoads(plan.Walk, plan.SourceRoad, plan.SourceAlong) });
+        int quads = Ring(st, x, z, Sim.Network.Tuning.Stations.CoverageRadius, 2.5f, Neutral);
+        if (roads.Count > 0) quads += ReachGradient(st, new[] { roads });
         var coverage = new Dictionary<int, float>();
-        foreach (int b in plan.Circle) coverage[b] = 1f;
-        foreach (var r in plan.Reached) coverage[r.Building] = r.Coverage;
+        foreach (int b in circle) coverage[b] = 1f;
+        foreach (var r in reached) coverage[r.Building] = r.Coverage;
         quads += ReachBuildingMarks(st, coverage);
         _reachMesh.Mesh = quads > 0 ? st.Commit() : null;
 
@@ -104,8 +128,8 @@ public partial class SimHost
             if (station.Active) foreach (int b in Sim.CoveredBy(station)) already.Add(b);
         _reachSummary = new Godot.Collections.Dictionary
         {
-            ["valid"] = true, ["full"] = plan.Circle.Count, ["reached"] = plan.Reached.Count, ["reached_share"] = plan.Reached.Sum(r => r.Coverage),
-            ["already"] = plan.Circle.Count(already.Contains), ["industries"] = plan.Industries,
+            ["valid"] = true, ["full"] = circle.Count, ["reached"] = reached.Count, ["reached_share"] = reached.Sum(r => r.Coverage),
+            ["already"] = circle.Count(already.Contains), ["industries"] = industries,
             ["radius"] = Sim.Network.Tuning.Stations.CoverageRadius, ["reach"] = Sim.Network.Tuning.Stations.ReachRadius,
         };
         return _reachSummary;

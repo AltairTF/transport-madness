@@ -35,3 +35,5 @@ Status: slices A, B and C built 2026-10-22 (see `docs/project-status.md` 5.51 to
 `docs/project-status.md` (new sections), `CONTEXT.md` if a term is added (Pad).
 
 Follow-up items raised while playing M6g (interface scale, coverage along the streets, a coverage preview, a ghost road) are in `docs/m6h-plan.md`.
+
+Rail depots, the pad preview and rail station coverage, left by M6g, were done in M6i (project-status 5.59); undo was dropped by the developer.

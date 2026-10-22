@@ -56,9 +56,10 @@ const PARALLEL_GAP := 4.0 ## metres of ground between a road and the parallel ro
 const PARALLEL_RAIL_GAP := 3.0
 var _parallel := 0        ## 0 off, 1 a second road on one side of the one drawn, -1 on the other
 var _drag_from := Vector2(-1.0, -1.0) ## where the left button went down on the press that started a road, (-1, -1) when that press is not a possible drag
+var _pad_mesh: MeshInstance3D ## the cut (orange) and fill (green) a building's pad would make, as squares on the ground
 var _ghost: MeshInstance3D ## the road, track or path being planned drawn as the road it would be (vertex colours, translucent)
 var _twin_ghost: MeshInstance3D ## the same for the parallel one
-const PLACE_TOOLS := ["depot", "battery"] ## buildings put on the ground that can be turned and raised
+const PLACE_TOOLS := ["depot", "battery", "rail_depot"] ## buildings put on the ground that can be turned and raised
 const TURN_STEP := deg_to_rad(15.0)
 var _turned := false      ## the player has turned the building by hand, so it faces _angle instead of the way the place gives it
 var _free_toggle := false ## placing without the snap switched on (G), for when holding the key is not possible
@@ -103,6 +104,10 @@ func setup(sim_host: Node3D, cam: Camera3D) -> void:
 	_twin_ghost.mesh = ImmediateMesh.new()
 	_twin_ghost.material_override = ghost_material
 	add_child(_twin_ghost)
+	_pad_mesh = MeshInstance3D.new()
+	_pad_mesh.mesh = ImmediateMesh.new()
+	_pad_mesh.material_override = ghost_material
+	add_child(_pad_mesh)
 	_arc_preview = MeshInstance3D.new()
 	_arc_preview.mesh = ImmediateMesh.new()
 	_arc_preview.material_override = _material
@@ -156,7 +161,7 @@ func set_tool(tool_name: String) -> void:
 		"signal_path": message.emit("Path signal: click a track (R turns the signal round). A train waits unless its path up to the next signal is free; use them at passing loops")
 		"signal_remove": message.emit("Remove signal: click a signal")
 		"rail_station": message.emit("Rail station: click a track to build one there; trains stop with their front at the node")
-		"rail_depot": message.emit("Rail depot: click a track junction or end; trains are bought there for a line")
+		"rail_depot": message.emit("Rail depot: click a track junction or end; trains are bought there for a line. R turns the building, Page Up and Page Down raise and lower its floor; the ground under it is levelled for a price")
 		_: message.emit("")
 
 
@@ -308,10 +313,12 @@ func _wanted_angle() -> float:
 
 
 ## " pad: ..." for the status line: what levelling the ground under the building costs, what it cuts and fills, and the raise in hand.
-func _pad_text(site: Dictionary) -> String:
+func _pad_text(site: Dictionary, free_hint := true) -> String:
 	var text := "   floor %+.1f m" % _raise if absf(_raise) > 0.01 else ""
 	if site["pad_cut"] + site["pad_fill"] > 1.0:
 		text += "   levelling %s (cut %d m3 up to %.1f m, fill %d m3 up to %.1f m)" % [_money(site["pad_money"]), roundi(site["pad_cut"]), site["pad_max_cut"], roundi(site["pad_fill"]), site["pad_max_fill"]]
+	if not free_hint:
+		return text + "   [R turns, PgUp/PgDn raise]"
 	return text + "   [R turns, PgUp/PgDn raise, hold Alt or press G to place without snapping%s]" % (": on" if _free_placement() else "")
 
 
@@ -510,7 +517,7 @@ func _hover(screen: Vector2) -> void:
 
 func _update_preview(screen: Vector2) -> void:
 	_clear_ghosts()
-	if tool != "station" and tool != "station_bays":
+	if tool != "station" and tool != "station_bays" and tool != "rail_station":
 		host.ClearReachPreview()
 	if tool in LIGHT_TOOLS:
 		_hover_light(screen)
@@ -632,6 +639,27 @@ func _ghost_kind() -> String:
 func _clear_ghosts() -> void:
 	_ghost.mesh.clear_surfaces()
 	_twin_ghost.mesh.clear_surfaces()
+	_pad_mesh.mesh.clear_surfaces()
+
+
+## The ground a pad would cut (orange) and fill (green): a square on each height sample it moves, the stronger the more it moves; a preview of a depot, a battery or a rail depot carries it.
+func _draw_pad(preview: Dictionary) -> void:
+	var mesh: ImmediateMesh = _pad_mesh.mesh
+	mesh.clear_surfaces()
+	var cells: PackedVector3Array = preview.get("pad_cells", PackedVector3Array())
+	if cells.is_empty():
+		return
+	var deltas: PackedFloat32Array = preview["pad_deltas"]
+	var half: float = float(preview["cell"]) * 0.5
+	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in cells.size():
+		var color := FILL_COLOR if deltas[i] > 0.0 else CUT_COLOR
+		color.a = 0.28 + 0.5 * clampf(absf(deltas[i]) / EARTH_FULL_AT, 0.0, 1.0)
+		var c := cells[i] + Vector3(0, 0.5, 0)
+		for corner in [Vector3(-half, 0, -half), Vector3(half, 0, -half), Vector3(half, 0, half), Vector3(-half, 0, -half), Vector3(half, 0, half), Vector3(-half, 0, half)]:
+			mesh.surface_set_color(color)
+			mesh.surface_add_vertex(c + corner)
+	mesh.surface_end()
 
 
 ## The centre line of the planned stretches joined end to end.
@@ -999,6 +1027,7 @@ func _hover_depot(screen: Vector2) -> void:
 		return
 	var site: Dictionary = host.DepotPreview(p.x, p.z, 0, _free_placement(), _wanted_angle(), _raise)
 	_site_angle = site["angle"]
+	_draw_pad(site)
 	_arc_preview.visible = false
 	var size: Vector3 = site["size"]
 	_preview.visible = true
@@ -1116,6 +1145,7 @@ func _hover_battery(screen: Vector2) -> void:
 		return
 	var site: Dictionary = host.BatteryPreview(p.x, p.z, _angle, _raise)
 	_site_angle = _angle
+	_draw_pad(site)
 	_material.albedo_color = ROAD_COLORS["valid"] if site["valid"] and site["affordable"] else ROAD_COLORS["invalid"]
 	_preview.visible = true
 	_preview.mesh.size = Vector3(site["size"] * 2.0, 6.0, site["size"] * 2.0)
@@ -1223,23 +1253,35 @@ func _hover_rail(screen: Vector2) -> void:
 		"rail_station":
 			var site: Dictionary = host.RailStationPreview(p.x, p.z)
 			if not site["valid"]:
+				host.ClearReachPreview()
 				message.emit("No room for a station here: click a track, away from its ends, not on another station")
 				return
 			_preview.visible = true
 			_preview.mesh.size = Vector3(36, 1, 4)
 			_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"], site["y"] + 0.6, site["z"]))
 			_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
-			message.emit("Rail station: cost %s   serves %d buildings and %d industries within %d m" % [_money(site["price"]), site["covered"], site["industries"], site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
+			var coverage: Dictionary = host.RailStationReachPreview(p.x, p.z)
+			var text := "Rail station: %s   %d buildings in its %d m circle, %d industries" % [_money(site["price"]), coverage["full"], roundi(coverage["radius"]), coverage["industries"]]
+			if coverage["full"] > 0 and coverage["already"] > 0:
+				text += "   (%d already served)" % coverage["already"]
+			message.emit(text + ("" if site["affordable"] else "   (not enough money)"))
 		"rail_depot":
-			var node: Dictionary = host.SnapToRailNode(p.x, p.z, 16.0)
-			if node["snapped"]:
-				_preview.visible = true
-				_preview.mesh.size = Vector3(16, 5, 12)
-				_preview.transform = Transform3D(Basis.IDENTITY, Vector3(node["x"] + 16.0, node["y"] + 2.5, node["z"] + 16.0))
-				_material.albedo_color = ROAD_COLORS["valid"]
-				message.emit("Click to build a rail depot here")
-			else:
-				message.emit("Click a track junction or end")
+			var site: Dictionary = host.RailDepotPreview(p.x, p.z, _wanted_angle(), _raise)
+			_site_angle = site["angle"]
+			if not site["valid"] and site["why"] == "click a track junction or end":
+				message.emit("Rail depot: click a track junction or end")
+				return
+			_draw_pad(site)
+			var size: Vector3 = site["size"]
+			_preview.visible = true
+			_preview.mesh.size = size
+			_preview.transform = Transform3D(Basis(Vector3.UP, -float(site["angle"])), Vector3(site["x"], site["y"] + size.y * 0.5, site["z"]))
+			if not site["valid"]:
+				_material.albedo_color = ROAD_COLORS["invalid"]
+				message.emit("Can't build a rail depot there: %s" % site["why"])
+				return
+			_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
+			message.emit("Rail depot: %s%s%s" % [_money(site["price"] + site["pad_money"]), _pad_text(site, false), "" if site["affordable"] else "   (not enough money)"])
 
 
 func _click_rail(screen: Vector2, _target: Vector3) -> void:
@@ -1263,7 +1305,12 @@ func _click_rail(screen: Vector2, _target: Vector3) -> void:
 			var id: int = host.BuildRailStation(p.x, p.z)
 			message.emit("Station %s built" % host.StationName(id) if id >= 0 else "Can't build a station there: it needs a track with room on both sides, no station already, and enough money")
 		"rail_depot":
-			message.emit("Rail depot built" if host.BuildRailDepot(p.x, p.z) else "No free track junction or end nearby")
+			var depot_site: Dictionary = host.RailDepotPreview(p.x, p.z, _wanted_angle(), _raise)
+			if host.BuildRailDepot(p.x, p.z, _wanted_angle(), _raise):
+				_turned = false
+				message.emit("Rail depot built")
+			else:
+				message.emit("Can't build a rail depot there: %s" % depot_site["why"] if not depot_site["valid"] else "Can't build the rail depot: not enough money")
 	_hover_rail(screen)
 
 
