@@ -92,7 +92,7 @@ func baked(id: String, variant: int = 0) -> Dictionary:
 	var fit := _fit(id, variant)
 	if fit.is_empty():
 		return {}
-	var mesh := ArrayMesh.new()
+	var mesh := ImporterMesh.new()
 	var transform := Transform3D(fit["basis"], fit["origin"])
 	for part: Dictionary in fit["parts"]:
 		var source: Mesh = part["mesh"]
@@ -109,10 +109,12 @@ func baked(id: String, variant: int = 0) -> Dictionary:
 					normals[i] = (xf.basis * normals[i]).normalized()
 				arrays[Mesh.ARRAY_NORMAL] = normals
 			arrays[Mesh.ARRAY_TANGENT] = null # the Models carry no normal maps
-			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 			var material: Material = part["override"] if part["override"] != null else source.surface_get_material(surface)
-			mesh.surface_set_material(mesh.get_surface_count() - 1, material)
-	return { "mesh": mesh, "aabb": mesh.get_aabb() }
+			mesh.add_surface(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, material)
+	# Levels of detail for the far camera (the MultiMesh picks one by the size on screen); a build without the simplifier gives none and keeps the full mesh.
+	mesh.generate_lods(25.0, 60.0, [])
+	var baked_mesh := mesh.get_mesh()
+	return { "mesh": baked_mesh, "aabb": baked_mesh.get_aabb() }
 
 
 ## Where the Model ends up: the box it fills, with the middle of its base on the origin (before the offset).

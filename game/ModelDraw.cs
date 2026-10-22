@@ -26,13 +26,16 @@ public sealed class ModelDraw
     readonly bool _shadows;
     readonly bool _tinted;
     readonly float _rangeEnd;
+    readonly float _rangeMargin;
     readonly int _stride; // floats per instance: the 3x4 transform, and a colour when tinted
 
     /// <param name="rangeEnd">Beyond this distance from the camera the Model is not drawn (0: always).</param>
+    /// <param name="rangeMargin">The width of the fade at the end of the range (0: the Model just goes).</param>
     /// <param name="tinted">Each instance takes a colour that multiplies the Model's own (white leaves it as it is): for buildings that go grey, dark or take a map overlay.</param>
-    public ModelDraw(Node parent, bool shadows = false, bool tinted = false, float rangeEnd = 0f)
+    public ModelDraw(Node parent, bool shadows = false, bool tinted = false, float rangeEnd = 0f, float rangeMargin = 0f)
     {
         _rangeEnd = rangeEnd;
+        _rangeMargin = rangeMargin;
         _root = new Node3D { Name = "Models" };
         parent.AddChild(_root);
         _shadows = shadows;
@@ -140,6 +143,8 @@ public sealed class ModelDraw
                     Multimesh = multi,
                     CastShadow = _shadows ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
                     VisibilityRangeEnd = _rangeEnd,
+                    VisibilityRangeEndMargin = _rangeMargin,
+                    VisibilityRangeFadeMode = _rangeMargin > 0f ? GeometryInstance3D.VisibilityRangeFadeModeEnum.Self : GeometryInstance3D.VisibilityRangeFadeModeEnum.Disabled,
                 });
             }
         }

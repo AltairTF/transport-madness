@@ -15,10 +15,12 @@ public partial class SimHost
     const float TreeCell = 16f;
     const float TreeRebuildSeconds = 3f;
     const string TreeModel = "tree";
+    const float TreeChunk = 512f; // trees are drawn by a MultiMesh for each square of this size, so the camera culls the squares it does not see
+    const float TreeRangeEnd = 2800f; // beyond this distance from the camera a square is not drawn (it fades out over the last 280 m)
 
     sealed record TreeSpot(float X, float Z, float Pick, float Yaw, float Size);
 
-    ModelDraw? _treeModels;
+    readonly Dictionary<(int, int), ModelDraw> _treeChunks = new();
     Node3D? _treeRoot;
     TreeSpot[] _treeSpots = Array.Empty<TreeSpot>();
     Terrain? _treeTerrain;
@@ -47,7 +49,6 @@ public partial class SimHost
 
     void RebuildTrees()
     {
-        _treeModels ??= new ModelDraw(_treeRoot!);
         if (_treeSpots.Length == 0) MakeTreeSpots();
         var net = Sim.Network;
         var obstacles = new List<(float X, float Z, float R)>();
@@ -64,8 +65,8 @@ public partial class SimHost
         foreach (var industry in Sim.Industries)
             if (Sim.IndustryTuning.Types[industry.Type].Id == "forest") forests.Add((industry.X, industry.Z));
 
-        int variants = Math.Max(1, _treeModels.Variants(TreeModel));
-        _treeModels.Begin();
+        int variants = Math.Max(1, ChunkOfTrees(0, 0).Variants(TreeModel));
+        foreach (var chunk in _treeChunks.Values) chunk.Begin();
         _treeCount = 0;
         foreach (var spot in _treeSpots)
         {
@@ -80,10 +81,18 @@ public partial class SimHost
             if (MathF.Abs(gx) > 3.4f || MathF.Abs(gz) > 3.4f) continue; // steeper than about 30 degrees
             if (Blocked(spot.X, spot.Z, obstacles)) continue;
             int variant = (int)(spot.Pick * 9973f) % variants;
-            _treeModels.Add(TreeModel, spot.X, h - TerrainSink, spot.Z, MathF.Cos(spot.Yaw), MathF.Sin(spot.Yaw), 0f, variant, null, spot.Size);
+            ChunkOfTrees(spot.X, spot.Z).Add(TreeModel, spot.X, h - TerrainSink, spot.Z, MathF.Cos(spot.Yaw), MathF.Sin(spot.Yaw), 0f, variant, null, spot.Size);
             _treeCount++;
         }
-        _treeModels.End();
+        foreach (var chunk in _treeChunks.Values) chunk.End();
+    }
+
+    ModelDraw ChunkOfTrees(float x, float z)
+    {
+        var key = ((int)MathF.Floor(x / TreeChunk), (int)MathF.Floor(z / TreeChunk));
+        if (!_treeChunks.TryGetValue(key, out var chunk))
+            _treeChunks[key] = chunk = new ModelDraw(_treeRoot!, rangeEnd: TreeRangeEnd, rangeMargin: TreeRangeEnd / 10f);
+        return chunk;
     }
 
     bool Blocked(float x, float z, List<(float X, float Z, float R)> obstacles)
