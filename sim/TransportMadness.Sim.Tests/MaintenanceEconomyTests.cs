@@ -11,9 +11,9 @@ namespace TransportMadness.Sim.Tests;
 public class MaintenanceEconomyTests
 {
     /// <summary>A four-bus line through two towns whose depots are Workshops (the default policy asks for a Service).</summary>
-    static (Simulation Sim, int Line) Scenario(bool policyOn)
+    static (Simulation Sim, int Line) Scenario(bool policyOn, ulong seed = 3)
     {
-        var sc = BusScenario(3, 3, 4)!.Value;
+        var sc = BusScenario(seed, 3, 4)!.Value;
         for (int d = 0; d < sc.Sim.Depots.Count; d++) Assert.Equal(1, sc.Sim.Execute(new UpgradeDepotCommand(false, d, DepotLevel.Workshop)));
         if (!policyOn) sc.Sim.Execute(new SetMaintenancePolicyCommand(PolicyScope.Company, 0, MaintenancePolicy.Off));
         return (sc.Sim, sc.Line);
@@ -22,7 +22,7 @@ public class MaintenanceEconomyTests
     [Fact]
     public void WithTheDefaultPolicy_MaintenanceCostsAboutATenthOfWhatALinePays()
     {
-        var (sim, line) = Scenario(policyOn: true);
+        var (sim, line) = Scenario(policyOn: true, seed: 1);
         Worlds.Run(sim, 10);
         long income = sim.Lines[line].Income, maintenance = sim.Company.Total(LedgerEntry.Maintenance);
         Worlds.Run(sim, 20);

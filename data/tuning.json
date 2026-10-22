@@ -615,10 +615,24 @@
       "maxHeightRange": 12.0,       // highest minus lowest ground under the town
       "waterMargin": 1.5,           // ground must stand this far above the water surface everywhere under the town
       "blocksMin": 3,               // blocks along each side of the grid
-      "blocksMax": 5,
+      "blocksMax": 4,
       "blockLength": 120.0,         // street to street; buildings stand on all four sides of a block, two to a side
       "lotWidth": 30.0,             // between the middles of the two buildings on one side of a block
-      "setbackGap": 2.0             // clear space between the paved edge of an avenue and a building
+      "setbackGap": 2.0,            // clear space between the paved edge of an avenue and a building
+      // R3: sites are scored, then towns are picked best first; the best gets the metropolis size, a share the medium size, the rest blocksMin..blocksMax.
+      "sizes": {
+        "candidates": 500,          // random sites scored for the whole map
+        "siteRadius": 400.0,        // half the side of the square of ground scored around a site
+        "waterShare": 0.3,          // the most of a town's disc that may be water (rivers and bays are bridged)
+        "waterBonus": 0.35,         // score added to a site with water close by
+        "waterBonusReach": 500.0,   // ... within this of the middle
+        "metropolisBlocks": 7,
+        "metropolisMinTowns": 4,    // a map with fewer towns has no metropolis
+        "mediumShare": 0.3,
+        "mediumBlocksMin": 5,
+        "mediumBlocksMax": 6,
+        "spacingGap": 0.0           // two towns are at least 0.6 of the sum of their grids' reach apart, plus this
+      }
     },
 
     // From the middle of a town out. 'until' is the distance from the centre as a share of half the grid; 'fill' the

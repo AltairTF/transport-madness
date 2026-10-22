@@ -147,8 +147,8 @@ public class BalanceTests
     [Fact]
     public void LessSupplyMeansSlowerGrowth()
     {
-        var little = ServedTown(4, perDay: 60, needsMet: true, months: 4);
-        var more = ServedTown(4, perDay: 120, needsMet: true, months: 4);
+        var little = ServedTown(5, perDay: 60, needsMet: true, months: 4);
+        var more = ServedTown(5, perDay: 120, needsMet: true, months: 4);
 
         Assert.True(more.After > little.After, $"{more.After} people with 120 a period against {little.After} with 60");
         Assert.True(little.FirstGrowth == 0 || little.FirstGrowth >= more.FirstGrowth);

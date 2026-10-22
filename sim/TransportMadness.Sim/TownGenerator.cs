@@ -19,22 +19,8 @@ public static class TownGenerator
     {
         var tuning = net.Tuning.Towns;
         var rng = new SimRandom(seed ^ SeedSalt);
-        var places = new List<(float X, float Z, float Angle, int Blocks)>();
+        var places = PickSites(net, tuning, rng, townCount);
         var names = ShuffledNames(tuning, rng);
-
-        for (int t = 0; t < townCount; t++)
-        {
-            bool found = false;
-            for (int attempt = 0; attempt < tuning.Generation.Attempts && !found; attempt++)
-            {
-                int blocks = tuning.Generation.BlocksMin + rng.NextInt(tuning.Generation.BlocksMax - tuning.Generation.BlocksMin + 1);
-                var (cx, cz) = RandomSpot(net, tuning.Generation, rng);
-                if (!Suitable(net, tuning.Generation, places, cx, cz, blocks)) continue;
-                places.Add((cx, cz, GridAngle(net, rng, cx, cz), blocks));
-                found = true;
-            }
-            if (!found) break; // no room for this one, so none for the next either
-        }
 
         var towns = new List<TownPlan>();
         for (int i = 0; i < places.Count; i++)
@@ -64,11 +50,72 @@ public static class TownGenerator
         return names;
     }
 
-    static (float X, float Z) RandomSpot(RoadNetwork net, TownGenerationTuning g, SimRandom rng)
+    /// <summary>
+    /// R3: scores <c>sizes.candidates</c> random sites (flat dry ground around them, a bonus for water close by), then takes towns best
+    /// site first: the best gets the metropolis size, <c>mediumShare</c> of the rest the medium size, the others the small one. A town
+    /// is made smaller when its site cannot hold its size, and skipped when it cannot hold even the smallest. Rivers and bays may lie
+    /// under a town (up to <c>waterShare</c> of it); the streets that cross them become bridges.
+    /// </summary>
+    static List<(float X, float Z, float Angle, int Blocks)> PickSites(RoadNetwork net, TownsTuning tuning, SimRandom rng, int townCount)
     {
+        var g = tuning.Generation;
+        var s = g.Sizes;
         float half = net.Terrain?.HalfSize ?? 2048f;
         float range = half - g.EdgeMargin;
-        return ((rng.NextFloat() * 2f - 1f) * range, (rng.NextFloat() * 2f - 1f) * range);
+        var sites = new List<(float Score, float X, float Z)>();
+        for (int i = 0; i < s.Candidates; i++)
+        {
+            float x = (rng.NextFloat() * 2f - 1f) * range, z = (rng.NextFloat() * 2f - 1f) * range;
+            if (net.Terrain is { } terrain && terrain.HeightAt(x, z) - terrain.WaterSurfaceAt(x, z) < g.WaterMargin) continue;
+            sites.Add((SiteScore(net, g, x, z), x, z));
+        }
+        sites.Sort((a, b) => b.Score != a.Score ? b.Score.CompareTo(a.Score) : a.X.CompareTo(b.X));
+
+        int mediums = (int)MathF.Round(Math.Max(0, townCount - 1) * s.MediumShare);
+        var places = new List<(float X, float Z, float Angle, int Blocks)>();
+        foreach (var site in sites)
+        {
+            if (places.Count == townCount) break;
+            int rank = places.Count;
+            int wanted = rank == 0 && townCount >= s.MetropolisMinTowns ? s.MetropolisBlocks
+                : rank < (townCount >= s.MetropolisMinTowns ? 1 : 0) + mediums ? s.MediumBlocksMin + rng.NextInt(s.MediumBlocksMax - s.MediumBlocksMin + 1)
+                : g.BlocksMin + rng.NextInt(g.BlocksMax - g.BlocksMin + 1);
+            // Smaller until the ground holds it and no other town is too near for its size.
+            for (int blocks = wanted; blocks >= g.BlocksMin; blocks--)
+            {
+                if (!Suitable(net, g, places, site.X, site.Z, blocks)) continue;
+                places.Add((site.X, site.Z, GridAngle(net, rng, site.X, site.Z), blocks));
+                break;
+            }
+        }
+        return places;
+    }
+
+    /// <summary>Flat dry ground in the square around a site, plus a bonus when water (a river, a lake, the coast) is close. Higher is better.</summary>
+    static float SiteScore(RoadNetwork net, TownGenerationTuning g, float cx, float cz)
+    {
+        if (net.Terrain is not { } terrain) return 1f;
+        var s = g.Sizes;
+        float centre = terrain.HeightAt(cx, cz);
+        int flat = 0, total = 0;
+        const int steps = 9;
+        for (int i = 0; i < steps; i++)
+            for (int j = 0; j < steps; j++)
+            {
+                float x = cx + (i / (steps - 1f) * 2f - 1f) * s.SiteRadius, z = cz + (j / (steps - 1f) * 2f - 1f) * s.SiteRadius;
+                total++;
+                if (MathF.Abs(x) > terrain.HalfSize || MathF.Abs(z) > terrain.HalfSize || terrain.IsWater(x, z)) continue;
+                if (MathF.Abs(terrain.HeightAt(x, z) - centre) <= g.MaxHeightRange * 0.5f) flat++;
+            }
+        float score = flat / (float)total;
+        const int ring = 12;
+        for (int k = 0; k < ring; k++)
+        {
+            float a = k * MathF.Tau / ring;
+            float x = cx + MathF.Cos(a) * s.WaterBonusReach, z = cz + MathF.Sin(a) * s.WaterBonusReach;
+            if (MathF.Abs(x) <= terrain.HalfSize && MathF.Abs(z) <= terrain.HalfSize && terrain.IsWater(x, z)) { score += s.WaterBonus; break; }
+        }
+        return score;
     }
 
     /// <summary>Half the diagonal of the grid: every part of the town lies within this of its centre.</summary>
@@ -76,12 +123,16 @@ public static class TownGenerator
 
     static bool Suitable(RoadNetwork net, TownGenerationTuning g, List<(float X, float Z, float Angle, int Blocks)> others, float cx, float cz, int blocks)
     {
-        foreach (var o in others)
-            if ((o.X - cx) * (o.X - cx) + (o.Z - cz) * (o.Z - cz) < g.MinSpacing * g.MinSpacing) return false;
-        if (net.Terrain is not { } terrain) return true;
-        // The grid may lie at any angle, so test the whole disc around it: dry ground, and not too much height.
         float extent = Extent(g, blocks);
+        foreach (var o in others)
+        {
+            float need = MathF.Max(g.MinSpacing, (extent + Extent(g, o.Blocks)) * 0.6f + g.Sizes.SpacingGap);
+            if ((o.X - cx) * (o.X - cx) + (o.Z - cz) * (o.Z - cz) < need * need) return false;
+        }
+        if (net.Terrain is not { } terrain) return true;
+        // The grid may lie at any angle, so test the whole disc around it: the middle is dry, little of the rest is water, and not too much height.
         float lowest = float.MaxValue, highest = float.MinValue;
+        int wet = 0;
         const int steps = 9;
         for (int i = 0; i < steps; i++)
             for (int j = 0; j < steps; j++)
@@ -89,10 +140,11 @@ public static class TownGenerator
                 float x = cx + (i / (steps - 1f) * 2f - 1f) * extent, z = cz + (j / (steps - 1f) * 2f - 1f) * extent;
                 if (MathF.Abs(x) > terrain.HalfSize || MathF.Abs(z) > terrain.HalfSize) return false;
                 float h = terrain.HeightAt(x, z);
-                if (h - terrain.WaterSurfaceAt(x, z) < g.WaterMargin) return false;
+                if (h - terrain.WaterSurfaceAt(x, z) < g.WaterMargin) { wet++; continue; }
                 lowest = MathF.Min(lowest, h);
                 highest = MathF.Max(highest, h);
             }
+        if (wet > g.Sizes.WaterShare * steps * steps) return false;
         return highest - lowest <= g.MaxHeightRange;
     }
 
@@ -132,8 +184,24 @@ public static class TownGenerator
                     var (x0, z0) = direction == 0 ? ToWorld(cx, cz, angle, -half, offset) : ToWorld(cx, cz, angle, offset, -half);
                     var (x1, z1) = direction == 0 ? ToWorld(cx, cz, angle, half, offset) : ToWorld(cx, cz, angle, offset, half);
                     var type = isAvenue ? RoadType.Avenue2x2 : RoadType.TwoLane;
+                    if (net.Terrain is { } terrain && !TrimToDry(terrain, ref x0, ref z0, ref x1, ref z1)) continue;
                     net.BuildRoad(x0, z0, x1, z1, type, tuning.Roads.Of(type).SpeedLimit);
                 }
+    }
+
+    /// <summary>Moves each end of a street inward until it is on dry ground (a road may cross water as a bridge but not end in it). False when too little is left.</summary>
+    static bool TrimToDry(Terrain terrain, ref float x0, ref float z0, ref float x1, ref float z1)
+    {
+        const float step = 10f;
+        float length = MathF.Sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
+        float dx = (x1 - x0) / length, dz = (z1 - z0) / length;
+        float a = 0f, b = length;
+        while (a < b && (terrain.IsWater(x0 + dx * a, z0 + dz * a) || MathF.Abs(x0 + dx * a) > terrain.HalfSize || MathF.Abs(z0 + dz * a) > terrain.HalfSize)) a += step;
+        while (b > a && (terrain.IsWater(x0 + dx * b, z0 + dz * b) || MathF.Abs(x0 + dx * b) > terrain.HalfSize || MathF.Abs(z0 + dz * b) > terrain.HalfSize)) b -= step;
+        if (b - a < 40f) return false;
+        (x1, z1) = (x0 + dx * b, z0 + dz * b);
+        (x0, z0) = (x0 + dx * a, z0 + dz * a);
+        return true;
     }
 
     /// <summary>A place a building can stand: on one side of a block, facing its street. Where it is does not depend on what is built on it.</summary>
@@ -198,6 +266,7 @@ public static class TownGenerator
             int tier = Pick(ring.Tiers, tierRoll);
             if (!index.HasRoadWithin(site.X, site.Z, tuning.AccessRadius)) continue;
             if (net.Terrain is { } terrain && (MathF.Abs(site.X) > terrain.HalfSize || MathF.Abs(site.Z) > terrain.HalfSize)) continue;
+            if (net.Terrain is { } land && land.HeightAt(site.X, site.Z) - land.WaterSurfaceAt(site.X, site.Z) < tuning.Generation.WaterMargin) continue;
             plans.Add(new BuildingPlan(type, tier, site.X, site.Z, site.Facing));
         }
         return plans;

@@ -80,7 +80,7 @@ public class RailEconomyTests
     {
         var capitalRatios = new List<double>();
         double railNet = 0, busNet = 0;
-        foreach (ulong seed in new[] { 1UL, 2UL, 3UL, 4UL, 6UL, 7UL })
+        foreach (ulong seed in new[] { 1UL, 2UL, 3UL, 4UL, 6UL, 7UL, 9UL, 10UL, 11UL, 12UL })
         {
             if (PassengerRail(seed) is not { } rail) continue;
             if (BusScenario(seed, 1, 6) is not { } bus || bus.Bought < 6) continue;

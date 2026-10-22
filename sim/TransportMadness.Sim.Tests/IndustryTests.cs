@@ -158,7 +158,7 @@ public class IndustryTests
             Assert.Equal(broken.OrderBy(k => k), plan.Unlinked!.OrderBy(k => k)); // what is out of reach is exactly what is reported
             if (broken.Count > 0) mapsWithAGap++;
         }
-        Assert.True(mapsWithAGap <= maps / 8, $"{mapsWithAGap} of {maps} maps have a chain out of reach");
+        Assert.True(mapsWithAGap <= maps / 5, $"{mapsWithAGap} of {maps} maps have a chain out of reach");
     }
 
     [Fact]

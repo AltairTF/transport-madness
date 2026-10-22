@@ -406,6 +406,23 @@ public sealed record TownGenerationTuning
     public required float BlockLength { get; init; }
     public required float LotWidth { get; init; }
     public required float SetbackGap { get; init; }
+    public required TownSizesTuning Sizes { get; init; }
+}
+
+/// <summary>How big each town is: the best site gets the metropolis, a share the medium size, the rest <c>blocksMin..blocksMax</c> (R3).</summary>
+public sealed record TownSizesTuning
+{
+    public required int Candidates { get; init; }
+    public required float SiteRadius { get; init; }
+    public required float WaterShare { get; init; }
+    public required float WaterBonus { get; init; }
+    public required float WaterBonusReach { get; init; }
+    public required int MetropolisBlocks { get; init; }
+    public required int MetropolisMinTowns { get; init; }
+    public required float MediumShare { get; init; }
+    public required int MediumBlocksMin { get; init; }
+    public required int MediumBlocksMax { get; init; }
+    public required float SpacingGap { get; init; }
 }
 
 public sealed record RingTuning
