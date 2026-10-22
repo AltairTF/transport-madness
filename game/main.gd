@@ -42,6 +42,8 @@ func _ready() -> void:
 
 	_build_environment()
 	rig.terrain_host = host
+	get_window().size_changed.connect(_apply_label_scale)
+	Settings.changed.connect(_apply_label_scale)
 	if _args.has("--distance"):
 		rig.distance = float(_args["--distance"])
 	if _args.has("--pitch"):
@@ -72,6 +74,7 @@ func _ready() -> void:
 	if _args.has("--focus"):
 		rig.focus_on(rig.position.x, rig.position.z) # now that the terrain exists, stand on it
 
+	_apply_label_scale()
 	hud = load("res://game/hud.gd").new()
 	add_child(hud)
 	hud.speed_selected.connect(func(speed: float) -> void: host.SetSpeed(speed))
@@ -374,6 +377,11 @@ func _restore_host_state(blob: PackedByteArray) -> void:
 
 
 ## Replaces the world: "towns" (hills with towns), "demo" (street grid with traffic), "hills" or "empty".
+## The names in the world keep the size of the interface text as the window or the interface size changes.
+func _apply_label_scale() -> void:
+	host.SetLabelScale(Settings.label_scale())
+
+
 func _new_world(map: String) -> void:
 	host.StartFrequency = Session.frequency
 	match map:
@@ -678,6 +686,11 @@ func _key(keycode: int, shift := false) -> void:
 
 
 func _selftest_place() -> void:
+	if _args.has("--ui-scale"): # look at the interface at a size: a command line run keeps the project's window, so apply the settings by hand
+		Settings.ui_scale = float(_args["--ui-scale"])
+		Settings.apply()
+		await get_tree().process_frame
+		print("PLACE interface factor %.2f, label scale %.2f, window %s" % [Settings.interface_factor(), Settings.label_scale(), get_window().size])
 	rig.distance = 500.0
 	rig.pitch = -89.0
 	rig.position = Vector3.ZERO

@@ -77,6 +77,7 @@ func _display_tab() -> Control:
 	for factor in Settings.UI_SCALES:
 		interface_size.add_item("%d%%" % roundi(factor * 100.0))
 	interface_size.selected = maxi(0, Settings.UI_SCALES.find(Settings.ui_scale))
+	interface_size.tooltip_text = "100 % is the interface of a 1920 x 1080 screen; a bigger window shows more of the map, not bigger buttons."
 	interface_size.item_selected.connect(func(index: int) -> void:
 		Settings.ui_scale = Settings.UI_SCALES[index]
 		_commit())

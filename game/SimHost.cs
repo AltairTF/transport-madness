@@ -1554,7 +1554,7 @@ public partial class SimHost : Node3D
                 Text = town.Name,
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 FixedSize = true,
-                PixelSize = 0.0014f,
+                PixelSize = 0.0014f * _labelScale,
                 FontSize = 36,
                 OutlineSize = 10,
                 NoDepthTest = true,
@@ -1568,7 +1568,7 @@ public partial class SimHost : Node3D
                 Text = gateway.Name,
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 FixedSize = true,
-                PixelSize = 0.0013f,
+                PixelSize = 0.0013f * _labelScale,
                 FontSize = 34,
                 OutlineSize = 9,
                 NoDepthTest = true,
@@ -1583,7 +1583,7 @@ public partial class SimHost : Node3D
                 Text = Sim.IndustryTuning.Types[industry.Type].Name,
                 Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
                 FixedSize = true,
-                PixelSize = 0.0011f,
+                PixelSize = 0.0011f * _labelScale,
                 FontSize = 30,
                 OutlineSize = 8,
                 NoDepthTest = true,
@@ -1591,6 +1591,21 @@ public partial class SimHost : Node3D
                 Position = new Vector3(industry.X, HeightAt(industry.X, industry.Z) + 40f, industry.Z),
             });
         }
+    }
+
+    float _labelScale = 1f;
+
+    /// <summary>
+    /// The scale of the names in the world (Settings.label_scale): they are as big on the screen as the interface text, whatever the size of the window. Takes effect on the labels
+    /// there are and on those made after.
+    /// </summary>
+    public void SetLabelScale(float scale)
+    {
+        if (_townLabels == null || Math.Abs(scale - _labelScale) < 1e-4f) { _labelScale = scale; return; }
+        float ratio = scale / _labelScale;
+        _labelScale = scale;
+        foreach (var child in _townLabels.GetChildren())
+            if (child is Label3D label) label.PixelSize *= ratio;
     }
 
     /// <summary>Piers every 25 m from the deck down to the ground (or the bed of the river), and a slab under the road.</summary>

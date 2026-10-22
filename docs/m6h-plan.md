@@ -8,6 +8,8 @@ Status: raised by the developer on 2026-10-22 while playing M6g; written down, n
 
 ## 1. Interface scale
 
+**Built 2026-10-22** (project-status 5.55): fixed size in pixels (stretch off), the choice from 50 % to 200 % on top of the display scale, world labels on the same scale; no automatic setting. What follows is the original request.
+
 **Seen.** In the editor's game window (4471 x 2515) the HUD is far too big. The Settings window offers window sizes, and the developer expected 1920 x 1080 to be what the game is made for.
 
 **Today.** `project.godot` has a 1920 x 1080 base viewport with `canvas_items` stretch and `expand` aspect, so the whole canvas is scaled by window height / 1080 (about 2.3 at 2515 px) and `Settings.ui_scale` (75, 100, 125, 150 %) is multiplied on top through `content_scale_factor`. A bigger window therefore only makes the interface bigger, not roomier. The window-size list is for a free-standing window; it does nothing in fullscreen or in the editor's embedded game.

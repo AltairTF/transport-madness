@@ -13,7 +13,8 @@ const RESOLUTIONS: Array[Vector2i] = [
 	Vector2i(2560, 1440), Vector2i(2560, 1600), Vector2i(2880, 1620), Vector2i(3200, 1800), Vector2i(3440, 1440), Vector2i(3840, 1600),
 	Vector2i(3840, 2160), Vector2i(5120, 1440)]
 const MIN_WINDOW := Vector2i(960, 540)
-const UI_SCALES: Array[float] = [0.75, 1.0, 1.25, 1.5]
+const UI_SCALES: Array[float] = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.8, 2.0] ## the player's interface size: 100 % is the size of the interface of a 1920 x 1080 screen, whatever the window
+const REFERENCE_HEIGHT := 1080.0
 const WINDOW_FILL := 0.92 ## share of the free screen area a first-run window may take (the title bar needs room)
 
 var fullscreen := false
@@ -36,6 +37,18 @@ func _ready() -> void:
 	# A command line run (self-tests, benchmark) keeps the project's own window so its numbers stay comparable.
 	if OS.get_cmdline_user_args().is_empty():
 		apply()
+
+
+## The scale of the interface in window pixels: the player's choice times the display's own scale (2 on a retina screen), so a bigger window shows more of the map instead of bigger buttons.
+func interface_factor() -> float:
+	return ui_scale * _screen_scale()
+
+
+## How much a label in the world (a town's name) is scaled to be as big on the screen as the interface text of the same size: its size follows the height of the window, so it is
+## brought back to a 1080 pixel high one and then by the interface factor.
+func label_scale() -> float:
+	var height := maxf(1.0, float(get_window().size.y))
+	return REFERENCE_HEIGHT * get_window().content_scale_factor / height
 
 
 ## Windowed sizes that fit the free area of the screen the window is on, always including the current one.
@@ -64,7 +77,8 @@ func default_resolution() -> Vector2i:
 func apply() -> void:
 	var window := get_window()
 	window.min_size = MIN_WINDOW
-	window.content_scale_factor = ui_scale
+	window.content_scale_mode = Window.CONTENT_SCALE_MODE_DISABLED
+	window.content_scale_factor = interface_factor()
 	window.msaa_3d = msaa as Viewport.MSAA
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(master_volume, 0.0001)))
@@ -101,7 +115,7 @@ func _load() -> void:
 	fullscreen = file.get_value("display", "fullscreen", fullscreen)
 	resolution = file.get_value("display", "resolution", resolution)
 	vsync = file.get_value("display", "vsync", vsync)
-	ui_scale = file.get_value("display", "ui_scale", ui_scale)
+	ui_scale = _nearest_scale(float(file.get_value("display", "ui_scale", ui_scale)))
 	msaa = file.get_value("display", "msaa", msaa)
 	master_volume = file.get_value("audio", "master", master_volume)
 	music_volume = file.get_value("audio", "music", music_volume)
@@ -110,6 +124,14 @@ func _load() -> void:
 	key_bindings = file.get_value("interface", "keys", key_bindings)
 	if resolution.x < MIN_WINDOW.x or resolution.y < MIN_WINDOW.y:
 		resolution = Vector2i.ZERO
+
+
+func _nearest_scale(value: float) -> float:
+	var best := 1.0
+	for step in UI_SCALES:
+		if absf(step - value) < absf(best - value):
+			best = step
+	return best
 
 
 ## The free area of the screen in logical points: on a scaled (retina) screen the window size is in pixels,
