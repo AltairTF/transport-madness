@@ -20,7 +20,9 @@ public sealed class Whitebox
     public Block Depot => Depots[1];
     /// <summary>The colour of a depot no road reaches.</summary>
     public Color DepotIdle = new(0.5f, 0.5f, 0.52f);
-    public Block Station = new(new Vector3(14f, 4f, 10f), new Vector2(-24f, -24f), new Color(0.2f, 0.45f, 0.85f));
+    /// <summary>A stop on the road: Size is the slab on the lane (length along it, thickness, width), Offset is unused.</summary>
+    public Block Station = new(new Vector3(14f, 0.3f, 3.6f), Vector2.Zero, new Color(0.2f, 0.45f, 0.85f));
+    public float StationPostHeight = 5f;
     public Block RailDepot = new(new Vector3(16f, 5f, 12f), new Vector2(16f, 16f), new Color(0.72f, 0.28f, 0.22f));
     public Color GatewayRoad = new(0.30f, 0.55f, 0.85f), GatewayRail = new(0.80f, 0.55f, 0.25f);
     /// <summary>Home, commerce, industry.</summary>
@@ -54,6 +56,7 @@ public sealed class Whitebox
             box.DepotIdle = Colour(depot, "idle", box.DepotIdle);
         }
         box.Station = Read(root, "station", box.Station);
+        if (Dict(root, "station") is { } stop) box.StationPostHeight = Number(stop, "postHeight", box.StationPostHeight);
         box.RailDepot = Read(root, "railDepot", box.RailDepot);
         if (Dict(root, "gateway") is { } gateway)
         {

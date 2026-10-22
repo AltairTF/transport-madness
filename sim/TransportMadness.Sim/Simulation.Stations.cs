@@ -145,10 +145,13 @@ public sealed partial class Simulation
     /// The lanes where a vehicle can pull into a bay of the station (the right-most lane of each approach) and the position along
     /// each where the front of a halted vehicle stands, for drawing the bays. Empty for a station without bays.
     /// </summary>
-    public IReadOnlyList<(LaneId Lane, float Position)> BayLanes(Station station)
+    public IReadOnlyList<(LaneId Lane, float Position)> BayLanes(Station station) => station.HasBays ? StopLanes(station) : new List<(LaneId Lane, float Position)>();
+
+    /// <summary>The right-most lane of each approach where vehicles stop at the station and the position along it where the front of a halted vehicle stands, for drawing the stop on the road.</summary>
+    public IReadOnlyList<(LaneId Lane, float Position)> StopLanes(Station station)
     {
         var list = new List<(LaneId Lane, float Position)>();
-        if (!station.Active || !station.HasBays) return list;
+        if (!station.Active) return list;
         SyncNetwork();
         foreach (var lane in _net.IncomingLanes(station.Node))
             if (IsStopLane(lane.Value, station) && _net.GetLane(lane).Index == 0) list.Add((lane, StopPosition(lane.Value)));

@@ -1375,7 +1375,7 @@ public partial class SimHost : Node3D
         RebuildBuildings();
     }
 
-    /// <summary>Draws each open station: a platform beside its node and, with bays, a pocket of paving beside the stop lane that the vehicles pull into.</summary>
+    /// <summary>Draws each open station: a slab and a post on the stop lane of each approach and, with bays, a pocket of paving beside the stop lane that the vehicles pull into.</summary>
     void RebuildStations()
     {
         foreach (var child in _stationRoot.GetChildren()) child.QueueFree();
@@ -1383,11 +1383,25 @@ public partial class SimHost : Node3D
         foreach (var station in Sim.Stations)
         {
             if (!station.Active || station.Mode != StationMode.Road || station.DockKind != 0) continue; // the stop at an industry has no platform of its own
-            var (x, z) = net.GetNode(station.Node);
             var block = _whitebox.Station;
-            var platform = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _stationMaterial };
-            platform.Position = new Vector3(x + block.Offset.X, _terrain.HeightAt(x + block.Offset.X, z + block.Offset.Y) + block.Size.Y * 0.5f, z + block.Offset.Y);
-            _stationRoot.AddChild(platform);
+            foreach (var (laneId, position) in Sim.StopLanes(station))
+            {
+                // The stop is on the road: a slab on the lane where the vehicles halt and a post at its right edge.
+                int lane = laneId.Value;
+                float s = Math.Max(0f, position - block.Size.X);
+                LaneFrame(lane, s + block.Size.X * 0.5f, out float cx, out float cz, out float dx, out float dz);
+                float tilt = 1f / MathF.Sqrt(1f + _laneGrade[lane] * _laneGrade[lane]);
+                var along = new Vector3(dx * tilt, _laneGrade[lane] * tilt, dz * tilt);
+                var across = new Vector3(-dz, 0f, dx);
+                var up = across.Cross(along);
+                var centre = new Vector3(cx - dz * _laneSide[lane], _laneY[lane] + _laneGrade[lane] * (s + block.Size.X * 0.5f) + RoadHeight + block.Size.Y * 0.5f, cz + dx * _laneSide[lane]);
+                var slab = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(block.Size.X, block.Size.Y, block.Size.Z) }, MaterialOverride = _stationMaterial };
+                slab.Transform = new Transform3D(new Basis(along, up, across), centre);
+                _stationRoot.AddChild(slab);
+                var post = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.5f, _whitebox.StationPostHeight, 0.5f) }, MaterialOverride = _stationMaterial };
+                post.Position = new Vector3(centre.X - dz * (block.Size.Z * 0.5f + 0.6f), centre.Y + _whitebox.StationPostHeight * 0.5f, centre.Z + dx * (block.Size.Z * 0.5f + 0.6f));
+                _stationRoot.AddChild(post);
+            }
             foreach (var (laneId, position) in Sim.BayLanes(station))
             {
                 int lane = laneId.Value;

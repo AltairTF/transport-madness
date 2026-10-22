@@ -13,6 +13,8 @@ const NODE_SNAP_RADIUS := 20.0
 const ANGLE_STEP := deg_to_rad(15.0)
 const ANGLE_PULL := deg_to_rad(1.5) ## a road within this of a 15 degree step is pulled onto it; Shift forces the step
 const LENGTH_STEP := 5.0
+const STATION_PREVIEW_SIZE := 12.0
+const RIGHT_CLICK_SLOP := 6.0 ## pixels the mouse may move with the right button down and still count as a click
 const PICK_RADIUS := 24.0
 const STATION_PICK_RADIUS := 40.0
 const SPEED_STEP := 10.0 / 3.6 # one click on a speed tool changes the limit by 10 km/h
@@ -50,6 +52,7 @@ var _preview: MeshInstance3D
 var _arc_preview: MeshInstance3D
 var _earth_preview: MeshInstance3D ## child of _arc_preview (shown with it): earthworks, structures and paths, in vertex colours
 var _hover_road := -1
+var _right_down_at := Vector2(-1.0, -1.0) ## where the right button went down, (-1, -1) once it has moved far enough to be a camera drag
 var _material := StandardMaterial3D.new()
 
 
@@ -83,10 +86,10 @@ func set_tool(tool_name: String) -> void:
 	tool = tool_name
 	_reset()
 	match tool:
-		"road2": message.emit("2-lane road: click to start, click again to build (Esc stops)")
-		"road4": message.emit("2x2 avenue: click to start, click again to build (Esc stops)")
-		"curve2": message.emit("Curved 2-lane road: click the start, a point on the curve, then the end (Esc stops)")
-		"curve4": message.emit("Curved avenue: click the start, a point on the curve, then the end (Esc stops)")
+		"road2": message.emit("2-lane road: click to start, click again to build (right click or Esc stops)")
+		"road4": message.emit("2x2 avenue: click to start, click again to build (right click or Esc stops)")
+		"curve2": message.emit("Curved 2-lane road: click the start, a point on the curve, then the end (right click or Esc stops)")
+		"curve4": message.emit("Curved avenue: click the start, a point on the curve, then the end (right click or Esc stops)")
 		"upgrade": message.emit("Upgrade: click a 2-lane road to widen it to an avenue")
 		"downgrade": message.emit("Downgrade: click an avenue to narrow it to a 2-lane road")
 		"faster": message.emit("Faster: click a road to raise its speed limit by 10 km/h")
@@ -97,7 +100,7 @@ func set_tool(tool_name: String) -> void:
 		"depot": message.emit("Depot: click anywhere. Against a road it stands beside it, with a road within about 74 m it gets a stone path to it, else it waits until a road reaches its door (raise its level in its window)")
 		"station": message.emit("Station: click a road to build one there (the road is split); vehicles stop on the lanes that run into it")
 		"station_bays": message.emit("Station with bays: like a station, but loading vehicles pull out of the lane, so a bus loading does not hold up the road")
-		"line": message.emit("New line: click stations, or industries and gateways a road reaches, in order. The preview shows the route the vehicles would drive. Enter finishes the line, Esc cancels")
+		"line": message.emit("New line: click stations, or industries and gateways a road reaches, in order. The preview shows the route the vehicles would drive. Enter finishes the line, right click or Esc cancels")
 		"battery": message.emit("Anti-aircraft battery: click level dry ground away from roads and buildings; the circle is its range. It needs people to man it and ammunition from a gateway (from month 20)")
 		"light": message.emit("Traffic light: click a junction of three roads or more; the streets that cross take turns at green")
 		"light_remove": message.emit("Remove light: click a junction with traffic lights")
@@ -105,8 +108,8 @@ func set_tool(tool_name: String) -> void:
 		"sign_yield": message.emit("Yield sign: click a road next to a junction; its traffic gives way to the roads without a sign")
 		"sign_stop": message.emit("Stop sign: click a road next to a junction; its traffic stops, then gives way to the roads without a sign")
 		"sign_remove": message.emit("Remove sign: click a road next to a junction with a sign")
-		"track": message.emit("Track: click to start, click again to build (Esc stops). Tracks join where they meet; a road it crosses gets a level crossing")
-		"track_curve": message.emit("Curved track: click the start, a point on the curve, then the end (Esc stops)")
+		"track": message.emit("Track: click to start, click again to build (right click or Esc stops). Tracks join where they meet; a road it crosses gets a level crossing")
+		"track_curve": message.emit("Curved track: click the start, a point on the curve, then the end (right click or Esc stops)")
 		"track_remove": message.emit("Remove track: click a piece of track (node to node); a train on it is lost")
 		"signal_block": message.emit("Block signal: click a track (R turns the signal round). A train waits unless the whole block beyond is free")
 		"signal_path": message.emit("Path signal: click a track (R turns the signal round). A train waits unless its path up to the next signal is free; use them at passing loops")
@@ -153,15 +156,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_preview(get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		get_viewport().set_input_as_handled()
-		if _start == null and _line_stations.is_empty():
-			set_tool("pointer")
-			tool_changed.emit("pointer")
-		else:
-			_reset()
+		_cancel()
 	elif event is InputEventMouseMotion:
+		if _right_down_at.x >= 0.0 and event.position.distance_to(_right_down_at) > RIGHT_CLICK_SLOP:
+			_right_down_at = Vector2(-1.0, -1.0) # the button is orbiting the camera, not cancelling
 		_update_preview(event.position)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT:
+		# A click of the right button cancels; a drag of it orbits the camera and is left alone.
+		if event.pressed:
+			_right_down_at = event.position
+		elif _right_down_at.x >= 0.0:
+			_right_down_at = Vector2(-1.0, -1.0)
+			_cancel()
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_click(event.position)
+
+
+## Esc and a click of the right button: drop the draft in progress (a road, a line), else leave the tool.
+func _cancel() -> void:
+	if _start == null and _line_stations.is_empty():
+		set_tool("pointer")
+		tool_changed.emit("pointer")
+	else:
+		_reset()
 
 
 func ground_point(screen: Vector2) -> Variant:
@@ -175,6 +192,8 @@ func _target_point(screen: Vector2) -> Variant:
 	var p: Variant = ground_point(screen)
 	if p == null:
 		return null
+	if Input.is_action_pressed("place_free"):
+		return _ground(p.x, p.z) # held: no snap to a node, a step or a length (the buildings read it too)
 	var snap: Dictionary = host.SnapToRailNode(p.x, p.z, NODE_SNAP_RADIUS) if _is_rail_tool() else host.SnapToNode(p.x, p.z, NODE_SNAP_RADIUS)
 	if snap["snapped"]:
 		return Vector3(snap["x"], snap["y"], snap["z"])
@@ -445,8 +464,8 @@ func _hover_station(screen: Vector2) -> void:
 		message.emit("No room for a station here: click a road, away from its ends and from other stations")
 		return
 	_preview.visible = true
-	_preview.mesh.size = Vector3(14, 4, 10)
-	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"] - 24.0, site["y"] + 2.0, site["z"] - 24.0))
+	_preview.mesh.size = Vector3(STATION_PREVIEW_SIZE, 0.6, STATION_PREVIEW_SIZE) # a slab on the road at the node; the stops show on the lanes once it is built
+	_preview.transform = Transform3D(Basis.IDENTITY, Vector3(site["x"], site["y"] + 0.4, site["z"]))
 	_material.albedo_color = ROAD_COLORS["valid"] if site["affordable"] else ROAD_COLORS["invalid"]
 	message.emit("Station: cost %s   serves %d buildings and %d industries within %d m" % [_money(site["price"]), site["covered"], site["industries"], site["radius"]] + ("" if site["affordable"] else "   (not enough money)"))
 

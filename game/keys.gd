@@ -19,6 +19,7 @@ const ACTIONS := [
 	["overlay_next", "Next map view", KEY_V, false],
 	["overlay_previous", "Map view before", KEY_V, true],
 	["rotate_signal", "Turn a signal round", KEY_R, false],
+	["place_free", "Hold to place without snapping", KEY_ALT, false],
 	["finish_line", "Finish a new line", KEY_ENTER, false],
 	["quick_save", "Quick save", KEY_F5, false],
 	["quick_load", "Load the quick save", KEY_F9, false],
