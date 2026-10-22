@@ -627,6 +627,13 @@ func _selftest_models() -> void:
 	rig.distance = 70.0
 	rig.pitch = -30.0
 	rig.yaw = 20.0
+	for depot in host.GetDepots():
+		rig.position = Vector3(depot["x"], host.HeightAt(depot["x"], depot["z"]), depot["z"])
+		rig._apply()
+		for i in 5:
+			await get_tree().process_frame
+		if _args.has("--shot"):
+			get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-depot%d.png" % depot["id"]))
 	for k in 4:
 		host.StepFor(7.0)
 		var spot: Vector3 = Vector3(host.GetVehicles()[0]["x"], 0, host.GetVehicles()[0]["z"])
@@ -662,6 +669,15 @@ func _selftest_industries() -> void:
 		for i in 6:
 			await get_tree().process_frame
 		print("INDUSTRIES %d: %s" % [shot, industry["name"]])
+		if _args.has("--shot"):
+			get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-%d.png" % shot))
+		shot += 1
+	for gateway in host.GetGateways():
+		rig.position = Vector3(gateway["x"], host.HeightAt(gateway["x"], gateway["z"]), gateway["z"])
+		rig._apply()
+		for i in 6:
+			await get_tree().process_frame
+		print("INDUSTRIES %d: gateway %s" % [shot, gateway["name"]])
 		if _args.has("--shot"):
 			get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-%d.png" % shot))
 		shot += 1

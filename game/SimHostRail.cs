@@ -417,12 +417,14 @@ public partial class SimHost
             {
                 // Built since M6g: where its pad is, turned the way the player chose.
                 var tuning = Sim.Network.Tuning.Rail;
+                if (PlaceModel(_railRoot, "raildepot", new Vector3(depot.X, HeightAt(depot.X, depot.Z), depot.Z), depot.Angle)) continue;
                 var placed = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(tuning.DepotHalfLength * 2f, block.Size.Y, tuning.DepotHalfWidth * 2f) }, MaterialOverride = _railDepotMaterial };
                 placed.Position = new Vector3(depot.X, HeightAt(depot.X, depot.Z) + block.Size.Y * 0.5f, depot.Z);
                 placed.Rotation = new Vector3(0f, -depot.Angle, 0f);
                 _railRoot.AddChild(placed);
                 continue;
             }
+            if (PlaceModel(_railRoot, "raildepot", new Vector3(x + block.Offset.X, rail.GetNodeHeight(depot.Node), z + block.Offset.Y), MathF.Atan2(-block.Offset.Y, -block.Offset.X))) continue;
             var building = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = _railDepotMaterial };
             building.Position = new Vector3(x + block.Offset.X, rail.GetNodeHeight(depot.Node) + block.Size.Y * 0.5f, z + block.Offset.Y);
             _railRoot.AddChild(building);

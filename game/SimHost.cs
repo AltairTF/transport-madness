@@ -1468,6 +1468,15 @@ public partial class SimHost : Node3D
             if (!depot.Active && !depot.FreeStanding) continue;
             var block = _whitebox.Depots[(int)depot.Level];
             var material = depot.Active ? _depotLevelMaterials[(int)depot.Level] : _depotIdleMaterial; // grey while no road reaches it
+            Color? idle = depot.Active ? null : new Color(0.5f, 0.5f, 0.52f, 0.6f);
+            string depotModel = "depot." + (int)depot.Level;
+            if (depot.FreeStanding && PlaceModel(_roadRoot, depotModel, new Vector3(depot.X, HeightAt(depot.X, depot.Z), depot.Z), depot.Angle, idle)) continue;
+            if (!depot.FreeStanding)
+            {
+                var (nx, nz) = net.GetNode(depot.Node);
+                float ox = block.Offset.X, oz = block.Offset.Y;
+                if (PlaceModel(_roadRoot, depotModel, new Vector3(nx + ox, _terrain.HeightAt(nx + ox, nz + oz), nz + oz), MathF.Atan2(-oz, -ox), idle)) continue;
+            }
             var building = new MeshInstance3D { Mesh = new BoxMesh { Size = block.Size }, MaterialOverride = material };
             if (depot.FreeStanding)
             {
@@ -1570,22 +1579,41 @@ public partial class SimHost : Node3D
         _roadRoot.AddChild(door);
     }
 
-    /// <summary>One industry as its composite Model: made once, then moved and tinted (dark when bombed, the colour of the map view when one is shown).</summary>
-    void PlaceIndustryModel(int index, Industry industry, string modelId, float shade)
+    /// <summary>A composite Model (an industry, a gateway): made once under <paramref name="key"/>, then moved and tinted by an overlay colour (null: none). Models face -Z, turned to <paramref name="facing"/>.</summary>
+    void PlaceCompositeNode(int key, float x, float z, float facing, string modelId, Color? overlay)
     {
-        if (!_industryNodes.TryGetValue(index, out var node))
+        if (!_industryNodes.TryGetValue(key, out var node))
         {
             node = _buildingModels.Compose(modelId);
             if (node == null) return;
             _industryRoot.AddChild(node);
-            _industryNodes[index] = node;
+            _industryNodes[key] = node;
         }
-        node.Position = new Vector3(industry.X, Math.Max(_terrain.HeightAt(industry.X, industry.Z), _terrain.WaterSurfaceAt(industry.X, industry.Z)) - 0.3f, industry.Z);
-        node.Rotation = new Vector3(0f, -industry.Angle, 0f);
+        node.Position = new Vector3(x, Math.Max(_terrain.HeightAt(x, z), _terrain.WaterSurfaceAt(x, z)) - 0.3f, z);
+        node.Rotation = new Vector3(0f, -facing, 0f);
+        SetOverlay(node, overlay);
+    }
+
+    /// <summary>One industry as its composite Model: dark when bombed, the colour of the map view when one is shown.</summary>
+    void PlaceIndustryModel(int index, Industry industry, string modelId, float shade)
+    {
         Color? overlay = null;
         if (_overlay != MapOverlay.None) overlay = OverlayIndustryColour(industry, Colors.White) with { A = 0.8f };
         else if (shade < 1f) overlay = new Color(0.05f, 0.05f, 0.06f, 0.65f);
-        SetOverlay(node, overlay);
+        PlaceCompositeNode(index, industry.X, industry.Z, industry.Angle, modelId, overlay);
+    }
+
+    /// <summary>Puts a plain Model of the library under a parent at a ground position, its front toward <paramref name="facing"/> (the direction a box would be turned to). False when there is no such Model.</summary>
+    bool PlaceModel(Node3D parent, string modelId, Vector3 position, float facing, Color? overlay = null)
+    {
+        if (!_buildingModels.Has(modelId)) return false;
+        var node = _buildingModels.Compose(modelId);
+        if (node == null) return false;
+        node.Position = position;
+        node.Rotation = new Vector3(0f, -(facing + MathF.PI * 0.5f), 0f);
+        parent.AddChild(node);
+        if (overlay != null) SetOverlay(node, overlay);
+        return true;
     }
 
     /// <summary>A flat colour laid over every mesh below a node (null takes it away).</summary>
@@ -1642,8 +1670,16 @@ public partial class SimHost : Node3D
             var own = OverlayIndustryColour(industry, new Color(type.Color[0] * shade, type.Color[1] * shade, type.Color[2] * shade));
             buf[o + 12] = own.R; buf[o + 13] = own.G; buf[o + 14] = own.B; buf[o + 15] = 1f;
         }
-        foreach (var gateway in Sim.Gateways)
+        for (int g = 0; g < Sim.Gateways.Count; g++)
         {
+            var gateway = Sim.Gateways[g];
+            string gatewayModel = gateway.Kind == GatewayKind.Road ? "gateway.road" : "gateway.rail";
+            if (_buildingModels.HasComposite(gatewayModel))
+            {
+                Color? shade = _overlay != MapOverlay.None ? DimmedColour with { A = 0.6f } : gateway.DamagedUntil > Sim.Tick ? new Color(0.05f, 0.05f, 0.06f, 0.65f) : null;
+                PlaceCompositeNode(-1 - g, gateway.X, gateway.Z, gateway.Angle, gatewayModel, shade);
+                continue;
+            }
             float side = Sim.GatewayTuning.Size * 2f, height = Sim.GatewayTuning.Height;
             float fx = MathF.Cos(gateway.Angle), fz = MathF.Sin(gateway.Angle);
             float y = Math.Max(_terrain.HeightAt(gateway.X, gateway.Z), _terrain.WaterSurfaceAt(gateway.X, gateway.Z)) - 0.3f + height * 0.5f;
