@@ -23,7 +23,7 @@ public partial class SimHost
     }
 
     readonly Dictionary<int, FlightNodes> _flightNodes = new();
-    readonly Dictionary<int, MeshInstance3D> _bombNodes = new();
+    readonly Dictionary<int, Node3D> _bombNodes = new();
     readonly Dictionary<int, Node3D> _fallNodes = new();
     readonly List<(MeshInstance3D Puff, double Age)> _puffs = new();
     readonly List<(MeshInstance3D Flash, double Age)> _flashes = new();
@@ -101,6 +101,12 @@ public partial class SimHost
     Node3D NewAircraft()
     {
         var plane = new Node3D();
+        if (_buildingModels.Compose("made.bomber") is { } bomber)
+        {
+            bomber.Rotation = new Vector3(0f, -MathF.PI * 0.5f, 0f); // the Model's nose is -Z, the flight's +X
+            plane.AddChild(bomber);
+            return plane;
+        }
         plane.AddChild(new MeshInstance3D { Mesh = _fuselageMesh, MaterialOverride = _aircraftMaterial });
         plane.AddChild(new MeshInstance3D { Mesh = _wingMesh, MaterialOverride = _aircraftMaterial, Position = new Vector3(1f, 0f, 0f) });
         plane.AddChild(new MeshInstance3D { Mesh = _tailMesh, MaterialOverride = _aircraftMaterial, Position = new Vector3(-6.5f, 2.2f, 0f) });
@@ -204,7 +210,13 @@ public partial class SimHost
             falling.Add(bomb.Id);
             if (!_bombNodes.TryGetValue(bomb.Id, out var node))
             {
-                node = new MeshInstance3D { Mesh = _bombMesh, MaterialOverride = _bombMaterial };
+                node = new Node3D();
+                if (_buildingModels.Compose("made.bomb") is { } bombModel)
+                {
+                    bombModel.Rotation = new Vector3(-MathF.PI * 0.5f, 0f, 0f); // nose down
+                    node.AddChild(bombModel);
+                }
+                else node.AddChild(new MeshInstance3D { Mesh = _bombMesh, MaterialOverride = _bombMaterial });
                 _raidRoot.AddChild(node);
                 _bombNodes[bomb.Id] = node;
             }

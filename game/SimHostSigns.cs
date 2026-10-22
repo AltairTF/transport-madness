@@ -74,6 +74,8 @@ public partial class SimHost
                 var lane = net.GetLane(laneId);
                 if (lane.Index != 0) continue; // one post for each road, at the right-most lane
                 var (foot, heading) = PostOf(lane);
+                string signModel = sign.Kind switch { RoadSignKind.Stop => "made.sign-stop", RoadSignKind.Yield => "made.sign-yield", _ => "made.sign-priority" };
+                if (PlaceModel(_signRoot, signModel, foot, heading)) continue;
                 AddSignBox(foot + new Vector3(0, 1.4f, 0), heading, new Vector3(0.12f, 2.8f, 0.12f), _postMaterial);
                 var top = foot + new Vector3(0, 3.1f, 0);
                 // Flat boxes, thin along the road: a red plate for stop, a white one with a red border for yield, a yellow diamond for priority.

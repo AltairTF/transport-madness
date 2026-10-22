@@ -80,6 +80,24 @@
     "depot.2": {"variants": [{"scene": "res://game/assets/buildings/kenney-city-kit-industrial/building-q.glb", "yaw": 180}], "fit": {"mode": "footprint", "value": [22, 22]}},
     "raildepot": {"variants": [{"scene": "res://game/assets/buildings/kenney-city-kit-industrial/building-s.glb", "yaw": 180}], "fit": {"mode": "footprint", "value": [16, 12]}},
     "gateway.road": {"parts": [{"model": "ib.s", "at": [0, -8], "scale": 1.0}, {"model": "container", "at": [-14, 10], "yaw": 15}, {"model": "container", "at": [14, 12], "yaw": -10, "variant": 1}, {"model": "ib.h", "at": [14, -12], "scale": 0.55}]},
-    "gateway.rail": {"parts": [{"model": "ib.k", "at": [-4, -8], "scale": 1.0}, {"model": "crane", "at": [16, 6]}, {"model": "container", "at": [-14, 12], "yaw": 90}, {"model": "container", "at": [0, 14], "yaw": 90, "variant": 1}]}
+    "gateway.rail": {"parts": [{"model": "ib.k", "at": [-4, -8], "scale": 1.0}, {"model": "crane", "at": [16, 6]}, {"model": "container", "at": [-14, 12], "yaw": 90}, {"model": "container", "at": [0, 14], "yaw": 90, "variant": 1}]},
+    "made.bomber": {"variants": [{"scene": "res://game/assets/made/bomber.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.bomb": {"variants": [{"scene": "res://game/assets/made/bomb.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.flakgun": {"variants": [{"scene": "res://game/assets/made/flakgun.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.sandbags": {"variants": [{"scene": "res://game/assets/made/sandbags.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.ammo-crate": {"variants": [{"scene": "res://game/assets/made/ammo-crate.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.sign-stop": {"variants": [{"scene": "res://game/assets/made/sign-stop.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.sign-yield": {"variants": [{"scene": "res://game/assets/made/sign-yield.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.sign-priority": {"variants": [{"scene": "res://game/assets/made/sign-priority.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.traffic-light": {"variants": [{"scene": "res://game/assets/made/traffic-light.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.rail-signal": {"variants": [{"scene": "res://game/assets/made/rail-signal.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.rail-signal-path": {"variants": [{"scene": "res://game/assets/made/rail-signal-path.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.crossing-post": {"variants": [{"scene": "res://game/assets/made/crossing-post.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.rail-platform": {"variants": [{"scene": "res://game/assets/made/rail-platform.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.bus-stop": {"variants": [{"scene": "res://game/assets/made/bus-stop.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.wreck": {"variants": [{"scene": "res://game/assets/made/wreck.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "made.debris": {"variants": [{"scene": "res://game/assets/made/debris.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}},
+    "industry.antiaircraft": {"parts": [{"model": "made.sandbags", "at": [-7, -2]}, {"model": "made.flakgun", "at": [-7, -2], "yaw": 30}, {"model": "made.sandbags", "at": [7, 2], "yaw": 180}, {"model": "made.flakgun", "at": [7, 2], "yaw": -150}, {"model": "made.ammo-crate", "at": [0, 10], "yaw": 10}, {"model": "made.ammo-crate", "at": [-2, -11], "yaw": -30}]},
+    "made.rail-canopy": {"variants": [{"scene": "res://game/assets/made/rail-canopy.glb", "yaw": 0}], "fit": {"mode": "scale", "value": 1.0}}
   }
 }

@@ -623,6 +623,21 @@ func _selftest_models() -> void:
 			print("MODELS train %s -> %d" % [option["id"], host.BuyTrain(option["id"], rail_line)])
 			host.StepFor(8.0)
 	host.StepFor(60.0)
+	# Street furniture: a crossing road with a traffic light and signs, a road over the track (a level crossing), a rail signal, a battery and a wreck.
+	print("MODELS cross road=%s" % host.BuildRoad(300, 0, 300, 320, 0))
+	print("MODELS light=%s signs=%s,%s,%s" % [host.BuildTrafficLight(300, 0), host.BuildRoad(450, 0, 450, -250, 0), host.BuildRoadSign(450, 0, 0), host.BuildRoadSign(450, 0, 2)])
+	print("MODELS battery preview %s" % host.BatteryPreview(380, 60, 0.0, 0.0).get("why", ""))
+	print("MODELS signal=%s battery=%s" % [host.BuildSignal(250, 150, 0, true), host.BuildBattery(380, 60, 0.0, 0.0)])
+	print("MODELS crash=%d" % host.CrashSomeone())
+	host.StepFor(5.0)
+	for spot in [Vector3(300, 0, 0), Vector3(300, 0, 150), Vector3(100, 0, 150), Vector3(450, 0, 0), Vector3(380, 0, 60), Vector3(250, 0, 150)]:
+		rig.position = Vector3(spot.x, host.HeightAt(spot.x, spot.z), spot.z)
+		rig.distance = 45.0
+		rig._apply()
+		for i in 5:
+			await get_tree().process_frame
+		if _args.has("--shot"):
+			get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-f%d.png" % int(spot.x + spot.z)))
 	var camera: Camera3D = rig.get_node("Camera3D")
 	rig.distance = 70.0
 	rig.pitch = -30.0

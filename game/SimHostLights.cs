@@ -72,11 +72,19 @@ public partial class SimHost
                     float dx = MathF.Cos(heading), dz = MathF.Sin(heading);
                     float side = lane.SideOffset + 2.2f;
                     var foot = new Vector3(nx - dx * 11f - dz * side, y, nz - dz * 11f + dx * side);
-                    var post = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.25f, 4.6f, 0.25f) }, MaterialOverride = _postMaterial, Position = foot + new Vector3(0, 2.3f, 0) };
-                    _lightRoot.AddChild(post);
                     var lamp = new StandardMaterial3D { AlbedoColor = new Color(0.1f, 0.85f, 0.25f), EmissionEnabled = true, Emission = new Color(0.1f, 0.85f, 0.25f) };
-                    var head = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.6f, 0.9f, 0.6f) }, MaterialOverride = lamp, Position = foot + new Vector3(0, 4.5f, 0) };
-                    _lightRoot.AddChild(head);
+                    if (PlaceModelNode(_lightRoot, "made.traffic-light", foot, heading) is { } pole)
+                    {
+                        // the live lamp shows through the housing on both faces, the colour the simulation says
+                        pole.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.42f, 0.42f, 0.62f) }, MaterialOverride = lamp, Position = new Vector3(0, 4.5f, 0) });
+                    }
+                    else
+                    {
+                        var post = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.25f, 4.6f, 0.25f) }, MaterialOverride = _postMaterial, Position = foot + new Vector3(0, 2.3f, 0) };
+                        _lightRoot.AddChild(post);
+                        var head = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.6f, 0.9f, 0.6f) }, MaterialOverride = lamp, Position = foot + new Vector3(0, 4.5f, 0) };
+                        _lightRoot.AddChild(head);
+                    }
                     _lightLamps.Add((lamp, laneId.Value));
                 }
             }

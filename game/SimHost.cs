@@ -1298,7 +1298,7 @@ public partial class SimHost : Node3D
             float grade = _laneGrade[lane], tilt = 1f / MathF.Sqrt(1f + grade * grade), rise = grade * tilt;
             bool company = Sim.IsCompanyVehicle(i);
             float tall = company ? 1.6f : 1f; // buses and trucks stand taller
-            string? modelId = v.Kind != VehicleKind.Car ? null : company ? _roadModelIds[Sim.GetFleetInfo(i).Model] : CarModelIds[(int)(((uint)i * 2654435761u >> 8) % (uint)CarModelIds.Length)];
+            string? modelId = v.Kind == VehicleKind.Wreck ? "made.wreck" : v.Kind == VehicleKind.Debris ? "made.debris" : company ? _roadModelIds[Sim.GetFleetInfo(i).Model] : CarModelIds[(int)(((uint)i * 2654435761u >> 8) % (uint)CarModelIds.Length)];
             if (modelId != null && _vehicleModels.Has(modelId))
             {
                 // A Model: it keeps its own colours; the Line colour is the marker on its roof (and a yellow one on a car that is overtaking).
@@ -1517,6 +1517,8 @@ public partial class SimHost : Node3D
                 var slab = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(block.Size.X, block.Size.Y, block.Size.Z) }, MaterialOverride = _stationMaterial };
                 slab.Transform = new Transform3D(new Basis(along, up, across), centre);
                 _stationRoot.AddChild(slab);
+                var stopSpot = new Vector3(centre.X - dz * (block.Size.Z * 0.5f + 0.6f), centre.Y - block.Size.Y * 0.5f, centre.Z + dx * (block.Size.Z * 0.5f + 0.6f));
+                if (PlaceModelAlong(_stationRoot, "made.bus-stop", stopSpot, MathF.Atan2(dz, dx) + MathF.PI) != null) continue; // the shelter opens toward the lane, on the post's left
                 var post = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.5f, _whitebox.StationPostHeight, 0.5f) }, MaterialOverride = _stationMaterial };
                 post.Position = new Vector3(centre.X - dz * (block.Size.Z * 0.5f + 0.6f), centre.Y + _whitebox.StationPostHeight * 0.5f, centre.Z + dx * (block.Size.Z * 0.5f + 0.6f));
                 _stationRoot.AddChild(post);
@@ -1604,16 +1606,31 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>Puts a plain Model of the library under a parent at a ground position, its front toward <paramref name="facing"/> (the direction a box would be turned to). False when there is no such Model.</summary>
-    bool PlaceModel(Node3D parent, string modelId, Vector3 position, float facing, Color? overlay = null)
+    bool PlaceModel(Node3D parent, string modelId, Vector3 position, float facing, Color? overlay = null) => PlaceModelNode(parent, modelId, position, facing, overlay) != null;
+
+    /// <summary>As <see cref="PlaceModel"/>, giving the node (to hang a live lamp on it).</summary>
+    Node3D? PlaceModelNode(Node3D parent, string modelId, Vector3 position, float facing, Color? overlay = null)
     {
-        if (!_buildingModels.Has(modelId)) return false;
+        if (!_buildingModels.Has(modelId)) return null;
         var node = _buildingModels.Compose(modelId);
-        if (node == null) return false;
+        if (node == null) return null;
         node.Position = position;
         node.Rotation = new Vector3(0f, -(facing + MathF.PI * 0.5f), 0f);
         parent.AddChild(node);
         if (overlay != null) SetOverlay(node, overlay);
-        return true;
+        return node;
+    }
+
+    /// <summary>A plain Model with its length (X) along a heading, for what runs along a track or a lane (a platform, a bus stop).</summary>
+    Node3D? PlaceModelAlong(Node3D parent, string modelId, Vector3 position, float heading)
+    {
+        if (!_buildingModels.Has(modelId)) return null;
+        var node = _buildingModels.Compose(modelId);
+        if (node == null) return null;
+        node.Position = position;
+        node.Rotation = new Vector3(0f, -heading, 0f);
+        parent.AddChild(node);
+        return node;
     }
 
     /// <summary>A flat colour laid over every mesh below a node (null takes it away).</summary>

@@ -20,6 +20,7 @@ public partial class SimHost
 
     Node3D _railRoot = null!, _signalRoot = null!, _crossingRoot = null!;
     MultiMesh _trainCars = null!;
+    StandardMaterial3D? _stripeA, _stripeB;
     MultiMesh _trainMarks = null!; // the Line marker on the roof of a locomotive
     ModelDraw _trainModels = null!;
     string[]? _locomotiveModelIds, _wagonModelIds;
@@ -509,9 +510,11 @@ public partial class SimHost
         foreach (float sign in tracks.Count > 1 ? new[] { 1f, -1f } : new[] { 1f })
         {
             float cx = x + dx * 18f * sign - dz * 3.6f, cz = z + dz * 18f * sign + dx * 3.6f;
-            AddBoxAt(_railRoot, new Vector3(cx, y + 0.45f, cz), heading, new Vector3(36f, 0.9f, 3.2f), _railStationMaterial);
+            if (PlaceModelAlong(_railRoot, "made.rail-platform", new Vector3(cx, y, cz), heading + MathF.PI) == null) // the strip on the platform's edge faces the track, on its left
+                AddBoxAt(_railRoot, new Vector3(cx, y + 0.45f, cz), heading, new Vector3(36f, 0.9f, 3.2f), _railStationMaterial);
         }
-        AddBoxAt(_railRoot, new Vector3(x - dz * 3.6f, y + 3.6f, z + dx * 3.6f), heading, new Vector3(10f, 0.3f, 3.6f), _railStationMaterial);
+        if (PlaceModelAlong(_railRoot, "made.rail-canopy", new Vector3(x - dz * 3.6f, y + 0.9f, z + dx * 3.6f), heading + MathF.PI) == null)
+            AddBoxAt(_railRoot, new Vector3(x - dz * 3.6f, y + 3.6f, z + dx * 3.6f), heading, new Vector3(10f, 0.3f, 3.6f), _railStationMaterial);
     }
 
     void AddSignalFigure(RailNetwork rail, RailSignal signal)
@@ -522,8 +525,14 @@ public partial class SimHost
         float y = rail.GetNodeHeight(signal.Node);
         var foot = new Vector3(nx - dx * 5f - dz * 2.7f, y, nz - dz * 5f + dx * 2.7f);
         bool path = signal.Kind == SignalKind.Path;
-        AddBoxAt(_signalRoot, foot + new Vector3(0, 2.2f, 0), heading, new Vector3(0.25f, 4.4f, 0.25f), _postMaterial);
         var lamp = new StandardMaterial3D { AlbedoColor = new Color(0.1f, 0.8f, 0.2f), EmissionEnabled = true, Emission = new Color(0.1f, 0.8f, 0.2f), Roughness = 0.4f };
+        if (PlaceModelNode(_signalRoot, path ? "made.rail-signal-path" : "made.rail-signal", foot, heading) is { } pole)
+        {
+            pole.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.55f, path ? 1.15f : 0.65f, 0.58f) }, MaterialOverride = lamp, Position = new Vector3(0, 4.3f, 0) });
+            _signalLamps.Add((lamp, signal));
+            return;
+        }
+        AddBoxAt(_signalRoot, foot + new Vector3(0, 2.2f, 0), heading, new Vector3(0.25f, 4.4f, 0.25f), _postMaterial);
         var head = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.5f, path ? 1.4f : 0.9f, 0.9f) }, MaterialOverride = lamp };
         head.Transform = new Transform3D(new Basis(Vector3.Up, -heading), foot + new Vector3(0, 4.3f, 0));
         _signalRoot.AddChild(head);
@@ -549,9 +558,24 @@ public partial class SimHost
             float distance = crossing.RoadHalf + 2.2f;
             var verge = new Vector3(crossing.X - s * dx * distance + rightX * (half + 1f), y + 1.1f, crossing.Z - s * dz * distance + rightZ * (half + 1f));
             var pivot = new Node3D { Position = verge, Rotation = new Vector3(0, MathF.Atan2(rightZ, -rightX), 0) };
-            pivot.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.3f, 2.2f, 0.3f) }, MaterialOverride = _postMaterial, Position = new Vector3(0, -0.55f, 0) });
+            if (_buildingModels.Compose("made.crossing-post") is { } postModel)
+            {
+                postModel.Position = new Vector3(0, -1.1f, 0);
+                pivot.AddChild(postModel);
+            }
+            else pivot.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.3f, 2.2f, 0.3f) }, MaterialOverride = _postMaterial, Position = new Vector3(0, -0.55f, 0) });
             var armPivot = new Node3D();
-            armPivot.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(half + 1f, 0.18f, 0.18f) }, MaterialOverride = light, Position = new Vector3((half + 1f) * 0.5f, 0, 0) });
+            // The arm: stripes of cream and dull red along its length, and the blinking lamp at its tip.
+            float armLength = half + 1f;
+            int stripes = Math.Max(2, (int)MathF.Ceiling(armLength / 0.9f));
+            _stripeA ??= Flat(new Color(0.82f, 0.78f, 0.68f));
+            _stripeB ??= Flat(new Color(0.52f, 0.15f, 0.13f));
+            for (int stripe = 0; stripe < stripes; stripe++)
+            {
+                float segment = armLength / stripes;
+                armPivot.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(segment, 0.16f, 0.16f) }, MaterialOverride = stripe % 2 == 0 ? _stripeA : _stripeB, Position = new Vector3(segment * (stripe + 0.5f), 0, 0) });
+            }
+            armPivot.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.3f, 0.3f, 0.3f) }, MaterialOverride = light, Position = new Vector3(armLength - 0.1f, 0.2f, 0) });
             pivot.AddChild(armPivot);
             _crossingRoot.AddChild(pivot);
             arms[k] = armPivot;
