@@ -2016,7 +2016,9 @@ public partial class SimHost : Node3D
             for (int c = 0; c < side * side; c++) BuildTerrainChunk(c);
             return;
         }
-        foreach (int c in _terrain.TakeChangedChunks()) BuildTerrainChunk(c);
+        var changed = _terrain.TakeChangedChunks();
+        foreach (int c in changed) BuildTerrainChunk(c);
+        if (changed.Count > 0) _water.Mesh = WaterMesh(); // digging beside a shore can make new water
     }
 
     const float CutawayDepth = 300f; // how far below the sea level the slice of world goes
@@ -2081,23 +2083,53 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>One quad over the whole map at the height of the water surface, which tilts with the fall toward the sea.</summary>
+    const int WaterBlockCells = 8;
+
+    /// <summary>
+    /// The water surface, which tilts with the fall toward the sea: a quad for each block of <see cref="WaterBlockCells"/> cells that has water in it or beside it, not one
+    /// over the whole map (shading it under the ground cost 1.5 ms at 4471 x 2515 in the performance log of 2026-10-22).
+    /// </summary>
     ArrayMesh WaterMesh()
     {
-        float half = _terrain.HalfSize;
-        var corners = new[] { (-half, -half), (half, -half), (-half, half), (half, half) };
-        var vertices = new Vector3[4];
-        for (int k = 0; k < 4; k++)
-        {
-            var (x, z) = corners[k];
-            // just under level ground, which is drawn TerrainSink lower
-            vertices[k] = new Vector3(x, _terrain.WaterSurfaceAt(x, z) - TerrainSink - 0.01f, z);
-        }
+        int blocks = (_terrain.Cells + WaterBlockCells - 1) / WaterBlockCells;
+        float cell = _terrain.CellSize, half = _terrain.HalfSize;
+        var wet = new bool[blocks, blocks];
+        for (int j = 0; j <= _terrain.Cells; j++)
+            for (int i = 0; i <= _terrain.Cells; i++)
+            {
+                if (!Wet(i, j)) continue;
+                int bi = Math.Min(i / WaterBlockCells, blocks - 1), bj = Math.Min(j / WaterBlockCells, blocks - 1);
+                for (int dj = -1; dj <= 1; dj++)
+                    for (int di = -1; di <= 1; di++)
+                    {
+                        int ni = bi + di, nj = bj + dj;
+                        if (ni >= 0 && nj >= 0 && ni < blocks && nj < blocks) wet[ni, nj] = true;
+                    }
+            }
+        var vertices = new List<Vector3>();
+        var normals = new List<Vector3>();
+        var indices = new List<int>();
+        for (int bj = 0; bj < blocks; bj++)
+            for (int bi = 0; bi < blocks; bi++)
+            {
+                if (!wet[bi, bj]) continue;
+                float x0 = bi * WaterBlockCells * cell - half, z0 = bj * WaterBlockCells * cell - half;
+                float x1 = Math.Min(x0 + WaterBlockCells * cell, half), z1 = Math.Min(z0 + WaterBlockCells * cell, half);
+                int start = vertices.Count;
+                foreach (var (x, z) in new[] { (x0, z0), (x1, z0), (x0, z1), (x1, z1) })
+                {
+                    vertices.Add(new Vector3(x, _terrain.WaterSurfaceAt(x, z) - TerrainSink - 0.01f, z)); // just under level ground, which is drawn TerrainSink lower
+                    normals.Add(Vector3.Up);
+                }
+                indices.AddRange(new[] { start, start + 1, start + 2, start + 1, start + 3, start + 2 });
+            }
+        var mesh = new ArrayMesh();
+        if (vertices.Count == 0) return mesh;
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
-        arrays[(int)Mesh.ArrayType.Normal] = new[] { Vector3.Up, Vector3.Up, Vector3.Up, Vector3.Up };
-        arrays[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2, 1, 3, 2 };
-        var mesh = new ArrayMesh();
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices.ToArray();
+        arrays[(int)Mesh.ArrayType.Normal] = normals.ToArray();
+        arrays[(int)Mesh.ArrayType.Index] = indices.ToArray();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         return mesh;
     }
