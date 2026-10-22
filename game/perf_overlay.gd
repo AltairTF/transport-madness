@@ -251,7 +251,21 @@ func _toggles() -> Dictionary:
 	t["msaa_3d"] = viewport.msaa_3d
 	t["scaling_3d_scale"] = viewport.scaling_3d_scale
 	t["debug_draw"] = viewport.debug_draw
+	t["shadows"] = Settings.shadows
+	t["ssao"] = Settings.ssao
+	var lighting = _lighting()
+	if lighting != null:
+		t["fog"] = lighting.environment.fog_enabled
+		t["grading"] = lighting.environment.adjustment_enabled
+		t["moon"] = lighting.moon.visible
+		t["hour"] = lighting.hour
 	return t
+
+
+## The lit scene of main.gd (lighting.gd), or null where there is none.
+func _lighting() -> Node:
+	var scene := get_tree().current_scene
+	return scene.get("lighting") if scene != null else null
 
 
 func _event(what: String, value: Variant) -> void:
@@ -424,6 +438,33 @@ func _build() -> void:
 		get_viewport().debug_draw = DEBUG_VIEWS[i][1] as Viewport.DebugDraw
 		_event("debug_draw", DEBUG_VIEWS[i][0]))
 	right.add_child(_view_option)
+	var shadow_option := OptionButton.new()
+	for item in ["Shadows off", "Shadows low", "Shadows high"]:
+		shadow_option.add_item(item)
+	shadow_option.select(Settings.shadows)
+	shadow_option.item_selected.connect(func(i: int) -> void:
+		Settings.shadows = i # not saved: Settings.save() is what writes the file
+		Settings.changed.emit()
+		_event("shadows", i))
+	right.add_child(shadow_option)
+	var ssao_check := CheckBox.new()
+	ssao_check.text = "ambient occlusion"
+	ssao_check.button_pressed = Settings.ssao
+	ssao_check.toggled.connect(func(on: bool) -> void:
+		Settings.ssao = on
+		Settings.changed.emit()
+		_event("ssao", on))
+	right.add_child(ssao_check)
+	for entry in [["fog", "fog_enabled"], ["grading", "adjustment_enabled"]]:
+		var check := CheckBox.new()
+		check.text = entry[0]
+		check.button_pressed = true
+		check.toggled.connect(func(on: bool) -> void:
+			var lighting = _lighting()
+			if lighting != null:
+				lighting.environment.set(entry[1], on)
+			_event(entry[0], on))
+		right.add_child(check)
 
 	_log_check = CheckBox.new()
 	_log_check.text = "Log to file"
