@@ -29,6 +29,7 @@ const ACTIONS := [
 	["quick_save", "Quick save", KEY_F5, false],
 	["quick_load", "Load the quick save", KEY_F9, false],
 	["debug", "Debug panel", KEY_F12, false],
+	["perf_overlay", "Performance panel", KEY_F10, false],
 	["build_1", "Roads", KEY_F1, false],
 	["build_2", "Modify", KEY_F2, false],
 	["build_3", "Rail", KEY_F3, false],

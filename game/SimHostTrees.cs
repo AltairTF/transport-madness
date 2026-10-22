@@ -35,7 +35,7 @@ public partial class SimHost
         if (_terrain == null) return;
         _treeRoot ??= new Node3D { Name = "Trees" };
         if (_treeRoot.GetParent() == null) AddChild(_treeRoot);
-        _treeRoot.Visible = _overlay == MapOverlay.None; // under a map view they would stay bright while the rest goes dark
+        _treeRoot.Visible = _overlay == MapOverlay.None && !_layersOff.Contains("trees"); // under a map view they would stay bright while the rest goes dark
         _treeAge += GetProcessDeltaTime();
         if (_treeTerrain != _terrain) { _treeSpots = Array.Empty<TreeSpot>(); _treeTerrain = _terrain; _treeSignature = int.MinValue; }
         int signature = HashCode.Combine(Sim.Network.Version, Sim.Rail.Version, _terrain.Version, Sim.BuildingsVersion, Sim.IndustriesVersion, Sim.GatewaysVersion, Sim.Depots.Count, Sim.RailDepots.Count);

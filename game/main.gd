@@ -14,6 +14,7 @@ extends Node3D
 ##   --selftest-models            a bus line, a truck line and a train line on an empty map, run, screenshots (--shot, one for the road and one ending -rail) of the Models, quit
 ##   --selftest-industries        with --towns: a screenshot (--shot, files ending -0, -1, ...) of each kind of industry on the map with its Model, and of a town, quit
 ##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
+##   --perf                       open the performance panel (F10) at start; --perf-sweep measures each layer taken away and each display setting, prints the table, writes user://perf/sweep-*.jsonl and quits
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
 const VEHICLES := 1000
@@ -82,6 +83,11 @@ func _ready() -> void:
 	_apply_label_scale()
 	hud = load("res://game/hud.gd").new()
 	add_child(hud)
+	var perf = load("res://game/perf_overlay.gd").new()
+	perf.host = host
+	perf.rig = rig
+	perf.args = _args
+	add_child(perf)
 	hud.speed_selected.connect(func(speed: float) -> void: host.SetSpeed(speed))
 	hud.set_models(host.GetVehicleModels())
 	hud.set_train_options(host.GetTrainOptions())

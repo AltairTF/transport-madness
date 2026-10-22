@@ -5,6 +5,7 @@ shader_type spatial;
 uniform sampler2D grass_tex : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D dirt_tex : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D rock_tex : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
+uniform bool grain_on = true; // the performance panel can switch the grain off
 uniform float tint = 1.0; // 0.45 under a map overlay
 uniform float fade_near = 500.0; // beyond this the grain fades to flat colour (no shimmer far away)
 uniform float fade_far = 2200.0;
@@ -34,6 +35,7 @@ void fragment() {
 	vec3 detail = mix(flat_grain, rock, steep);
 	float far = smoothstep(fade_near, fade_far, length(VERTEX));
 	detail = mix(detail, vec3(1.0), far);
+	if (!grain_on) detail = vec3(1.0);
 	ALBEDO = COLOR.rgb * tint * detail;
 	ROUGHNESS = 1.0;
 }

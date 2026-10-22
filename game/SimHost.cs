@@ -1193,6 +1193,8 @@ public partial class SimHost : Node3D
     public override void _Process(double delta)
     {
         if (Sim == null) return;
+        long frameStart = PerfStart();
+        long mark = frameStart;
 
         double before = Sim.Tick;
         if (_speed > 0f)
@@ -1211,6 +1213,7 @@ public partial class SimHost : Node3D
             if (_accumulator >= Simulation.StepSeconds) _accumulator = Simulation.StepSeconds * 0.5; // drop the backlog
             if (steps > 0) _stepMsAverage = Mathf.Lerp((float)_stepMsAverage, (float)(_clock.Elapsed.TotalMilliseconds / steps), 0.1f);
         }
+        mark = PerfLap("sim steps", mark);
 
         _simSecondsThisSecond += (Sim.Tick - before) * Simulation.StepSeconds;
         _realSecondsThisSecond += delta;
@@ -1223,14 +1226,22 @@ public partial class SimHost : Node3D
         // Towns build streets as they grow, inside a step: draw the new roads before any vehicle on them.
         if (Sim.Network.Version != _networkVersion) RebuildRoads();
         else if (Sim.BuildingsVersion != _buildingsVersion) RebuildBuildings();
+        mark = PerfLap("rebuild roads and buildings", mark);
         float fraction = _speed > 0f ? (float)(_accumulator / Simulation.StepSeconds) : 0f;
         DrawVehicles(fraction);
+        mark = PerfLap("draw vehicles", mark);
         UpdateRaidEffects(delta, fraction);
+        mark = PerfLap("raid effects", mark);
         DrawCrews(fraction);
+        mark = PerfLap("draw crews", mark);
         DrawRail(fraction);
+        mark = PerfLap("draw rail", mark);
         UpdateOverlay(delta);
+        mark = PerfLap("map overlay", mark);
         _waterMaterial.Uv1Offset = new Vector3((float)(Time.GetTicksMsec() * 0.00002), 0f, (float)(Time.GetTicksMsec() * 0.000013)); // the ripples drift
         UpdateTrees();
+        PerfLap("trees", mark);
+        PerfFrameDone(frameStart);
     }
 
     // ---- Drawing --------------------------------------------------------------------------------------------

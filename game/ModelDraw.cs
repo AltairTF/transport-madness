@@ -19,7 +19,7 @@ public sealed class ModelDraw
 
     static readonly int[] ScaledSlots = { 0, 1, 2, 4, 5, 6, 8, 9, 10 };
 
-    readonly Node _parent;
+    readonly Node3D _root;
     readonly GodotObject? _library;
     readonly Dictionary<(string, int), Batch?> _batches = new();
     readonly Dictionary<string, int> _variantCounts = new();
@@ -33,7 +33,8 @@ public sealed class ModelDraw
     public ModelDraw(Node parent, bool shadows = false, bool tinted = false, float rangeEnd = 0f)
     {
         _rangeEnd = rangeEnd;
-        _parent = parent;
+        _root = new Node3D { Name = "Models" };
+        parent.AddChild(_root);
         _shadows = shadows;
         _tinted = tinted;
         _stride = tinted ? 16 : 12;
@@ -72,6 +73,9 @@ public sealed class ModelDraw
 
     /// <summary>How tall the Model stands, in metres (for what goes on its roof); 0 for an unknown one.</summary>
     public float HeightOf(string id, int variant = 0) => Prepare(id, variant)?.Height ?? 0f;
+
+    /// <summary>The node that holds every MultiMesh of this set, so that a whole kind of Model can be hidden at once.</summary>
+    public Node3D Root => _root;
 
     public void Begin()
     {
@@ -130,7 +134,7 @@ public sealed class ModelDraw
                 if (_tinted) mesh = TintCapable(mesh);
                 var multi = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseColors = _tinted, Mesh = mesh, InstanceCount = 0 };
                 batch = new Batch { Mesh = multi, Height = baked["aabb"].AsAabb().Size.Y };
-                _parent.AddChild(new MultiMeshInstance3D
+                _root.AddChild(new MultiMeshInstance3D
                 {
                     Name = "Model_" + id.Replace('.', '_') + "_" + variant,
                     Multimesh = multi,
