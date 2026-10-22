@@ -91,25 +91,19 @@ public sealed partial class Simulation
         return best;
     }
 
-    float WalkSeconds(int place, Station station)
-    {
-        var (x, z) = PointOf(station);
-        var (px, pz) = PlacePoint(place);
-        float d = MathF.Sqrt((px - x) * (px - x) + (pz - z) * (pz - z));
-        return d * _trips.WalkDetour / _trips.WalkSpeed;
-    }
+    float WalkSeconds(int place, Station station) => WalkMetres(place, station) * _trips.WalkDetour / _trips.WalkSpeed;
 
     /// <summary>
     /// The quickest way between two places (buildings or industries) on the company's lines: a station that covers each, joined by a line that has
     /// vehicles. The time is the walk to the station, the wait (shorter with more vehicles), the ride and the walk from the
     /// other. Lines are direct; there are no changes.
     /// </summary>
-    bool TransitSeconds(int a, int b, out int stationA, out int stationB, out float total, out float walkToStation)
+    bool TransitSeconds(int a, int b, out int stationA, out int stationB, out float total, out float walkToStation, int[]? nearStations = null, int[]? farStations = null)
     {
         stationA = stationB = -1;
         total = walkToStation = 0f;
-        var near = PlaceStations(a);
-        var far = PlaceStations(b);
+        var near = nearStations ?? PlaceStations(a);
+        var far = farStations ?? PlaceStations(b);
         if (near.Length == 0 || far.Length == 0) return false;
         EnsureLineCycles();
         float best = float.PositiveInfinity;
@@ -201,8 +195,7 @@ public sealed partial class Simulation
             var g = _groups[lot.Group];
             var (x, z) = PointOf(here);
             var (tx, tz) = PlacePoint(g.Destination);
-            float d = MathF.Sqrt((tx - x) * (tx - x) + (tz - z) * (tz - z));
-            ScheduleWalk(g, TripEventKind.Arrive, lot.Count, -1, -1, (x, z), (tx, tz), WalkTicks(d));
+            ScheduleWalk(g, TripEventKind.Arrive, lot.Count, -1, -1, (x, z), (tx, tz), WalkTicks(WalkMetres(g.Destination, here)));
         }
         return unloaded;
     }

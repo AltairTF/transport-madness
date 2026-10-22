@@ -32,6 +32,8 @@ Status: raised by the developer on 2026-10-22 while playing M6g; written down, n
 
 ## 3. Coverage along the streets, with a falloff
 
+**Sim built 2026-10-22** (project-status 5.56) with these decisions made with the developer: walked along the streets; full to 150 m and a line to 0 at 300 m; a chance drawn once per group, plus the walking time; the best station when two reach a building. The circle is untouched and only buildings and road stations get a reach. The map view and the preview are still to do. What follows is the original request.
+
 **Seen** (the Cities: Skylines picture the developer shared): the service reaches along the streets and fades with distance, instead of a fixed circle. A house outside the circle of a bus stop but a reasonable walk away along a road can still use it, with a lower chance. More places are reached for a smaller share of use.
 
 **Today.** A station covers every active building within `stations.coverageRadius` (150 m) in a straight line (`Simulation.BuildingsNear`, `CoveredBy`, `QuoteStation`); it is the same number as `trips.walkRadius` (150 m) for walking trips. Coverage is yes or no and feeds the trips (who can take the line), the needs, the connectivity view and the Coverage view.

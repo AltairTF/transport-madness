@@ -300,6 +300,8 @@ public sealed record StationTuning
     public required long Price { get; init; }
     public required float UpkeepPerDay { get; init; }
     public required float CoverageRadius { get; init; }
+    /// <summary>The walk along the streets at which a station's coverage of buildings outside its circle has fallen to nothing (M6h).</summary>
+    public required float ReachRadius { get; init; }
     public required float MinApproach { get; init; }
     public required float StopMargin { get; init; }
     public required float ArrivalGap { get; init; }

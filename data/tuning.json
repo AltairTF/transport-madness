@@ -415,6 +415,7 @@
     "price": 8000,
     "upkeepPerDay": 300.0,
     "coverageRadius": 150.0,        // buildings within this distance of the station are served (the walking radius of the trips)
+    "reachRadius": 300.0,           // beyond the circle coverage spreads along the streets and falls in a line from 1 at coverageRadius to 0 at this walk; people there take the station with that chance
     "minApproach": 30.0,            // a stop lane shorter than this is not used, and a road is not split closer than this to its end
     "stopMargin": 3.0,              // a vehicle halts this far before the junction edge
     "arrivalGap": 3.5,              // the vehicle counts as arrived when its gap to the stop is this small ...

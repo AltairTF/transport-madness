@@ -399,6 +399,7 @@ public sealed partial class Simulation
         _gatewayStations = perGateway.Select(l => l.ToArray()).ToList();
         _industryStations = perIndustry.Select(l => l.ToArray()).ToList();
         _buildingStations = perBuilding.Select(l => l?.ToArray() ?? Array.Empty<int>()).ToList();
+        RefreshReach();
     }
 
     /// <summary>The buildings an active station covers (active ones only), in id order.</summary>

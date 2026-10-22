@@ -43,7 +43,7 @@ public sealed partial class Simulation
     readonly record struct TripEvent(TripEventKind Kind, int Group, int People, int StationA, int StationB, long Start = 0, float FromX = 0f, float FromZ = 0f, float ToX = 0f, float ToZ = 0f);
 
     /// <summary>How a pair of buildings is travelled between, cached until the roads or the lines change.</summary>
-    readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version, float FreeRide = 0f);
+    internal readonly record struct ModeChoice(TripMode Mode, float Seconds, int OriginNode, int DestNode, int StationA, int StationB, float WalkToStation, long Version, float FreeRide = 0f);
 
     /// <summary>
     /// A place a group goes to is an id: a building id below this, or from here up an industry (this plus the industry's id). Workplaces are
@@ -192,7 +192,7 @@ public sealed partial class Simulation
         place >= IndustryPlace ? AccessNodeOf(_industries[place - IndustryPlace]) : AccessNodeOf(_buildings[place]);
 
     /// <summary>The active stations that cover a place (where its people can catch a line, or get off one).</summary>
-    int[] PlaceStations(int place)
+    internal int[] PlaceStations(int place)
     {
         if (place >= IndustryPlace) return place - IndustryPlace < _industryStations.Count ? _industryStations[place - IndustryPlace] : Array.Empty<int>();
         return place < _buildingStations.Count ? _buildingStations[place] : Array.Empty<int>();
@@ -322,7 +322,7 @@ public sealed partial class Simulation
 
         if (outbound && !(IsStanding(from) && IsStanding(to))) { Skip(g); return; } // a place with no road: nobody goes
 
-        var choice = ChooseMode(from, to, g.HasCar);
+        var choice = ChooseMode(from, to, g.HasCar, g);
         if (choice.Mode == TripMode.None && !outbound)
             choice = new ModeChoice(TripMode.Walk, 0f, -1, -1, -1, -1, 0f, 0); // people always get home, however far and slowly
         if (_flights.Count > 0 && choice.Mode is TripMode.Walk or TripMode.Transit)
@@ -481,21 +481,40 @@ public sealed partial class Simulation
         return (c.Mode, c.Seconds);
     }
 
-    ModeChoice ChooseMode(int from, int to, bool hasCar)
+    internal ModeChoice ChooseMode(int from, int to, bool hasCar, TripGroup? group = null)
     {
         SyncNetwork();
-        if (_coverageDirty || _buildingStations.Count != _buildings.Count) RefreshCoverage();
+        if (_coverageDirty || _buildingStations.Count != _buildings.Count || _reachNetworkVersion != _syncedNetworkVersion) RefreshCoverage();
         int hour = HourOf(Tick);
         long key = ((long)hour << 58) | ((long)from << 33) | ((long)to << 1) | (hasCar ? 1L : 0L);
         // The estimate of the hour is part of the version, in quarters: a choice is made again when people's idea of the jam moves.
         long version = ((long)(_congestion[hour] * 4f) << 50) + ((long)_syncedNetworkVersion << 24) + _transitVersion;
+
+        // A group at a place a station reaches along the streets (M6h) may use that station: its own draw says which, so the choice is cached for the set it drew.
+        if (group != null)
+        {
+            var near = StationsFor(group, from);
+            var far = StationsFor(group, to);
+            if (!ReferenceEquals(near, PlaceStations(from)) || !ReferenceEquals(far, PlaceStations(to)))
+            {
+                long extra = 0;
+                foreach (int s in near) extra = extra * 1_000_003L + s + 1;
+                extra = extra * 7919L + 13;
+                foreach (int s in far) extra = extra * 1_000_033L + s + 1;
+                if (_reachChoicesVersion != version) { _reachChoices.Clear(); _reachChoicesVersion = version; }
+                if (_reachChoices.TryGetValue((key, extra), out var seen)) return seen;
+                var reached = ComputeMode(from, to, hasCar, _congestion[hour], near, far) with { Version = version };
+                _reachChoices[(key, extra)] = reached;
+                return reached;
+            }
+        }
         if (_choices.TryGetValue(key, out var cached) && cached.Version == version) return cached;
         var choice = ComputeMode(from, to, hasCar, _congestion[hour]) with { Version = version };
         _choices[key] = choice;
         return choice;
     }
 
-    ModeChoice ComputeMode(int a, int b, bool hasCar, float congestion)
+    ModeChoice ComputeMode(int a, int b, bool hasCar, float congestion, int[]? nearStations = null, int[]? farStations = null)
     {
         float d = PlaceDistance(a, b);
         if (d <= _trips.WalkRadius)
@@ -514,7 +533,7 @@ public sealed partial class Simulation
             bestCost = seconds + _trips.MoneyWeight * _trips.CarCostPerKm * d / 1000f;
             best = new ModeChoice(TripMode.Car, seconds, on, dn, -1, -1, 0f, 0, rideSeconds);
         }
-        if (TransitSeconds(a, b, out int sa, out int sb, out float total, out float walk))
+        if (TransitSeconds(a, b, out int sa, out int sb, out float total, out float walk, nearStations, farStations))
         {
             float fare = _passengerCargo >= 0 ? _cargo[_passengerCargo].PayPerUnitKm * d / 1000f : 0f;
             float cost = total + _trips.MoneyWeight * fare;
