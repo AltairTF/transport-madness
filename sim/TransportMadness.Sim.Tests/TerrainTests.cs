@@ -69,6 +69,78 @@ public class TerrainTests
         }
     }
 
+    static float Share(Terrain terrain, Biome biome)
+    {
+        int count = 0;
+        for (int j = 0; j < terrain.Samples; j++)
+            for (int i = 0; i < terrain.Samples; i++)
+                if (terrain.BiomeAt(i, j) == biome) count++;
+        return count / (float)(terrain.Samples * terrain.Samples);
+    }
+
+    [Fact]
+    public void TheSettingsAreInTheMap_SameSettingsSameMap_AndTheSlidersMoveTheirFeature()
+    {
+        var more = new TerrainSettings(1f, 1f, 1f);
+        var less = new TerrainSettings(0f, 0f, 0f);
+        Assert.Equal(Terrain.Generate(5, settings: more).Hash(), Terrain.Generate(5, settings: more).Hash());
+        Assert.NotEqual(Terrain.Generate(5, settings: more).Hash(), Terrain.Generate(5, settings: less).Hash());
+
+        float Highest(Terrain t) { float max = float.MinValue; for (int j = 0; j < t.Samples; j++) for (int i = 0; i < t.Samples; i++) max = Math.Max(max, t.GetSample(i, j)); return max; }
+        foreach (ulong seed in new ulong[] { 1, 2, 3, 4 })
+        {
+            Assert.True(Highest(Terrain.Generate(seed, settings: new TerrainSettings(1f, 0.5f, 0.5f))) > Highest(Terrain.Generate(seed, settings: new TerrainSettings(0f, 0.5f, 0.5f))) + 20f, $"mountains, seed {seed}");
+            Assert.True(Share(Terrain.Generate(seed, settings: new TerrainSettings(0.5f, 1f, 0.5f)), Biome.Water) > Share(Terrain.Generate(seed, settings: new TerrainSettings(0.5f, 0f, 0.5f)), Biome.Water), $"water, seed {seed}");
+            Assert.True(Share(Terrain.Generate(seed, settings: new TerrainSettings(0.5f, 0.5f, 1f)), Biome.Forest) > Share(Terrain.Generate(seed, settings: new TerrainSettings(0.5f, 0.5f, 0f)), Biome.Forest) + 0.1f, $"forests, seed {seed}");
+        }
+    }
+
+    [Fact]
+    public void WaterTakesAFairShareOfTheMap_OnTheDefaultSettings_AndTheBiomesAreAllThere()
+    {
+        foreach (ulong seed in new ulong[] { 1, 2, 3, 4, 5, 6 })
+        {
+            var terrain = Terrain.Generate(seed);
+            Assert.InRange(Share(terrain, Biome.Water), 0.08f, 0.35f);
+            Assert.InRange(Share(terrain, Biome.Forest), 0.05f, 0.5f);
+            Assert.True(Share(terrain, Biome.Field) > 0.3f, $"seed {seed}");
+            // The biome Water is the ground under the water surface.
+            for (int j = 0; j < terrain.Samples; j += 7)
+                for (int i = 0; i < terrain.Samples; i += 7)
+                    Assert.Equal(terrain.GetSample(i, j) < terrain.WaterSurfaceAtSample(i, j), terrain.BiomeAt(i, j) == Biome.Water);
+        }
+    }
+
+    [Fact]
+    public void ACoarseMap_ShowsTheSameLandAsAFineOne()
+    {
+        // The preview: the same seed on a 32 m grid has the same coast, lakes and rivers as the 8 m one, only less detail.
+        foreach (ulong seed in new ulong[] { 1, 2, 3 })
+        {
+            var fine = Terrain.Generate(seed);
+            var coarse = Terrain.Generate(seed, cells: 128, cellSize: 32f);
+            Assert.Equal(fine.HalfSize, coarse.HalfSize);
+            Assert.Equal(Share(fine, Biome.Water), Share(coarse, Biome.Water), 0.02f);
+            int agree = 0, total = 0;
+            for (int j = 0; j < coarse.Samples; j++)
+                for (int i = 0; i < coarse.Samples; i++)
+                {
+                    total++;
+                    if ((coarse.BiomeAt(i, j) == Biome.Water) == (fine.BiomeAt(i * 4, j * 4) == Biome.Water)) agree++;
+                }
+            Assert.True(agree > 0.97f * total, $"seed {seed}: {agree} of {total}");
+        }
+    }
+
+    [Fact]
+    public void ALargeMap_IsMadeInAFewSeconds()
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var terrain = Terrain.Generate(7, cells: 1024);
+        Assert.True(clock.Elapsed.TotalSeconds < 6, $"{clock.Elapsed.TotalSeconds} s");
+        Assert.Equal(1025, terrain.Samples);
+    }
+
     [Fact]
     public void WaterIsMeasuredAgainstTheSurfaceWhereItIs()
     {

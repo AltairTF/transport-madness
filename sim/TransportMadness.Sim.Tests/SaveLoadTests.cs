@@ -172,4 +172,26 @@ public class SaveLoadTests
         Assert.Throws<SaveFormatException>(() => SaveGame.Load(new MemoryStream(bytes[..(bytes.Length / 2)])));
         Assert.Throws<SaveFormatException>(() => SaveGame.Load(new MemoryStream("not a save at all"u8.ToArray())));
     }
+
+    [Fact]
+    public void ASavedGeneratedWorld_KeepsItsBiomesAndItsLand()
+    {
+        var (sim, _) = WorldBuilder.Towns(4, 3, IndustryAmount.Few, terrain: new TerrainSettings(0.8f, 0.2f, 1f));
+        var loaded = SaveAndLoad(sim);
+        var a = sim.Network.Terrain!;
+        var b = loaded.Network.Terrain!;
+        Assert.Equal(a.Hash(), b.Hash());
+        for (int j = 0; j < a.Samples; j += 11)
+            for (int i = 0; i < a.Samples; i += 11)
+                Assert.Equal(a.BiomeAt(i, j), b.BiomeAt(i, j));
+    }
+
+    [Fact]
+    public void TheTerrainSettings_ChangeTheWorldBuilt()
+    {
+        var plain = WorldBuilder.Towns(4, 3, IndustryAmount.Few).Sim.Network.Terrain!.Hash();
+        var other = WorldBuilder.Towns(4, 3, IndustryAmount.Few, terrain: new TerrainSettings(1f, 1f, 1f)).Sim.Network.Terrain!.Hash();
+        Assert.NotEqual(plain, other);
+        Assert.Equal(plain, WorldBuilder.Towns(4, 3, IndustryAmount.Few, terrain: TerrainSettings.Default).Sim.Network.Terrain!.Hash());
+    }
 }

@@ -231,13 +231,14 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>
-    /// Starts a map of generated hills with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many).
+    /// Starts a map of generated hills with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many; <paramref name="mountains"/>, <paramref name="water"/> and <paramref name="forests"/> from 0 to 1 say how much of each the land has).
     /// Returns how many towns were placed; fewer than <paramref name="towns"/> when the land ran out. A few ambient cars
     /// are put on the streets. <see cref="UnlinkedIndustries"/> says how many processors found no place within reach of their inputs.
     /// </summary>
-    public int NewTownsWorld(long seed, int towns, int industries)
+    public int NewTownsWorld(long seed, int towns, int industries, double mountains, double water, double forests)
     {
-        var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2), frequency: StartingFrequency);
+        var terrain = new TerrainSettings((float)mountains, (float)water, (float)forests);
+        var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2), frequency: StartingFrequency, terrain: terrain);
         Sim = sim;
         UnlinkedIndustries = plan.Unlinked?.Count ?? 0;
         GatewaysPlaced = plan.Gateways?.Count ?? 0;
@@ -2155,7 +2156,7 @@ public partial class SimHost : Node3D
                 normals[k] = new Vector3(-gx, 2f * cell, -gz).Normalized();
                 float surface = _terrain.WaterSurfaceAtSample(i, j);
                 bool shore = NearWater(i, j);
-                var colour = TerrainColor(height, surface, normals[k].Y, shore).SrgbToLinear(); // vertex colours are read as linear
+                var colour = TerrainColor(height, surface, normals[k].Y, shore, _terrain.BiomeAt(i, j)).SrgbToLinear(); // vertex colours are read as linear
                 float depth = height - surface;
                 colour.A = depth < 0f ? 1f : shore && depth < 1.5f ? 1f - depth / 1.5f : 0f; // how much of the ground is sand (the shader takes its grain from it)
                 colors[k] = colour;
@@ -2200,7 +2201,7 @@ public partial class SimHost : Node3D
 
     bool Wet(int i, int j) => _terrain.GetSample(i, j) < _terrain.WaterSurfaceAtSample(i, j);
 
-    static Color TerrainColor(float ground, float surface, float normalY, bool nearWater)
+    static Color TerrainColor(float ground, float surface, float normalY, bool nearWater, Biome biome)
     {
         float height = ground; // above sea level, for the colour bands
         float depth = ground - surface; // above the water
@@ -2214,6 +2215,13 @@ public partial class SimHost : Node3D
         if (nearWater && depth < 1.5f) return shore.Lerp(grass, depth / 1.5f);
         Color c = height < 40f ? grass.Lerp(upland, height / 40f) : upland.Lerp(rock, Mathf.Clamp((height - 40f) / 40f, 0f, 1f));
         if (height > 85f) c = c.Lerp(snow, Mathf.Clamp((height - 85f) / 25f, 0f, 1f));
+        switch (biome)
+        {
+            case Biome.Forest: c = c.Lerp(new Color(0.27f, 0.45f, 0.24f), 0.7f); break; // under the trees
+            case Biome.Swamp: c = c.Lerp(new Color(0.36f, 0.42f, 0.28f), 0.8f); break;
+            case Biome.Sand: c = c.Lerp(shore, 0.8f); break;
+            case Biome.Rock: c = c.Lerp(rock, 0.7f); break;
+        }
         return c.Lerp(rock, Mathf.Clamp((0.9f - normalY) * 4f, 0f, 0.8f)); // steep ground shows rock
     }
 }

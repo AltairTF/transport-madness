@@ -412,7 +412,7 @@ func _new_world(map: String) -> void:
 	host.StartFrequency = Session.frequency
 	match map:
 		"towns":
-			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns, Session.industries)
+			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns, Session.industries, Session.mountains, Session.water, Session.forests)
 			_world_note = "" if placed >= Session.towns else "Only %d of %d towns fit on this map" % [placed, Session.towns]
 			var unlinked: int = host.UnlinkedIndustries
 			if unlinked > 0:

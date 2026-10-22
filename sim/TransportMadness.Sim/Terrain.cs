@@ -71,78 +71,33 @@ public sealed class Terrain
     public bool IsWater(float x, float z) => HeightAt(x, z) < WaterSurfaceAt(x, z);
 
     /// <summary>
-    /// Rolling hills with flat plains between them, up to about <paramref name="amplitude"/> metres high. With
-    /// <paramref name="water"/>, the water surface falls toward one side of the map (a direction drawn from the seed),
-    /// the land there is cut into a sea, and lakes and rivers are cut into the lowlands along the way: ground dips
-    /// below the surface there; the plains themselves sit a little above it.
+    /// A generated map: mountain belts, hills and plains, rivers that follow the drainage of the land down to the sea or
+    /// out of the lowlands, lakes, a ragged coast and a biome for each height sample (see <see cref="TerrainGenerator"/>).
+    /// With <paramref name="water"/>, the water surface falls toward one side of the map (a direction drawn from the seed)
+    /// and ground below the surface is under water; the plains themselves sit a little above it. The same seed and settings
+    /// give the same land at any <paramref name="cellSize"/>, only the detail differs, so a coarse map can preview a fine one.
     /// </summary>
-    public static Terrain Generate(ulong seed, int cells = 512, float cellSize = 8f, float amplitude = 70f, bool water = true)
+    public static Terrain Generate(ulong seed, int cells = 512, float cellSize = 8f, float amplitude = 70f, bool water = true, TerrainSettings? settings = null)
     {
         float downhill = Lattice(seed, 20, 0, 0) * MathF.Tau; // direction in which the water surface falls
         float dx = MathF.Cos(downhill), dz = MathF.Sin(downhill);
         var terrain = water ? new Terrain(cells, cellSize, -WaterFall * dx, -WaterFall * dz) : new Terrain(cells, cellSize);
-        float half = cells * cellSize * 0.5f;
-        const float baseWavelength = 1400f;
-        for (int j = 0; j <= cells; j++)
-            for (int i = 0; i <= cells; i++)
-            {
-                float x = (i - cells * 0.5f) * cellSize, z = (j - cells * 0.5f) * cellSize;
-                float n = 0f, a = 1f, total = 0f, f = 1f / baseWavelength;
-                for (int octave = 0; octave < 5; octave++)
-                {
-                    n += a * ValueNoise(seed, octave, x * f, z * f);
-                    total += a;
-                    a *= 0.5f;
-                    f *= 2f;
-                }
-                n /= total; // 0..1, centred near 0.5
-                // Push the middle band down to plains and keep the tops hilly.
-                float shaped = MathF.Max(0f, n - 0.38f) / 0.62f;
-                float land = amplitude * shaped * shaped * 1.6f;
-                if (water)
-                {
-                    float surface = terrain.WaterSurfaceAt(x, z);
-                    land += surface + PlainsHeight;
-                    // Rivers follow the middle of a noise band, lakes sit in its highs; neither cuts through hills.
-                    float river = MathF.Abs(ValueNoise(seed, 8, x / RiverWavelength, z / RiverWavelength) - 0.5f) * 2f;
-                    float riverMask = 1f - Smooth(0.02f, 0.06f, river);
-                    float lakeMask = Smooth(0.74f, 0.84f, ValueNoise(seed, 9, x / LakeWavelength, z / LakeWavelength));
-                    float lowland = 1f - Smooth(surface + PlainsHeight + 2f, surface + PlainsHeight + 10f, land);
-                    float mask = MathF.Max(riverMask, lakeMask) * lowland;
-                    // The sea takes the stretch along each edge the water runs toward (the more squarely, the wider), hills or not.
-                    mask = MathF.Max(mask, Sea(half - x, dx));
-                    mask = MathF.Max(mask, Sea(half + x, -dx));
-                    mask = MathF.Max(mask, Sea(half - z, dz));
-                    mask = MathF.Max(mask, Sea(half + z, -dz));
-                    land += (surface - WaterDepth - land) * mask;
-                }
-                terrain._heights[j * terrain.Samples + i] = land;
-            }
+        TerrainGenerator.Fill(terrain, seed, amplitude, water, settings ?? TerrainSettings.Default, dx, dz);
         return terrain;
     }
 
-    /// <summary>How much of the ground at <paramref name="inland"/> metres from an edge is sea, when the water runs toward that edge at the angle whose cosine is <paramref name="toward"/>.</summary>
-    static float Sea(float inland, float toward)
-    {
-        if (toward < SeaMinimumApproach) return 0f;
-        float width = SeaWidth * toward;
-        return 1f - Smooth(width - SeaShore, width, inland);
-    }
+    /// <summary>The height samples, for the generator to fill.</summary>
+    internal float[] Heights => _heights;
+    byte[]? _biomes;
+    internal void SetBiomes(byte[] biomes) => _biomes = biomes;
 
-    const float SeaMinimumApproach = 0.3f; // an edge the water runs toward at a shallower angle than this has no sea
+    /// <summary>What covers the ground at a height sample (<see cref="Biome.Field"/> on a map that was not generated).</summary>
+    public Biome BiomeAt(int i, int j) => _biomes == null ? Biome.Field : (Biome)_biomes[Clamp(j) * Samples + Clamp(i)];
+
+    /// <summary>The biome at the height sample nearest to a world position.</summary>
+    public Biome BiomeAtPoint(float x, float z) => BiomeAt((int)MathF.Round(x / CellSize + Cells * 0.5f), (int)MathF.Round(z / CellSize + Cells * 0.5f));
+
     const float WaterFall = 0.0012f;   // metres the water surface falls per metre toward the sea
-    const float SeaWidth = 400f;       // the sea reaches this far in from the edge of the map
-    const float SeaShore = 120f;       // and its shore slopes over this distance
-    const float PlainsHeight = 2.5f;   // land starts this far above the water
-    const float WaterDepth = 4f;       // how far the middle of a lake or river lies below the surface
-    const float RiverWavelength = 1100f;
-    const float LakeWavelength = 1700f;
-
-    static float Smooth(float edge0, float edge1, float x)
-    {
-        float t = Math.Clamp((x - edge0) / (edge1 - edge0), 0f, 1f);
-        return t * t * (3f - 2f * t);
-    }
 
     public float GetSample(int i, int j) => _heights[Clamp(j) * Samples + Clamp(i)];
 
@@ -336,7 +291,7 @@ public sealed class Terrain
         return h;
     }
 
-    static float ValueNoise(ulong seed, int octave, float x, float z)
+    internal static float ValueNoise(ulong seed, int octave, float x, float z)
     {
         int ix = (int)MathF.Floor(x), iz = (int)MathF.Floor(z);
         float fx = x - ix, fz = z - iz;
@@ -347,7 +302,7 @@ public sealed class Terrain
     }
 
     /// <summary>Pseudo-random value in [0, 1) for a lattice corner.</summary>
-    static float Lattice(ulong seed, int octave, int ix, int iz)
+    internal static float Lattice(ulong seed, int octave, int ix, int iz)
     {
         ulong h = seed + 0x9E3779B97F4A7C15UL * (ulong)(octave + 1);
         h ^= (ulong)(uint)ix * 0xBF58476D1CE4E5B9UL;

@@ -107,9 +107,14 @@ public partial class SimHost
     /// <summary>The chance (0 to 1) that a spot has a tree: a few on open ground, patches of wood, and a thick wood around a Forest industry.</summary>
     float TreeDensity(float x, float z, List<(float X, float Z)> forests)
     {
-        float broad = ValueNoise(x / 650f, z / 650f, 1), fine = ValueNoise(x / 170f, z / 170f, 2);
-        float wood = Mathf.SmoothStep(0.54f, 0.74f, broad * 0.65f + fine * 0.35f);
-        float p = 0.025f + 0.65f * wood;
+        // The land says where the woods are (its forest biome); elsewhere a few trees stand on open ground.
+        float p = _terrain.BiomeAtPoint(x, z) switch
+        {
+            Biome.Forest => 0.72f,
+            Biome.Field => 0.025f,
+            Biome.Swamp => 0.12f,
+            _ => 0f,
+        };
         foreach (var (fx, fz) in forests)
         {
             float d = MathF.Sqrt((fx - x) * (fx - x) + (fz - z) * (fz - z));
