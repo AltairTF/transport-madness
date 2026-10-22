@@ -107,13 +107,18 @@ static func _section_table(timings: Dictionary) -> Dictionary:
 	return sections
 
 
+## Bytes to MB; -1 when the driver gives a wrapped negative number (Metal reports texture memory as about 2^64 here).
+static func _megabytes(bytes: float) -> float:
+	return -1.0 if bytes < 0.0 or bytes >= 9.2e18 else bytes / 1048576.0
+
+
 func _sample(seconds: float) -> void:
 	var s := _summary(_window)
 	_window = []
 	_update_process_stats(seconds)
 	var mem := {
 		"video_mb": Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
-		"texture_mb": Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0,
+		"texture_mb": _megabytes(Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED)),
 		"buffer_mb": Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED) / 1048576.0,
 		"static_mb": Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0,
 		"objects": Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME),
@@ -168,7 +173,8 @@ func _show(s: Dictionary, mem: Dictionary, timings: Dictionary, counts: Dictiona
 	else:
 		lines.append("render CPU %.1f ms   GPU time: Metal does not report it here (launch with MTL_HUD_ENABLED=1 for Apple's HUD)" % s["render_cpu_ms"])
 	lines.append("draw calls %.0f   objects %.0f   triangles %.0fk" % [s["draw_calls"], mem["objects"], s["primitives"] / 1000.0])
-	lines.append("video memory %.0f MB (textures %.0f, buffers %.0f)" % [mem["video_mb"], mem["texture_mb"], mem["buffer_mb"]])
+	var textures := "textures n/a" if mem["texture_mb"] < 0.0 else "textures %.0f" % mem["texture_mb"]
+	lines.append("video memory %.0f MB (%s, buffers %.0f)" % [mem["video_mb"], textures, mem["buffer_mb"]])
 	lines.append("process CPU %.0f %%   resident %.0f MB   Godot static %.0f MB" % [_proc["cpu_pct"], _proc["rss_mb"], mem["static_mb"]])
 	lines.append("nodes %.0f (orphans %.0f)" % [mem["nodes"], mem["orphan_nodes"]])
 	var bits := PackedStringArray()
