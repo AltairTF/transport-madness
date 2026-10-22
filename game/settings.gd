@@ -25,6 +25,8 @@ var vsync := true
 var ui_scale := 1.0
 var msaa := Viewport.MSAA_4X
 var render_scale := 0.0 ## the 3D picture's size against the window: 0 is automatic (about 8 million pixels at most), or one of RENDER_SCALES
+var shadows := 1 ## 0 off, 1 low, 2 high (lighting.gd)
+var ssao := false ## ambient occlusion in the screen: dearer than it looks at this size, so off until chosen
 var master_volume := 1.0
 var music_volume := 0.8
 var effects_volume := 0.8
@@ -121,6 +123,8 @@ func save() -> void:
 	file.set_value("display", "ui_scale", ui_scale)
 	file.set_value("display", "msaa", msaa)
 	file.set_value("display", "render_scale", render_scale)
+	file.set_value("display", "shadows", shadows)
+	file.set_value("display", "ssao", ssao)
 	file.set_value("audio", "master", master_volume)
 	file.set_value("audio", "music", music_volume)
 	file.set_value("audio", "effects", effects_volume)
@@ -139,6 +143,8 @@ func _load() -> void:
 	ui_scale = _nearest_scale(float(file.get_value("display", "ui_scale", ui_scale)))
 	msaa = file.get_value("display", "msaa", msaa)
 	render_scale = float(file.get_value("display", "render_scale", render_scale))
+	shadows = clampi(int(file.get_value("display", "shadows", shadows)), 0, 2)
+	ssao = bool(file.get_value("display", "ssao", ssao))
 	master_volume = file.get_value("audio", "master", master_volume)
 	music_volume = file.get_value("audio", "music", music_volume)
 	effects_volume = file.get_value("audio", "effects", effects_volume)

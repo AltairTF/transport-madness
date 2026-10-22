@@ -66,7 +66,7 @@ public partial class SimHost
             VisibleInstanceCount = 0,
         };
         AddChild(new MultiMeshInstance3D { Name = "TrainMarkers", Multimesh = _trainMarks, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
-        _trainModels = new ModelDraw(this);
+        _trainModels = new ModelDraw(this, shadows: true);
     }
 
     // ---- Building and reading, for GDScript ------------------------------------------------------------------------------

@@ -127,7 +127,7 @@ public partial class SimHost : Node3D
         _terrainMaterial.SetShaderParameter("grass_tex", GD.Load<Texture2D>("res://game/assets/ground/ambientcg/grass.png"));
         _terrainMaterial.SetShaderParameter("dirt_tex", GD.Load<Texture2D>("res://game/assets/ground/ambientcg/dirt.png"));
         _terrainMaterial.SetShaderParameter("rock_tex", GD.Load<Texture2D>("res://game/assets/ground/ambientcg/rock.png"));
-        _cutaway = new MeshInstance3D { Name = "Cutaway", Position = new Vector3(0, -TerrainSink, 0) };
+        _cutaway = new MeshInstance3D { Name = "Cutaway", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Position = new Vector3(0, -TerrainSink, 0) };
         AddChild(_cutaway);
         _terrainRoot = new Node3D { Name = "Terrain", Position = new Vector3(0, -TerrainSink, 0) };
         AddChild(_terrainRoot);
@@ -170,9 +170,9 @@ public partial class SimHost : Node3D
             VisibleInstanceCount = 0,
         };
         AddChild(new MultiMeshInstance3D { Name = "LineMarkers", Multimesh = _marks, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
-        _vehicleModels = new ModelDraw(this);
-        _crewModels = new ModelDraw(this);
-        _buildingModels = new ModelDraw(this, tinted: true);
+        _vehicleModels = new ModelDraw(this, shadows: true);
+        _crewModels = new ModelDraw(this, shadows: true);
+        _buildingModels = new ModelDraw(this, shadows: true, tinted: true);
         _industryRoot = new Node3D { Name = "Industries" };
         AddChild(_industryRoot);
         AddChild(new MultiMeshInstance3D { Name = "Crews", Multimesh = _crews, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
@@ -1978,7 +1978,7 @@ public partial class SimHost : Node3D
         arrays[(int)Mesh.ArrayType.Index] = indices;
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-        _roadRoot.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = material });
+        _roadRoot.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
 
     /// <summary>A flat slab lying along a road that climbs <paramref name="rise"/> over <paramref name="run"/> metres.</summary>

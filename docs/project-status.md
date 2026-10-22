@@ -35,7 +35,7 @@ Last updated: 2026-10-21, after M6f (free-standing depots 5.49, stops at industr
 | M6 Save/load, overlays, balancing, the interface | Done: M6a save and load (5.44), M6b overlays (5.45), M6c balance (5.46), M6d the interface (5.47); M6a, M6b and M6d seen in the .NET editor through the bridge, not played by hand (`docs/m6-plan.md`) |
 | M6e Roads stay where put, Paths to access points, preview of terrain and bridges, whiteboxes | Done (5.48; seen in the editor through the bridge, not played by hand; `docs/m6e-plan.md`) |
 | M6f Free-standing depots, stops at industries with load and unload options, the line preview | Done (5.49, 5.50; seen in the editor through the bridge, not played by hand; `docs/m6f-plan.md`) |
-| M7 Art | M7a to M7e built (`docs/m7-plan.md`); M7f lit scene and M7g icons next; audio postponed |
+| M7 Art | M7a to M7f built (`docs/m7-plan.md`); M7g icons next; audio postponed |
 
 What has been played. The developer played M0 to M5 and the campaign slices C2 to C9 in the 3D game on 2026-10-21 and found them working; the interface is awkward and hard to reach (many buttons and windows) and is to be dealt with after the features are done. Not played: the road signs and sign tools (5.22) and the presentation of raids (section 11). Remarks in section 5 and in section 10 that a slice was "not played" describe the state when it was written. Nothing in this environment can run the 3D game: the Godot available here has no .NET support (section 3).
 
@@ -820,6 +820,12 @@ The rest of what M6g left before M7 (the developer chose these and left undo out
 - **Fourth log (same window, camera 1100 m, vsync off):** all on 16.4 to 17 ms; the water and grain changes made no visible difference at this distance (terrain grain off 0, water off 0.6 ms, terrain off about 2.4 ms net). **The 3D scale moves it the most:** 85 % 14.6 ms, 75 % 13.2, 50 % 9.8 (floor 8.5); unshaded 14.5 to 16 against 16.6 normal (lighting about 1.5 ms). The game is bound by the number of pixels it shades, not by what it draws.
 - **3D resolution setting** (`Settings.render_scale`, Settings > Display): Automatic (default) draws the 3D picture at the largest size that stays within 8 million pixels (0.85 of 4471 x 2515; 1.0 for a 1920 x 1080 window at scale 2 and smaller), or a fixed 100, 85, 75, 66 or 50 %; below 100 % it is scaled up with FSR 1, the interface stays sharp. Re-applied when the window is resized; not applied on command line runs, which keep the project's own window.
 - Not done: LODs for Models, culling of the tree MultiMesh, the water as one quad, a 3D scale in Settings.
+
+### 5.68 M7f: the lit scene (2026-10-22)
+- `game/lighting.gd` (made by `main.gd`, replaces the fixed sun and flat environment): a sun that follows the hour of the simulation (`GetCompany()["hour"]`, every 0.25 s): up at 6, down at 19, noon height 62 degrees, from the east through the south to the west, warm and low at dawn and dusk (colour ramp by height, never lower than 4 degrees for the shadows), no seasons yet. Below the horizon a dim blue moon and a dark sky keep the night readable. Sky and ambient colour follow the sun's height; mild exponential fog (density 0.00006, about 10 % at 1900 m); ACES tone mapping, saturation 0.92 and contrast 1.04 for the earthy, slightly desaturated look.
+- **Shadows** (Settings > Display, Off / Low / High, default Low): Low is a 2048 atlas, 2 splits, 450 m from the camera; High 4096, 4 splits, 900 m. Cast by town buildings, vehicles, trains, crews, industries and the terrain (hill shadows); **not** by roads, the cutaway, water, overlays or the trees (the tree MultiMesh is one object for the whole map, so it would be drawn whole into every cascade: 1.1 million triangles). **SSAO** (Ambient occlusion, default off). Both are in `settings.cfg`.
+- `--hour=<0 to 24>` holds the light at an hour (screenshots). Checked in the real .NET game with screenshots at 7, 12, 17.5 and 23 h; **the frame time was not measured** (the shadow pass is the likely cost; measure with the performance panel, F10, shadows Off against Low). A new game starts at midnight, so the first minutes of a game are night; the sim's start hour was not changed.
+- Not done: seasons, street lights at night, window lights, shadows from trees, a sky drawn at low camera angles.
 
 ## 6. Game layer (`game/`)
 

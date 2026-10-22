@@ -110,6 +110,25 @@ func _display_tab() -> Control:
 		Settings.render_scale = 0.0 if index == 0 else Settings.RENDER_SCALES[index - 1]
 		_commit())
 	_row(grid, "3D resolution", render)
+
+	var shadows := OptionButton.new()
+	for label in ["Off", "Low", "High"]:
+		shadows.add_item(label)
+	shadows.selected = Settings.shadows
+	shadows.tooltip_text = "Shadows of buildings, vehicles and hills. Low reaches 450 m from the camera, High 900 m with sharper edges; off is the fastest."
+	shadows.item_selected.connect(func(index: int) -> void:
+		Settings.shadows = index
+		_commit())
+	_row(grid, "Shadows", shadows)
+
+	var ssao := CheckBox.new()
+	ssao.button_pressed = Settings.ssao
+	ssao.text = "On"
+	ssao.tooltip_text = "Darkens creases and the foot of buildings. Costs frame time on a large window."
+	ssao.toggled.connect(func(on: bool) -> void:
+		Settings.ssao = on
+		_commit())
+	_row(grid, "Ambient occlusion", ssao)
 	return page
 
 

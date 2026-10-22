@@ -2,6 +2,7 @@ extends Node3D
 ## Wires the world together: environment, HUD, input. Command line (after `--`):
 ##   --bench                      measure frame rate with 1000 vehicles at 1x and 8x, then quit
 ##   --shot=<file> [--shot-after=<seconds>]   save a screenshot and quit
+##   --hour=<0 to 24>             hold the light at that hour of the day (lighting.gd), for screenshots
 ##   --selftest-build             build roads with simulated mouse clicks, run, print stats, quit
 ##   --hills                      start on an empty generated-hills map instead of the default map
 ##   --towns[=<n>]                start on the generated map with n towns (default 5)
@@ -214,6 +215,8 @@ func _ready() -> void:
 
 var _campaign_over_seen := false
 var _model_year := 0
+var lighting: Node ## the sun, sky and shadows (lighting.gd)
+var _fixed_hour := -1.0 ## --hour=<0 to 24> holds the light at that hour (screenshots)
 
 
 func _process(delta: float) -> void:
@@ -230,6 +233,8 @@ func _process(delta: float) -> void:
 		hud.show_stats(host.GetStats())
 		var company: Dictionary = host.GetCompany()
 		hud.show_company(company)
+		if _fixed_hour < 0.0:
+			lighting.set_hour(company["hour"])
 		if company["year"] != _model_year:
 			# A new year: the models on sale change, and the news says which are new.
 			var first: bool = _model_year == 0
@@ -1134,17 +1139,8 @@ func _run_bench(delta: float) -> void:
 
 
 func _build_environment() -> void:
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color(0.6, 0.75, 0.9)
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.75, 0.78, 0.85)
-	environment.ambient_light_energy = 0.7
-	var world_environment := WorldEnvironment.new()
-	world_environment.environment = environment
-	add_child(world_environment)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, -35, 0)
-	sun.light_energy = 1.1
-	add_child(sun)
+	lighting = preload("res://game/lighting.gd").new()
+	add_child(lighting)
+	if _args.has("--hour"):
+		_fixed_hour = float(_args["--hour"])
+		lighting.set_hour(_fixed_hour)
