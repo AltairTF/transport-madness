@@ -837,6 +837,21 @@ func _selftest_place() -> void:
 	say.call("beside, plain: %s" % [build_tool._free_placement()])
 	await _key(KEY_R)
 	say.call("beside, turned: turned=%s free=%s" % [build_tool._turned, build_tool._free_placement()])
+	if _args.has("--shot"): # the path from the road to the door of a depot turned away from it
+		build_tool._turned = true
+		build_tool._angle = 0.0
+		rig.position = Vector3(50, host.HeightAt(50, 112), 112)
+		rig.distance = 110.0
+		rig.pitch = -50.0
+		rig._apply()
+		for i in 3:
+			await get_tree().process_frame
+		var over := InputEventMouseMotion.new()
+		over.position = get_viewport().get_final_transform() * camera.unproject_position(beside)
+		Input.parse_input_event(over)
+		for i in 4:
+			await get_tree().process_frame
+		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-path.png"))
 	await _key(KEY_G)
 	say.call("beside, G: free=%s" % build_tool._free_placement())
 	build_tool.set_tool("pointer")

@@ -28,6 +28,7 @@ const PATH_BLOCKED_COLOR := Color(0.95, 0.25, 0.25, 0.85)
 const PATH_WIDTH := 5.0
 const GHOST_SURFACE := {"valid": Color(0.08, 0.22, 0.22, 0.82), "invalid": Color(0.38, 0.08, 0.08, 0.80)} ## the ghost road's surface: dark like asphalt, tinted by whether it can be built
 const GHOST_EDGE := {"valid": Color(0.45, 1.0, 0.92, 1.0), "invalid": Color(1.0, 0.3, 0.3, 1.0)}      ## its two edge lines, bright so it reads on any ground
+const GHOST_PATH_SURFACE := Color(0.46, 0.39, 0.29, 0.82) ## the stone of a path to an access point
 const GHOST_LINE := Color(1.0, 1.0, 0.9, 1.0)
 const GHOST_MEDIAN := Color(0.75, 0.8, 0.72, 0.85)
 const GHOST_LIFT := 0.4
@@ -621,7 +622,7 @@ func _update_preview(screen: Vector2) -> void:
 		message.emit("Can't build there: too short, too steep (max 12%), curve too tight, in water, or too close to a junction")
 
 
-## What the ghost is made like: "road2", "road4", "rail" (the stone path to an access point is drawn by _draw_spur and the depot's by _draw_runs).
+## What the ghost is made like: "road2", "road4", "rail" (the stone path to an access point, "path", is drawn by _draw_spur and by the depot tool).
 func _ghost_kind() -> String:
 	if _is_rail_tool():
 		return "rail"
@@ -711,10 +712,20 @@ func _draw_ghost(target: MeshInstance3D, points: PackedVector3Array, kind: Strin
 	var mesh: ImmediateMesh = target.mesh
 	var tint := "valid" if ok else "invalid"
 	var edge: Color = GHOST_EDGE[tint]
+	var surface: Color = GHOST_SURFACE[tint]
 	var half := RAIL_WIDTH * 0.5 if kind == "rail" else (8.0 if kind == "road4" else 3.5)
-	_ghost_disc(target, points[0], ok)
-	_ghost_disc(target, points[points.size() - 1], ok)
-	_ghost_strip(mesh, points, -half, half, GHOST_SURFACE[tint], GHOST_LIFT + 0.02)
+	var edge_width := GHOST_EDGE_WIDTH
+	if kind == "path": # the narrow stone road to an access point: no node discs, stone coloured
+		half = PATH_WIDTH * 0.5
+		edge_width = 0.6
+		if ok:
+			surface = GHOST_PATH_SURFACE
+			edge = PATH_COLOR
+			edge.a = 1.0
+	else:
+		_ghost_disc(target, points[0], ok)
+		_ghost_disc(target, points[points.size() - 1], ok)
+	_ghost_strip(mesh, points, -half, half, surface, GHOST_LIFT + 0.02)
 	match kind:
 		"road4":
 			_ghost_strip(mesh, points, -MEDIAN_WIDTH * 0.5, MEDIAN_WIDTH * 0.5, GHOST_MEDIAN, GHOST_LIFT + 0.06)
@@ -723,8 +734,8 @@ func _draw_ghost(target: MeshInstance3D, points: PackedVector3Array, kind: Strin
 		"rail":
 			_ghost_strip(mesh, points, -1.0, -0.6, GHOST_LINE, GHOST_LIFT + 0.06)
 			_ghost_strip(mesh, points, 0.6, 1.0, GHOST_LINE, GHOST_LIFT + 0.06)
-	_ghost_strip(mesh, points, -half, -half + GHOST_EDGE_WIDTH, edge, GHOST_LIFT + 0.08)
-	_ghost_strip(mesh, points, half - GHOST_EDGE_WIDTH, half, edge, GHOST_LIFT + 0.08)
+	_ghost_strip(mesh, points, -half, -half + edge_width, edge, GHOST_LIFT + 0.08)
+	_ghost_strip(mesh, points, half - edge_width, half, edge, GHOST_LIFT + 0.08)
 
 
 ## Station tool: a marker where the station would stand, what it costs and the coverage it would give: its circle, the streets its walk reaches (green near it, fading to red) and a square over every building it covers.
@@ -1000,9 +1011,10 @@ func _hover_depot(screen: Vector2) -> void:
 	var connection: int = site["connection"]
 	var runs: Array = site["path_runs"]
 	if not runs.is_empty():
-		_draw_runs(runs, PATH_WIDTH)
+		_draw_earthworks(runs, PATH_WIDTH)
+		_draw_ghost(_ghost, _visible_surface_of(runs), "path", true)
 	elif site["path_points"].size() >= 2:
-		_draw_arc(site["path_points"], PATH_WIDTH)
+		_draw_ghost(_ghost, site["path_points"], "path", false)
 	var total: float = site["price"] + site["path_money"] + site["pad_money"]
 	var ok: bool = site["affordable"]
 	_material.albedo_color = ROAD_COLORS["invalid"] if not ok else (DEPOT_ALONE_COLOR if connection == 0 or (connection == 2 and not site["path_buildable"]) else ROAD_COLORS["valid"])
@@ -1039,13 +1051,7 @@ func _click_depot(screen: Vector2) -> void:
 	_hover_depot(screen)
 
 
-## A planned road from the simulation's stretches (RoadRuns): the road surface in the usual colour, with the earthworks, bridges and tunnels marked.
-func _draw_runs(runs: Array, width: float) -> void:
-	_draw_arc(_surface_of(runs), width)
-	_draw_earthworks(runs, width, false)
-
-
-## The earthworks, bridges and tunnels of planned stretches, drawn under whatever is drawn for the road itself (the ghost, or the plain strip of _draw_runs).
+## The earthworks, bridges and tunnels of planned stretches, drawn under the ghost of the road itself.
 func _draw_earthworks(runs: Array, width: float, clear := true) -> void:
 	var mesh: ImmediateMesh = _earth_preview.mesh
 	if clear:
@@ -1083,29 +1089,14 @@ func _draw_earthworks(runs: Array, width: float, clear := true) -> void:
 			mesh.surface_end()
 
 
-## An access path (M6e) on top of what is drawn: stone coloured, and red when it cannot be built.
+## An access path (M6e) as the stone road it would be: a ghost, red when it cannot be built.
 func _draw_spur(spur: Dictionary) -> void:
 	var points := PackedVector3Array()
-	var color := PATH_COLOR
 	if spur["buildable"]:
-		for run in spur["runs"]:
-			var road: PackedVector3Array = run["road"]
-			for i in road.size():
-				if i == 0 and not points.is_empty():
-					continue
-				points.append(road[i])
+		points = _visible_surface_of(spur["runs"])
 	else:
 		points = spur["points"]
-		color = PATH_BLOCKED_COLOR
-	var mesh: ImmediateMesh = _earth_preview.mesh
-	mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
-	for i in points.size():
-		var side := _side(points, i) * PATH_WIDTH * 0.5
-		mesh.surface_set_color(color)
-		mesh.surface_add_vertex(points[i] - side + Vector3(0, 0.5, 0))
-		mesh.surface_set_color(color)
-		mesh.surface_add_vertex(points[i] + side + Vector3(0, 0.5, 0))
-	mesh.surface_end()
+	_draw_ghost(_ghost, points, "path", spur["buildable"])
 
 
 ## Horizontal unit vector to the right of the line at point i.
