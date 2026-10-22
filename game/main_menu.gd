@@ -23,6 +23,13 @@ var _towns_slider: HSlider
 var _industries_row: Control
 var _industries_buttons: Array[Button] = []
 var _frequency_buttons: Array[Button] = []
+var _land_box: Control
+var _preview: TextureRect
+var _preview_scale: Label
+var _preview_timer: Timer
+var _size_buttons: Array[Button] = []
+var _land_sliders: Dictionary = {}
+var _preview_maker: RefCounted
 
 
 func _ready() -> void:
@@ -155,6 +162,9 @@ func _build_new_game_page() -> Control:
 	random.text = "Random"
 	random.pressed.connect(func() -> void: _seed.value = randi_range(1, 999999))
 	seed_row.add_child(random)
+	_seed.value_changed.connect(func(_v: float) -> void: _queue_preview())
+
+	column.add_child(_build_land_box())
 
 	_towns_row = HBoxContainer.new()
 	column.add_child(_towns_row)
@@ -176,6 +186,7 @@ func _build_new_game_page() -> Control:
 	_towns_value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_towns_row.add_child(_towns_value)
 	_on_towns_changed(Session.towns)
+	_on_size_changed(Session.size)
 
 	_industries_row = HBoxContainer.new()
 	column.add_child(_industries_row)
@@ -226,6 +237,87 @@ func _build_new_game_page() -> Control:
 	return panel
 
 
+## The land: a picture of the map the seed and the sliders will make, its size and how much mountain, water and forest it has.
+func _build_land_box() -> Control:
+	_preview_maker = load("res://game/MapPreview.cs").new()
+	_preview_timer = Timer.new()
+	_preview_timer.one_shot = true
+	_preview_timer.wait_time = 0.25
+	_preview_timer.timeout.connect(_refresh_preview)
+	add_child(_preview_timer)
+
+	_land_box = HBoxContainer.new()
+	_land_box.add_theme_constant_override("separation", 16)
+	_preview = TextureRect.new()
+	_preview.custom_minimum_size = Vector2(290, 290)
+	_preview.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_preview.stretch_mode = TextureRect.STRETCH_SCALE
+	_preview.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_land_box.add_child(_preview)
+
+	var side := VBoxContainer.new()
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_land_box.add_child(side)
+	var size_label := Label.new()
+	size_label.text = "Map size"
+	side.add_child(size_label)
+	var sizes := HBoxContainer.new()
+	side.add_child(sizes)
+	for i in 3:
+		var button := Button.new()
+		button.text = ["Small", "Normal", "Large"][i]
+		button.toggle_mode = true
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(_on_size_changed.bind(i))
+		sizes.add_child(button)
+		_size_buttons.append(button)
+	_preview_scale = Label.new()
+	_preview_scale.theme_type_variation = "Dim"
+	side.add_child(_preview_scale)
+	for entry in [["mountains", "Mountains"], ["water", "Water"], ["forests", "Forests"]]:
+		var label := Label.new()
+		label.text = entry[1]
+		side.add_child(label)
+		var slider := HSlider.new()
+		slider.min_value = 0.0
+		slider.max_value = 1.0
+		slider.step = 0.05
+		slider.value = Session.get(entry[0])
+		slider.value_changed.connect(_on_land_changed.bind(entry[0]))
+		side.add_child(slider)
+		_land_sliders[entry[0]] = slider
+	return _land_box
+
+
+func _on_size_changed(size: int) -> void:
+	Session.size = size
+	for i in _size_buttons.size():
+		_size_buttons[i].set_pressed_no_signal(i == size)
+	var most: int = _preview_maker.MostTowns(size)
+	_towns_slider.max_value = most
+	_towns_slider.value = mini(int(_towns_slider.value), most)
+	_preview_scale.text = "%.1f km on a side" % (_preview_maker.SideMetres(size) / 1000.0)
+	_queue_preview()
+
+
+func _on_land_changed(value: float, key: String) -> void:
+	Session.set(key, value)
+	_queue_preview()
+
+
+func _queue_preview() -> void:
+	if _preview_timer != null:
+		_preview_timer.start()
+
+
+func _refresh_preview() -> void:
+	if not _land_box.visible:
+		return
+	var image: Image = _preview_maker.Render(int(_seed.value), Session.size, Session.mountains, Session.water, Session.forests)
+	_preview.texture = ImageTexture.create_from_image(image)
+
+
 func _select_map(id: String) -> void:
 	Session.map = id
 	for key in _map_buttons:
@@ -235,6 +327,9 @@ func _select_map(id: String) -> void:
 			_map_text.text = map["text"]
 			_towns_row.visible = map.get("towns", false)
 			_industries_row.visible = map.get("towns", false)
+			_land_box.visible = map.get("towns", false)
+			if _land_box.visible:
+				_queue_preview()
 
 
 func _on_industries_changed(setting: int) -> void:

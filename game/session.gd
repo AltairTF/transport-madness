@@ -11,6 +11,7 @@ const MAPS := [
 var map := "demo"
 var towns := 5
 var industries := 1 ## 0 few, 1 normal, 2 many
+var size := 1 ## 0 small (3.1 km), 1 normal (4.1 km), 2 large (8.2 km)
 var mountains := 0.5 ## how much of each the generated land has, 0 to 1
 var water := 0.5
 var forests := 0.5

@@ -133,6 +133,28 @@ public class TerrainTests
     }
 
     [Fact]
+    public void ThePreview_CoversTheMapOfItsSizeAndShowsItsLand()
+    {
+        foreach (var size in new[] { MapSize.Small, MapSize.Normal })
+        {
+            var preview = WorldBuilder.Preview(5, size);
+            var full = Terrain.Generate(5, WorldBuilder.CellsOf(size));
+            Assert.Equal(full.HalfSize, preview.HalfSize, 1);
+            Assert.Equal(Share(full, Biome.Water), Share(preview, Biome.Water), 0.03f);
+        }
+        Assert.True(WorldBuilder.CellsOf(MapSize.Small) < WorldBuilder.CellsOf(MapSize.Normal));
+        Assert.True(WorldBuilder.CellsOf(MapSize.Normal) < WorldBuilder.CellsOf(MapSize.Large));
+    }
+
+    [Fact]
+    public void ASmallMap_GetsItsTownsAndIndustries()
+    {
+        var (sim, plan) = WorldBuilder.Towns(5, 3, IndustryAmount.Normal, size: MapSize.Small);
+        Assert.Equal(384, sim.Network.Terrain!.Cells);
+        Assert.Equal(3, plan.Towns.Count);
+    }
+
+    [Fact]
     public void ALargeMap_IsMadeInAFewSeconds()
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();

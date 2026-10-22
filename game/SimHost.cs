@@ -231,14 +231,14 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>
-    /// Starts a map of generated hills with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many; <paramref name="mountains"/>, <paramref name="water"/> and <paramref name="forests"/> from 0 to 1 say how much of each the land has).
+    /// Starts a map of generated hills with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many; <paramref name="mountains"/>, <paramref name="water"/> and <paramref name="forests"/> from 0 to 1 say how much of each the land has; <paramref name="size"/>: 0 small, 1 normal, 2 large).
     /// Returns how many towns were placed; fewer than <paramref name="towns"/> when the land ran out. A few ambient cars
     /// are put on the streets. <see cref="UnlinkedIndustries"/> says how many processors found no place within reach of their inputs.
     /// </summary>
-    public int NewTownsWorld(long seed, int towns, int industries, double mountains, double water, double forests)
+    public int NewTownsWorld(long seed, int towns, int industries, double mountains, double water, double forests, int size = 1)
     {
         var terrain = new TerrainSettings((float)mountains, (float)water, (float)forests);
-        var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2), frequency: StartingFrequency, terrain: terrain);
+        var (sim, plan) = WorldBuilder.Towns((ulong)seed, towns, (IndustryAmount)Math.Clamp(industries, 0, 2), frequency: StartingFrequency, terrain: terrain, size: (MapSize)Math.Clamp(size, 0, 2));
         Sim = sim;
         UnlinkedIndustries = plan.Unlinked?.Count ?? 0;
         GatewaysPlaced = plan.Gateways?.Count ?? 0;
