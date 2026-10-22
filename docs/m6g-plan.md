@@ -1,6 +1,6 @@
 # M6g: whiteboxes that work the way the final game will, and the rest of the tool review
 
-Status: planned 2026-10-22, none started. Third part of the tool usability review (M6e: roads stay where put; M6f: depots, stops at industries, line preview). M7 (art and audio) follows. The aim stated by the developer: before the final 3D art there is a whitebox version of everything that works the way the final game will, only without the models.
+Status: slices A, B and C built 2026-10-22 (see `docs/project-status.md` 5.51 to 5.53 for what differs from this plan: rail depots and stations have no pad, undo was left out, parallel roads are for straight roads and tracks only). Third part of the tool usability review (M6e: roads stay where put; M6f: depots, stops at industries, line preview). M7 (art and audio) follows. The aim stated by the developer: before the final 3D art there is a whitebox version of everything that works the way the final game will, only without the models.
 
 ## Decided with the developer, 2026-10-22
 

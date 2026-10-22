@@ -309,6 +309,7 @@ func open_object(kind: String, id: Variant) -> void:
 			var note := Kit.note("")
 			extra.add_child(note)
 			refs["note"] = note
+			buttons.add_child(Kit.button("Follow", func() -> void: vehicle_action.emit("follow", id), "The camera follows it until you move the camera."))
 			buttons.add_child(Kit.button("To depot", func() -> void: vehicle_action.emit("depot", id), "Take it off its line to wait in the nearest depot."))
 			buttons.add_child(Kit.button("Sell", func() -> void: vehicle_action.emit("sell", id), "Sell it for part of its price."))
 			buttons.add_child(Kit.button("Vehicles", open_window.bind("vehicles"), "The Vehicles window: repairs and its maintenance policy."))

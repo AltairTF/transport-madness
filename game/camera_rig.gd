@@ -12,6 +12,8 @@ var distance := 1100.0
 var yaw := 0.0
 var pitch := -55.0
 var terrain_host: Node3D ## anything with HeightAt(x, z), set by main.gd
+const FOLLOW_SPEED := 8.0 ## per second: how quickly the focus catches up with a followed vehicle
+var _following := Callable() ## returns the Vector3 of what the camera follows, or null once it is gone; moving the camera by hand lets go
 
 @onready var camera: Camera3D = $Camera3D
 
@@ -31,18 +33,28 @@ func _unhandled_input(event: InputEvent) -> void:
 			yaw -= event.relative.x * 0.3
 			pitch = clamp(pitch - event.relative.y * 0.3, -89.0, -10.0)
 		elif Input.is_mouse_button_pressed(MOUSE_BUTTON_MIDDLE):
+			stop_following()
 			_pan(Vector2(-event.relative.x, -event.relative.y) * distance * 0.0015)
 	_apply()
 
 
 func _process(delta: float) -> void:
-	_follow_ground(delta)
+	if _following.is_valid():
+		var spot: Variant = _following.call()
+		if spot == null:
+			stop_following()
+		else:
+			position = position.lerp(spot, minf(1.0, FOLLOW_SPEED * delta))
+			_apply()
+	else:
+		_follow_ground(delta)
 	if get_viewport().gui_get_focus_owner() is LineEdit:
 		return # typing a name, not moving
 	var move := Vector2(
 		Input.get_axis("ui_left", "ui_right") + _action_axis("camera_left", "camera_right"),
 		Input.get_axis("ui_up", "ui_down") + _action_axis("camera_forward", "camera_back"))
 	if move != Vector2.ZERO:
+		stop_following()
 		_pan(move.normalized() * distance * 0.8 * delta)
 		_apply()
 	var turn := _action_axis("camera_turn_left", "camera_turn_right")
@@ -62,8 +74,18 @@ func _follow_ground(delta: float) -> void:
 	_apply()
 
 
+## Keeps the focus on whatever <source> returns (a Vector3, or null when it is gone) until the camera is moved by hand.
+func follow(source: Callable) -> void:
+	_following = source
+
+
+func stop_following() -> void:
+	_following = Callable()
+
+
 ## Puts the focus on a ground point at once.
 func focus_on(x: float, z: float) -> void:
+	stop_following()
 	position = Vector3(x, terrain_host.HeightAt(x, z) if terrain_host != null else 0.0, z)
 	_apply()
 

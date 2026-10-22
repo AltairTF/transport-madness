@@ -42,6 +42,13 @@ const RAIL_TOOLS := ["track", "track_curve", "track_remove", "signal_block", "si
 const RAIL_WIDTH := 4.2
 const RANGE_SEGMENTS := 96 ## the circle of a battery's range is drawn with this many segments
 const RANGE_WIDTH := 3.0
+const DRAG_SLOP := 12.0 ## pixels the mouse must travel with the button down for letting go to build a road started by that press
+const PARALLEL_GAP := 4.0 ## metres of ground between a road and the parallel road built beside it
+const PARALLEL_RAIL_GAP := 3.0
+var _parallel := 0        ## 0 off, 1 a second road on one side of the one drawn, -1 on the other
+var _drag_from := Vector2(-1.0, -1.0) ## where the left button went down on the press that started a road, (-1, -1) when that press is not a possible drag
+var _twin_preview: MeshInstance3D ## the parallel road's box
+var _twin_material := StandardMaterial3D.new()
 const PLACE_TOOLS := ["depot", "battery"] ## buildings put on the ground that can be turned and raised
 const TURN_STEP := deg_to_rad(15.0)
 var _turned := false      ## the player has turned the building, so it stands exactly where put, at _angle
@@ -72,6 +79,13 @@ func setup(sim_host: Node3D, cam: Camera3D) -> void:
 	_preview.material_override = _material
 	_preview.visible = false
 	add_child(_preview)
+	_twin_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_twin_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_twin_preview = MeshInstance3D.new()
+	_twin_preview.mesh = BoxMesh.new()
+	_twin_preview.material_override = _twin_material
+	_twin_preview.visible = false
+	add_child(_twin_preview)
 	_arc_preview = MeshInstance3D.new()
 	_arc_preview.mesh = ImmediateMesh.new()
 	_arc_preview.material_override = _material
@@ -92,6 +106,7 @@ func set_tool(tool_name: String) -> void:
 	tool = tool_name
 	_turned = false
 	_raise = 0.0
+	_parallel = 0
 	_reset()
 	match tool:
 		"road2": message.emit("2-lane road: click to start, click again to build (right click or Esc stops)")
@@ -139,6 +154,32 @@ func _road_type() -> int:
 	return 1 if tool == "road4" or tool == "curve4" else 0
 
 
+## The tools that draw a straight road or track from a start to an end (a drag works for them, and a parallel one can go beside).
+func _is_straight_tool() -> bool:
+	return tool == "road2" or tool == "road4" or tool == "track"
+
+
+## The two ends of the road or track built beside the one from a to b, on the side the player chose; null while that is off.
+func _twin_ends(a: Vector3, b: Vector3) -> Variant:
+	if _parallel == 0 or not _is_straight_tool():
+		return null
+	var along := b - a
+	along.y = 0.0
+	if along.length() < 0.1:
+		return null
+	along = along.normalized()
+	var half := RAIL_WIDTH * 0.5 if _is_rail_tool() else (8.0 if _road_type() == 1 else 3.5)
+	var gap := PARALLEL_RAIL_GAP if _is_rail_tool() else PARALLEL_GAP
+	var side := Vector3(-along.z, 0.0, along.x) * (float(_parallel) * (2.0 * half + gap))
+	return [_ground(a.x + side.x, a.z + side.z), _ground(b.x + side.x, b.z + side.z)]
+
+
+func _estimate(a: Vector3, b: Vector3, sweep: float) -> Dictionary:
+	if _is_rail_tool():
+		return host.EstimateTrackCost(a.x, a.z, b.x, b.z, sweep)
+	return host.EstimateCurveCost(a.x, a.z, b.x, b.z, _road_type(), sweep)
+
+
 func _is_road_tool() -> bool:
 	return tool in ["upgrade", "downgrade", "remove", "faster", "slower", "resurface"]
 
@@ -149,8 +190,10 @@ func _reset() -> void:
 	_hover_road = -1
 	_start = null
 	_mid = null
+	_drag_from = Vector2(-1.0, -1.0)
 	_preview.visible = false
 	_arc_preview.visible = false
+	_twin_preview.visible = false
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -159,6 +202,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and (Keys.pressed(event, "finish_line") or event.keycode == KEY_KP_ENTER):
 		if tool == "line":
 			_finish_line()
+	elif event is InputEventKey and event.pressed and not event.echo and _is_straight_tool() and Keys.pressed(event, "parallel_road"):
+		_parallel = [0, 1, -1][(([0, 1, -1].find(_parallel)) + 1) % 3] # off, one side, the other side
+		message.emit(["Parallel road off", "Parallel road on the right", "Parallel road on the left"][[0, 1, -1].find(_parallel)])
+		get_viewport().set_input_as_handled()
+		_update_preview(get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and not event.echo and tool in PLACE_TOOLS and _place_key(event):
 		get_viewport().set_input_as_handled()
 		_update_preview(get_viewport().get_mouse_position())
@@ -179,8 +227,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _right_down_at.x >= 0.0:
 			_right_down_at = Vector2(-1.0, -1.0)
 			_cancel()
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_click(event.position)
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			var had_start := _start != null
+			_click(event.position)
+			# A press that starts a straight road may be the start of a drag: letting go far from it builds the road.
+			_drag_from = event.position if not had_start and _start != null and _is_straight_tool() else Vector2(-1.0, -1.0)
+		elif _drag_from.x >= 0.0:
+			var from := _drag_from
+			_drag_from = Vector2(-1.0, -1.0)
+			if _start != null and event.position.distance_to(from) > DRAG_SLOP:
+				_click(event.position)
 
 
 ## R and Shift+R turn a building by a step (the first turn starts from the angle the place gave it and makes it stand exactly where put), Page Up and Page Down lift
@@ -311,7 +368,21 @@ func _click(screen: Vector2) -> void:
 	var join: Dictionary = {} # the access points the road gets a path to (M6e); the road itself is where it was put
 	if not _is_rail_tool():
 		join = host.RoadJoin(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
+	var twin: Variant = _twin_ends(_start, target)
+	if twin != null: # both or neither: the parallel one is checked before the first is built
+		var first := _estimate(_start, target, sweep)
+		var second := _estimate(twin[0], twin[1], 0.0)
+		if not first.get("valid", false) or not second.get("valid", false):
+			message.emit("Can't build the parallel %s there" % ("track" if _is_rail_tool() else "road"))
+			return
+		if not host.CanAfford(first["money"] + first.get("demolition_price", 0.0) + second["money"] + second.get("demolition_price", 0.0)):
+			message.emit("Not enough money for both")
+			return
 	var built: bool = host.BuildTrack(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.BuildCurve(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
+	if built and twin != null:
+		var twin_built: bool = host.BuildTrack(twin[0].x, twin[0].z, twin[1].x, twin[1].z, 0.0) if _is_rail_tool() else host.BuildCurve(twin[0].x, twin[0].z, twin[1].x, twin[1].z, _road_type(), 0.0)
+		if not twin_built:
+			message.emit("The first was built but the parallel one could not be")
 	if built:
 		message.emit("Track laid" if _is_rail_tool() else "Road built" + _join_text(join))
 		_start = target # keep drawing from the new end
@@ -431,6 +502,7 @@ func _update_preview(screen: Vector2) -> void:
 	if tool == "depot":
 		_hover_depot(screen)
 		return
+	_twin_preview.visible = false
 	var target: Variant = _target_point(screen)
 	if target == null:
 		_preview.visible = false
@@ -477,6 +549,11 @@ func _update_preview(screen: Vector2) -> void:
 		var across := Vector3(-along.z, 0.0, along.x).normalized()
 		_preview.transform = Transform3D(Basis(along, across.cross(along), across), (origin + target) * 0.5 + Vector3(0, 0.3, 0))
 
+	var twin: Variant = _twin_ends(_start, target)
+	var twin_cost := {}
+	if twin != null:
+		twin_cost = _estimate(twin[0], twin[1], 0.0)
+		_draw_twin(twin[0], twin[1], width, twin_cost.get("valid", false) and twin_cost.get("affordable", false))
 	if valid:
 		var text := "%d m   grade %.1f%%   cut %d m3   fill %d m3   cost %s" % [
 			cost["length"], 100.0 * offset.y / maxf(cost["length"], 0.1), cost["cut"], cost["fill"], _money(cost["money"])]
@@ -493,6 +570,11 @@ func _update_preview(screen: Vector2) -> void:
 			text += "   %d level %s" % [cost["crossings"], "crossing" if cost["crossings"] == 1 else "crossings"]
 		text += _join_text(join, cost)
 		text += _demolition_text(cost)
+		if twin != null:
+			if twin_cost.get("valid", false):
+				text += "   |   parallel: %s   together %s" % [_money(twin_cost["money"]), _money(cost["money"] + twin_cost["money"])]
+			else:
+				text += "   |   the parallel one cannot be built there"
 		message.emit(text)
 	elif _is_rail_tool():
 		var reason: String = cost.get("reason", "")
@@ -501,6 +583,17 @@ func _update_preview(screen: Vector2) -> void:
 		message.emit("Can't lay track there: " + reason)
 	else:
 		message.emit("Can't build there: too short, too steep (max 12%), curve too tight, in water, or too close to a junction")
+
+
+## The box of the parallel road or track, green when it can be built and paid for and red when not.
+func _draw_twin(a: Vector3, b: Vector3, width: float, ok: bool) -> void:
+	var offset := b - a
+	_twin_material.albedo_color = ROAD_COLORS["valid"] if ok else ROAD_COLORS["invalid"]
+	_twin_preview.visible = true
+	_twin_preview.mesh.size = Vector3(maxf(offset.length(), 0.1), 0.4, width)
+	var along := offset.normalized() if offset.length() > 0.001 else Vector3.RIGHT
+	var across := Vector3(-along.z, 0.0, along.x).normalized()
+	_twin_preview.transform = Transform3D(Basis(along, across.cross(along), across), (a + b) * 0.5 + Vector3(0, 0.3, 0))
 
 
 ## Station tool: a marker where the station would stand, and what it costs.

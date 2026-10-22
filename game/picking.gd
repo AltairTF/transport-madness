@@ -64,12 +64,12 @@ func pick_at(x: float, z: float, scale: float) -> Dictionary:
 	return {}
 
 
-## Where an object can be clicked: its point, and for a station or a depot also the box beside its node.
+## Where an object can be clicked: its point, and for a depot on a node also the box beside it.
 func _points(kind: String, item: Dictionary) -> Array[Vector2]:
 	var p := Vector2(item["x"], item["z"])
 	match kind:
 		"station":
-			return [p, p + Vector2(-24, -24)]
+			return [p]
 		"depot":
 			return [p] if item.get("free", false) else [p, p + Vector2(26, 26)]
 	return [p]

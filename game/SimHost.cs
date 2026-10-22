@@ -782,6 +782,19 @@ public partial class SimHost : Node3D
         return lines;
     }
 
+    /// <summary>Whether the company could pay this much now.</summary>
+    public bool CanAfford(float amount) => Sim.CanAfford((long)Math.Ceiling(amount));
+
+    /// <summary>Where a road vehicle is now, for the camera that follows it: {found, x, y, z}.</summary>
+    public Godot.Collections.Dictionary VehicleSpot(int v)
+    {
+        if (v < 0 || v >= Sim.VehicleCount || !Sim.IsCompanyVehicle(v)) return new Godot.Collections.Dictionary { ["found"] = false };
+        var state = Sim.GetVehicle(v);
+        float pos = Math.Min(state.Position, _laneLength[state.Lane.Value]);
+        LaneFrame(state.Lane.Value, pos, out float x, out float z, out _, out _);
+        return new Godot.Collections.Dictionary { ["found"] = true, ["x"] = x, ["y"] = _laneY[state.Lane.Value] + _laneGrade[state.Lane.Value] * pos, ["z"] = z };
+    }
+
     /// <summary>
     /// The company's vehicles: for each {id, model, line, line_name, color, load, capacity, cargo, income, upkeep, profit,
     /// state, x, y, z} where state is "Wrecked", "Loading at ..." or "Heading for ...".

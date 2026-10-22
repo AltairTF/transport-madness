@@ -7,6 +7,7 @@ extends Node3D
 ##   --towns[=<n>]                start on the generated map with n towns (default 5)
 ##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
+##   --selftest-place             right click, drag, parallel roads, a turned and raised depot and the camera following, with simulated input on the hills map, print, quit
 ##   --selftest-lines             build a road, two stations, a bus line and a truck line, run 30 days, print the books, quit
 ##   --distance=<m> --pitch=<deg> --focus=<x>,<z>   place the camera (useful with --shot)
 
@@ -60,7 +61,7 @@ func _ready() -> void:
 			return
 		_loaded = true
 	var map: String = Session.map
-	if _args.has("--hills") or _args.has("--selftest-hills"):
+	if _args.has("--hills") or _args.has("--selftest-hills") or _args.has("--selftest-place"):
 		map = "hills"
 	if _args.has("--towns"):
 		map = "towns"
@@ -178,6 +179,8 @@ func _ready() -> void:
 		_selftest_hills()
 	if _args.has("--selftest-lines"):
 		_selftest_lines()
+	if _args.has("--selftest-place"):
+		_selftest_place()
 
 	if _args.has("--bench"):
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -455,6 +458,9 @@ func _on_station_action(kind: String, station: int, text: String) -> void:
 ## A button of a vehicle row in the Vehicles window: sell it, or send it to a depot.
 func _on_vehicle_action(kind: String, vehicle: int) -> void:
 	match kind:
+		"follow":
+			rig.follow(_vehicle_spot.bind(vehicle))
+			hud.show_message("Following: move the camera to let go")
 		"sell":
 			# Trains share the window with road vehicles under negative ids.
 			var sold: bool = host.SellTrain(-1 - vehicle) if vehicle < 0 else host.SellVehicle(vehicle)
@@ -462,6 +468,17 @@ func _on_vehicle_action(kind: String, vehicle: int) -> void:
 		"depot":
 			var why: String = host.SendToDepot(vehicle)
 			hud.show_message("On its way to a depot" if why == "" else "Can't send it to a depot: " + why)
+
+
+## Where a vehicle is now for the camera that follows it (trains share the list under negative ids), null when it is gone.
+func _vehicle_spot(vehicle: int) -> Variant:
+	if vehicle >= 0:
+		var spot: Dictionary = host.VehicleSpot(vehicle)
+		return Vector3(spot["x"], spot["y"], spot["z"]) if spot["found"] else null
+	for item in hud.latest("vehicle"):
+		if item["id"] == vehicle:
+			return Vector3(item["x"], item["y"], item["z"])
+	return null
 
 
 ## A vehicle bought for a depot's garage, from the Vehicles window.
@@ -633,6 +650,126 @@ func _selftest_crash() -> void:
 		if state == "none":
 			break
 	print("CRASH done cleared=%s" % (last_state == "none"))
+	get_tree().quit()
+
+
+## Simulated input for --selftest-place: a mouse button pressed or released at a world point, and a key.
+func _mouse_at(camera: Camera3D, point: Vector3, button: int, pressed: bool) -> void:
+	var screen: Vector2 = get_viewport().get_final_transform() * camera.unproject_position(point)
+	var motion := InputEventMouseMotion.new()
+	motion.position = screen
+	Input.parse_input_event(motion)
+	await get_tree().process_frame
+	var event := InputEventMouseButton.new()
+	event.position = screen
+	event.button_index = button
+	event.pressed = pressed
+	Input.parse_input_event(event)
+	await get_tree().process_frame
+
+
+func _key(keycode: int, shift := false) -> void:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.shift_pressed = shift
+	event.pressed = true
+	Input.parse_input_event(event)
+	await get_tree().process_frame
+
+
+func _selftest_place() -> void:
+	rig.distance = 500.0
+	rig.pitch = -89.0
+	rig.position = Vector3.ZERO
+	rig._apply()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var camera: Camera3D = rig.get_node("Camera3D")
+	var say := func(text: String) -> void: print("PLACE ", text)
+	build_tool.message.connect(func(text: String) -> void: print("PLACE message: ", text))
+
+	# Right click: cancels the draft, then leaves the tool.
+	build_tool.set_tool("road2")
+	await _mouse_at(camera, Vector3(-200, 0, -100), MOUSE_BUTTON_LEFT, true)
+	say.call("start set: %s" % (build_tool._start != null))
+	await _mouse_at(camera, Vector3(-150, 0, -100), MOUSE_BUTTON_RIGHT, true)
+	await _mouse_at(camera, Vector3(-150, 0, -100), MOUSE_BUTTON_RIGHT, false)
+	say.call("after one right click: start=%s tool=%s" % [build_tool._start, build_tool.tool])
+	await _mouse_at(camera, Vector3(-150, 0, -100), MOUSE_BUTTON_RIGHT, true)
+	await _mouse_at(camera, Vector3(-150, 0, -100), MOUSE_BUTTON_RIGHT, false)
+	say.call("after two: tool=%s" % build_tool.tool)
+
+	# One drag: press at the start, move, let go.
+	build_tool.set_tool("road2")
+	var roads: int = host.RoadCount()
+	await _mouse_at(camera, Vector3(-200, 0, -100), MOUSE_BUTTON_LEFT, true)
+	await _mouse_at(camera, Vector3(-100, 0, -100), MOUSE_BUTTON_LEFT, false)
+	say.call("drag built %d road(s)" % (host.RoadCount() - roads))
+	build_tool.set_tool("pointer")
+
+	# A click and a click still work, and no road is built by a short click-release.
+	build_tool.set_tool("road2")
+	roads = host.RoadCount()
+	await _mouse_at(camera, Vector3(-200, 0, 0), MOUSE_BUTTON_LEFT, true)
+	await _mouse_at(camera, Vector3(-200, 0, 0), MOUSE_BUTTON_LEFT, false)
+	say.call("click-release built %d" % (host.RoadCount() - roads))
+	await _mouse_at(camera, Vector3(-100, 0, 0), MOUSE_BUTTON_LEFT, true)
+	await _mouse_at(camera, Vector3(-100, 0, 0), MOUSE_BUTTON_LEFT, false)
+	say.call("click-click built %d" % (host.RoadCount() - roads))
+	build_tool.set_tool("pointer")
+
+	# Parallel road: P once, two clicks build two roads.
+	build_tool.set_tool("road2")
+	await _key(KEY_P)
+	roads = host.RoadCount()
+	await _mouse_at(camera, Vector3(0, 0, 100), MOUSE_BUTTON_LEFT, true)
+	await _mouse_at(camera, Vector3(100, 0, 100), MOUSE_BUTTON_LEFT, true)
+	say.call("parallel built %d roads (side %d)" % [host.RoadCount() - roads, build_tool._parallel])
+	build_tool.set_tool("pointer")
+
+	# A depot turned and raised, placed exactly where put.
+	build_tool.set_tool("depot")
+	var spot := Vector3(200, 0, 150)
+	var depots: int = host.DepotCount()
+	var motion := InputEventMouseMotion.new()
+	motion.position = get_viewport().get_final_transform() * camera.unproject_position(spot)
+	Input.parse_input_event(motion)
+	await get_tree().process_frame
+	await _key(KEY_R)
+	await _key(KEY_R)
+	await _key(KEY_PAGEUP)
+	await _key(KEY_PAGEUP)
+	say.call("turned=%s angle=%.1f deg raise=%.1f" % [build_tool._turned, rad_to_deg(build_tool._angle), build_tool._raise])
+	await _mouse_at(camera, spot, MOUSE_BUTTON_LEFT, true)
+	say.call("depots built %d" % (host.DepotCount() - depots))
+	for depot in host.GetDepots():
+		say.call("depot %s at %.0f, %.0f" % [depot["name"], depot["x"], depot["z"]])
+	build_tool.set_tool("pointer")
+
+	# A station on the dragged road and a look from above, for --shot.
+	say.call("station %d" % host.BuildStation(-150, -100, false))
+	if _args.has("--shot"):
+		rig.stop_following()
+		rig.position = Vector3(-140, host.HeightAt(-140, -90), -90)
+		rig.distance = 140.0
+		rig.pitch = -50.0
+		rig._apply()
+		for i in 6:
+			await get_tree().process_frame
+		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+		rig.position = Vector3(190, host.HeightAt(190, 140), 140)
+		rig.distance = 120.0
+		rig._apply()
+		for i in 6:
+			await get_tree().process_frame
+		get_viewport().get_texture().get_image().save_png(_args["--shot"].replace(".png", "-depot.png"))
+
+	# The camera follows a point until it is moved by hand.
+	var target := [Vector3(300, 0, 300)]
+	rig.follow(func() -> Variant: return target[0])
+	await get_tree().create_timer(1.5).timeout
+	say.call("camera at %.0f, %.0f following (%s)" % [rig.position.x, rig.position.z, rig._following.is_valid()])
+	rig.stop_following()
 	get_tree().quit()
 
 
