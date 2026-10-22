@@ -80,7 +80,7 @@ The three eras of 1900 to 2020 of the first plan are dropped (ADR 0006). Each ve
 Transport Fever style: Godot Control UI with mouse and keyboard, free orbit camera. Build toolbar, line window (stations, vehicles, stats), vehicle window, event panel (incidents). Map overlays for traffic density, incident risk, road Condition and station coverage.
 
 ### Art and audio
-Greybox with colors per category until M7 (art and audio were moved out of M6 on 2026-10-21, `m6-plan.md`): low-poly and stylised in the look of the late 1930s and 1940s, CC0 asset packs first and AI-generated models where nothing fits, curated by the developer. Audio (engines, horns, crashes, the siren, bombs, ambience, music of the period) at M7 from CC0 libraries and/or generated audio, curated by the developer.
+**M7 is planned in `m7-plan.md` (2026-10-22): art only, existing CC0 assets (Kenney first), no AI-generated models, audio postponed.** Greybox with colors per category until M7 (art and audio were moved out of M6 on 2026-10-21, `m6-plan.md`): low-poly and stylised in the look of the late 1930s and 1940s, CC0 asset packs first and AI-generated models where nothing fits, curated by the developer. Audio (engines, horns, crashes, the siren, bombs, ambience, music of the period) at M7 from CC0 libraries and/or generated audio, curated by the developer.
 
 ### Save and load
 A full binary snapshot of the simulation state with the tuning it was started with (M6a, `m6-plan.md`); not a replay of the command log.
