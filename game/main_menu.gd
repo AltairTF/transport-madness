@@ -6,11 +6,13 @@ const GAME := "res://game/main.tscn"
 const UiTheme := preload("res://game/ui_theme.gd")
 const SettingsMenu := preload("res://game/settings_menu.gd")
 const SaveMenu := preload("res://game/save_menu.gd")
+const CreditsMenu := preload("res://game/credits_menu.gd")
 
 var _main_page: Control
 var _new_game_page: Control
 var _settings_page: Control
 var _load_page: Control
+var _credits_page: Control
 var _notice: Label
 var _map_buttons: Dictionary = {}
 var _map_text: Label
@@ -61,7 +63,9 @@ func _ready() -> void:
 	_load_page = SaveMenu.new()
 	_load_page.closed.connect(func() -> void: _show(_main_page))
 	_load_page.load_requested.connect(_load)
-	for page in [_main_page, _new_game_page, _settings_page, _load_page]:
+	_credits_page = CreditsMenu.new()
+	_credits_page.closed.connect(func() -> void: _show(_main_page))
+	for page in [_main_page, _new_game_page, _settings_page, _load_page, _credits_page]:
 		stack.add_child(page)
 	_notice = Label.new()
 	_notice.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
@@ -103,6 +107,7 @@ func _build_main_page() -> Control:
 		_show(_load_page))
 	load_button.disabled = slots.List().is_empty()
 	_button(column, "Settings", func() -> void: _show(_settings_page))
+	_button(column, "Credits", func() -> void: _show(_credits_page))
 	_button(column, "Quit", get_tree().quit)
 	return column
 
@@ -264,7 +269,7 @@ func _load(path: String) -> void:
 func _show(page: Control) -> void:
 	if _notice != null and page != _main_page:
 		_notice.visible = false
-	for candidate in [_main_page, _new_game_page, _settings_page, _load_page]:
+	for candidate in [_main_page, _new_game_page, _settings_page, _load_page, _credits_page]:
 		candidate.visible = candidate == page
 
 
