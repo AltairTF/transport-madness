@@ -40,7 +40,7 @@ func _ready() -> void:
 	Session.map = "towns" # what a new game offers first; the self-tests keep Session's own default
 
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.07, 0.10, 0.14)
+	backdrop.color = UiTheme.PANEL.darkened(0.1)
 	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
 
@@ -58,7 +58,7 @@ func _ready() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stack.add_child(title)
 	var tagline := Label.new()
-	tagline.text = "Build the roads. Run the lines. Survive the traffic."
+	tagline.text = "A region at war, 1938 to 1945"
 	tagline.theme_type_variation = "Dim"
 	tagline.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stack.add_child(tagline)
@@ -75,7 +75,7 @@ func _ready() -> void:
 	for page in [_main_page, _new_game_page, _settings_page, _load_page, _credits_page]:
 		stack.add_child(page)
 	_notice = Label.new()
-	_notice.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
+	_notice.add_theme_color_override("font_color", UiTheme.BAD)
 	_notice.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_notice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_notice.custom_minimum_size = Vector2(620, 0)
@@ -85,7 +85,7 @@ func _ready() -> void:
 	stack.add_child(_notice)
 
 	var footer := Label.new()
-	footer.text = "Prototype build"
+	footer.text = "Whitebox build"
 	footer.theme_type_variation = "Dim"
 	footer.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	add_child(footer)
@@ -105,7 +105,9 @@ func _build_main_page() -> Control:
 	column.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var slots: RefCounted = load("res://game/SaveSlots.cs").new()
 	var latest: String = slots.Latest()
+	column.add_theme_constant_override("separation", 12)
 	var continue_button := _button(column, "Continue", func() -> void: _load(latest))
+	continue_button.theme_type_variation = "PrimaryButton"
 	continue_button.disabled = latest == ""
 	continue_button.tooltip_text = "Load the newest save." if latest != "" else "No save yet."
 	_button(column, "New game", func() -> void: _show(_new_game_page))
@@ -115,6 +117,7 @@ func _build_main_page() -> Control:
 	load_button.disabled = slots.List().is_empty()
 	_button(column, "Settings", func() -> void: _show(_settings_page))
 	_button(column, "Credits", func() -> void: _show(_credits_page))
+	column.add_child(HSeparator.new())
 	_button(column, "Quit", get_tree().quit)
 	return column
 
@@ -231,6 +234,7 @@ func _build_new_game_page() -> Control:
 	var back := _button(buttons, "Back", func() -> void: _show(_main_page))
 	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var start := _button(buttons, "Start", _start)
+	start.theme_type_variation = "PrimaryButton"
 	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	_select_map(Session.map)

@@ -51,6 +51,134 @@ static func heading(text: String) -> Label:
 	return label
 
 
+## The small spaced caps over a block, with an optional hint at the right ("AVAILABLE IMPORTS    Price is per order").
+static func section(text: String, hint := "") -> Control:
+	var r := row()
+	var label := Label.new()
+	label.theme_type_variation = "Section"
+	label.text = text.to_upper()
+	r.add_child(label)
+	r.add_child(spacer())
+	if not hint.is_empty():
+		var dim := note(hint)
+		dim.autowrap_mode = TextServer.AUTOWRAP_OFF
+		r.add_child(dim)
+	return r
+
+
+## A small rounded tag next to a title ("Road").
+static func badge(text: String) -> Control:
+	var panel := PanelContainer.new()
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color("222a37")
+	box.set_corner_radius_all(11)
+	box.content_margin_left = 8
+	box.content_margin_right = 8
+	box.content_margin_top = 1
+	box.content_margin_bottom = 1
+	panel.add_theme_stylebox_override("panel", box)
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var label := Label.new()
+	label.theme_type_variation = "Dim"
+	label.text = text
+	label.add_theme_font_size_override("font_size", 16)
+	panel.add_child(label)
+	return panel
+
+
+## A warning strip: a bold line and a sentence under it.
+static func notice(title: String, text: String) -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = "Notice"
+	var box := column()
+	var head := Label.new()
+	head.theme_type_variation = "Warn"
+	head.text = title
+	box.add_child(head)
+	box.add_child(note(text))
+	panel.add_child(box)
+	return panel
+
+
+## A block of help that opens and closes under its title.
+static func fold(title: String, content: Control) -> Control:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = "Card"
+	var box := column()
+	var head := Button.new()
+	head.text = "▸  " + title
+	head.flat = true
+	head.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	content.visible = false
+	head.pressed.connect(func() -> void:
+		content.visible = not content.visible
+		head.text = ("▾  " if content.visible else "▸  ") + title)
+	box.add_child(head)
+	box.add_child(content)
+	panel.add_child(box)
+	return panel
+
+
+## A card holding a column; returns the card (add it to a container) with the column in meta "body".
+static func card(muted := false) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = "CardMuted" if muted else "Card"
+	var body := column()
+	panel.add_child(body)
+	panel.set_meta("body", body)
+	return panel
+
+
+## A figure with its caption over it: {"box", "value"}; set value.text. <size> is "BigNumber" or "Stat".
+static func stat(caption: String, size := "Stat") -> Dictionary:
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = "Card"
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 0)
+	panel.add_child(body)
+	var cap := Label.new()
+	cap.theme_type_variation = "Small"
+	cap.text = caption
+	cap.clip_text = true
+	body.add_child(cap)
+	var value := Label.new()
+	value.theme_type_variation = size
+	body.add_child(value)
+	return {"box": panel, "value": value, "caption": cap}
+
+
+## A bar under a caption and a figure at the right: {"box", "value", "bar"}; colour is the fill.
+static func meter(caption: String, color: Color) -> Dictionary:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	var head := row()
+	var cap := Label.new()
+	cap.text = caption
+	head.add_child(cap)
+	head.add_child(spacer())
+	var value := Label.new()
+	head.add_child(value)
+	box.add_child(head)
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 8)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = color
+	fill.set_corner_radius_all(4)
+	bar.add_theme_stylebox_override("fill", fill)
+	box.add_child(bar)
+	return {"box": box, "value": value, "bar": bar, "caption": cap, "fill": fill}
+
+
+## A small rounded tag in a flow (a cargo accepted).
+static func chip(text: String) -> Control:
+	return badge(text)
+
+
 static func button(text: String, action: Callable, tooltip := "") -> Button:
 	var b := Button.new()
 	b.text = text
@@ -118,36 +246,42 @@ static func make_policy_block(scope: int, target: int, on_set: Callable) -> Dict
 	var box := column()
 	var summary := note("")
 	box.add_child(summary)
-	var r := flow()
-	box.add_child(r)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", GAP)
+	grid.add_theme_constant_override("v_separation", GAP / 2)
+	box.add_child(grid)
 	var mode := OptionButton.new()
 	if scope != 0:
 		mode.add_item("Inherit", 0)
 	mode.add_item("Off", 1)
 	mode.add_item("On", 2)
 	mode.tooltip_text = "Inherit: the level above decides. Off: no maintenance, the risk is yours. On: due by the triggers below."
-	r.add_child(mode)
-	var days := SpinBox.new()
-	days.min_value = 0
-	days.max_value = 3650
-	days.step = 5
-	days.prefix = "every "
-	days.suffix = " days"
-	days.tooltip_text = "Due this many days after the last repair. 0: not by days."
-	r.add_child(days)
-	var below := SpinBox.new()
-	below.min_value = 0
-	below.max_value = 100
-	below.step = 5
-	below.prefix = "below "
-	below.tooltip_text = "Due when Condition is below this. 0: not by Condition."
-	r.add_child(below)
 	var kind := OptionButton.new()
 	for i in REPAIR_NAMES.size():
 		kind.add_item(REPAIR_NAMES[i], i)
 	kind.tooltip_text = "Patch: quick and cheap, +15, leaves the vehicle patched (it wears faster). Service: +50. Overhaul: up to 95, clears patches. A depot of a higher level does the bigger repairs."
-	r.add_child(kind)
-	r.add_child(button("Set", func() -> void: on_set.call(scope, target, mode.get_selected_id(), int(days.value), int(below.value), kind.get_selected_id()), "Use this policy."))
+	var days := SpinBox.new()
+	days.min_value = 0
+	days.max_value = 3650
+	days.step = 5
+	days.tooltip_text = "Due this many days after the last repair. 0: not by days."
+	var below := SpinBox.new()
+	below.min_value = 0
+	below.max_value = 100
+	below.step = 5
+	below.tooltip_text = "Due when Condition is below this. 0: not by Condition."
+	for entry in [["Policy", mode], ["Level", kind], ["Every (days)", days], ["Or when condition below", below]]:
+		var field := column()
+		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var caption := Label.new()
+		caption.theme_type_variation = "Small"
+		caption.text = entry[0]
+		field.add_child(caption)
+		entry[1].size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		field.add_child(entry[1])
+		grid.add_child(field)
+	box.add_child(button("Set maintenance", func() -> void: on_set.call(scope, target, mode.get_selected_id(), int(days.value), int(below.value), kind.get_selected_id()), "Use this policy."))
 	return {"box": box, "summary": summary, "mode": mode, "days": days, "below": below, "kind": kind, "last": {}}
 
 

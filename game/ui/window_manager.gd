@@ -11,8 +11,8 @@ const Kit := preload("res://game/ui/ui_kit.gd")
 const MAX_OBJECT_WINDOWS := 6
 const MIN_SIZE := Vector2(280, 160)
 const EDGE := 12.0 ## windows keep this far inside the screen
-const TOP := 64.0 ## below the top strip
-const BOTTOM := 96.0 ## above the bottom bar
+const TOP := 100.0 ## below the top strip
+const BOTTOM := 150.0 ## above the bottom bar
 
 var _windows: Dictionary = {} ## key -> {"frame", "content", "object", "kind", "title"}
 var _order: Array[String] = [] ## open windows, topmost last
@@ -28,7 +28,7 @@ func is_open(key: String) -> bool:
 
 
 ## Opens a list window around <content> (kept when it closes), or raises it when it is open.
-func open_list(key: String, title: String, content: Control, size_wanted := Vector2(540, 620)) -> void:
+func open_list(key: String, title: String, content: Control, size_wanted := Vector2(540, 780)) -> void:
 	if not _windows.has(key):
 		_windows[key] = {"frame": _frame(key, title, content, size_wanted, key), "content": content, "object": false, "kind": key, "title": title}
 	_show(key)
@@ -50,7 +50,7 @@ func open_object(key: String, kind: String, title: String, content: Control) -> 
 	var objects := _order.filter(func(k: String) -> bool: return _windows[k]["object"])
 	if objects.size() >= MAX_OBJECT_WINDOWS:
 		close(objects[0])
-	_windows[key] = {"frame": _frame(key, title, content, Vector2(460, 380), "object:" + kind), "content": content, "object": true, "kind": "object:" + kind, "title": title}
+	_windows[key] = {"frame": _frame(key, title, content, Vector2(440, 680), "object:" + kind), "content": content, "object": true, "kind": "object:" + kind, "title": title}
 	_show(key)
 
 
@@ -126,7 +126,7 @@ func _frame(key: String, title: String, content: Control, size_wanted: Vector2, 
 	label.mouse_default_cursor_shape = Control.CURSOR_MOVE
 	label.tooltip_text = "Drag to move"
 	head.add_child(label)
-	head.add_child(Kit.button("X", close.bind(key), "Close (Esc closes the topmost window)"))
+	head.add_child(Kit.button("✕", close.bind(key), "Close (Esc closes the topmost window)"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

@@ -23,7 +23,8 @@ func show_orders(orders: Array) -> void:
 			_add(id, order)
 		var row: Dictionary = _rows[id]
 		var state: String = order["state"]
-		row["title"].text = "%s\n%s" % [order["title"], _terms(order)]
+		row["title"].text = order["title"]
+		row["terms"].text = _terms(order)
 		var open: bool = state == "Offered" or state == "Active"
 		var status := ""
 		match state:
@@ -41,6 +42,7 @@ func show_orders(orders: Array) -> void:
 				status = state
 		row["status"].text = status
 		row["status"].theme_type_variation = "" if open else "Dim"
+		row["card"].theme_type_variation = "Card" if open else "CardMuted"
 		row["buttons"].visible = state == "Offered"
 		row["accept"].disabled = not order["can"]
 		row["go"].visible = order["place"]
@@ -50,23 +52,29 @@ func show_orders(orders: Array) -> void:
 
 
 func _terms(order: Dictionary) -> String:
-	return "Reward %s   standing +%s   %d days to deliver" % [Kit.money(order["reward"]), str(snappedf(order["standing"], 0.1)), order["days"]]
+	return "Reward %s · standing +%s · %d days to deliver" % [Kit.money(order["reward"]), str(snappedf(order["standing"], 0.1)), order["days"]]
 
 
 func _add(id: int, order: Dictionary) -> void:
-	var row := Kit.column()
+	var card := Kit.card()
+	var row: VBoxContainer = card.get_meta("body")
 	var title := Kit.heading("")
 	row.add_child(title)
+	var terms := Kit.note("")
+	row.add_child(terms)
 	var status := Label.new()
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	row.add_child(status)
 	var buttons := Kit.row()
 	row.add_child(buttons)
 	var accept := Kit.button("Accept", func() -> void: hud.order_answered.emit(id, true))
+	accept.theme_type_variation = "PrimaryButton"
 	buttons.add_child(accept)
 	var decline := Kit.button("Decline", func() -> void: hud.order_answered.emit(id, false))
 	buttons.add_child(decline)
+	buttons.add_child(Kit.spacer())
 	var go := go_button(order["x"], order["z"])
 	buttons.add_child(go)
-	var separator := add_row(_box, row)
-	_rows[id] = {"row": row, "title": title, "status": status, "buttons": buttons, "accept": accept, "decline": decline, "go": go, "separator": separator, "state": ""}
+	var separator := add_row(_box, card)
+	separator.visible = false
+	_rows[id] = {"row": card, "card": card, "title": title, "terms": terms, "status": status, "buttons": buttons, "accept": accept, "decline": decline, "go": go, "separator": separator, "state": ""}

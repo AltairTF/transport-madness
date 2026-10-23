@@ -36,6 +36,7 @@ func _init() -> void:
 	_name_row.add_child(_name_edit)
 	var save_button := Button.new()
 	save_button.text = "Save"
+	save_button.theme_type_variation = "PrimaryButton"
 	save_button.pressed.connect(func() -> void: _save_named(_name_edit.text))
 	_name_row.add_child(save_button)
 

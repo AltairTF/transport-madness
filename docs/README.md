@@ -13,6 +13,7 @@
 | `m7-plan.md` | M7 (art: models, materials, light, icons): decisions and slices; audio postponed. |
 | `m6-plan.md` | M6 (save and load, overlays, balance, the interface) and M7 (art and audio): decisions and slices. |
 | `campaign-plan.md` | The campaign (a region at war, 1938 to 1945): decisions, slices C1 to C15 (all done), the decisions taken before M6, open points. |
+| `ui-inventory.md` | Every screen (menus, HUD, object windows, 14 list windows): what it shows, where its data comes from, its actions. Input for the panel redesign. |
 | `adr/` | Architecture decisions: 0001 pure C# simulation core, 0002 kinematic lane simulation with fidelity tiers, 0003 deterministic fixed step, 0004 rail network apart from roads with track reservation, 0005 condition and maintenance on the company's fleet only, 0006 a regional campaign in 1938 to 1945. |
 | `../CONTEXT.md` | Domain vocabulary. Use these words in code, tests and docs. |
 | `../README.md` | How to build, run and play. |

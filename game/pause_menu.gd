@@ -92,7 +92,8 @@ func _build_main_page() -> Control:
 	title.theme_type_variation = "Title"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(title)
-	_button(column, "Resume", close)
+	column.add_theme_constant_override("separation", 12)
+	_button(column, "Resume", close).theme_type_variation = "PrimaryButton"
 	_button(column, "Save game", func() -> void:
 		_save_page.show_save(name_for_save.call())
 		_show(_save_page))
@@ -100,8 +101,14 @@ func _build_main_page() -> Control:
 		_save_page.show_load()
 		_show(_save_page))
 	_button(column, "Settings", func() -> void: _show(_settings_page))
+	column.add_child(HSeparator.new())
 	_button(column, "Main menu", func() -> void: _leave("Leave this game? Progress since your last save will be lost.", main_menu_requested.emit))
-	_button(column, "Quit to desktop", ask_quit)
+	_button(column, "Quit to desktop", ask_quit).theme_type_variation = "DangerButton"
+	var hint := Label.new()
+	hint.text = "Esc resumes"
+	hint.theme_type_variation = "Small"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	column.add_child(hint)
 	return panel
 
 
@@ -131,7 +138,8 @@ func _build_confirm_page() -> Control:
 	column.add_child(buttons)
 	var no := _button(buttons, "Cancel", func() -> void: _show(_main_page))
 	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var yes := _button(buttons, "Yes", func() -> void: _confirmed.call())
+	var yes := _button(buttons, "Yes, leave", func() -> void: _confirmed.call())
+	yes.theme_type_variation = "DangerButton"
 	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return panel
 

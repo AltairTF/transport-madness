@@ -304,22 +304,30 @@ func open_object(kind: String, id: Variant) -> void:
 	var refs := {"label": label, "extra": extra}
 	match kind:
 		"vehicle":
-			var bar := Kit.make_condition_bar()
-			extra.add_child(bar["bar"])
-			refs["bar"] = bar
-			var note := Kit.note("")
-			extra.add_child(note)
-			refs["note"] = note
+			var view := VehiclesWindow.make_view()
+			extra.add_child(view["box"])
+			refs["view"] = view
+			label.visible = false
 			buttons.add_child(Kit.button("Follow", func() -> void: vehicle_action.emit("follow", id), "The camera follows it until you move the camera."))
 			buttons.add_child(Kit.button("To depot", func() -> void: vehicle_action.emit("depot", id), "Take it off its line to wait in the nearest depot."))
 			buttons.add_child(Kit.button("Sell", func() -> void: vehicle_action.emit("sell", id), "Sell it for part of its price."))
 			buttons.add_child(Kit.button("Vehicles", open_window.bind("vehicles"), "The Vehicles window: repairs and its maintenance policy."))
 		"station":
+			var view := StationsWindow.make_view()
+			extra.add_child(view["box"])
+			refs["view"] = view
+			label.visible = false
 			buttons.add_child(Kit.button("Stations", open_window.bind("stations"), "The Stations window: rename, bays, close."))
 		"industry":
-			var status := Label.new()
-			extra.add_child(status)
-			refs["status"] = status
+			var view := IndustriesWindow.make_view()
+			extra.add_child(view["box"])
+			refs["view"] = view
+			label.visible = false
+		"town":
+			var view := TownsWindow.make_view()
+			extra.add_child(view["box"])
+			refs["view"] = view
+			label.visible = false
 		"depot":
 			var upgrades := Kit.row()
 			buttons.add_child(upgrades)
@@ -343,7 +351,7 @@ func _find(kind: String, id: Variant) -> Dictionary:
 func _object_title(kind: String, item: Dictionary) -> String:
 	match kind:
 		"vehicle":
-			return "%s %d" % [item["model"], item["id"] + 1 if item["id"] >= 0 else -item["id"]]
+			return VehiclesWindow.title_of(item)
 		"station", "town", "depot":
 			return item["name"]
 		"industry":
@@ -373,17 +381,13 @@ func _refresh_object(key: String, kind: String, id: Variant) -> void:
 	var label: Label = refs["label"]
 	match kind:
 		"vehicle":
-			label.text = VehiclesWindow.text_of(item)
-			label.add_theme_color_override("font_color", item["color"])
-			Kit.set_condition_bar(refs["bar"], item["condition"])
-			refs["note"].text = VehiclesWindow.repair_text(item)
+			VehiclesWindow.fill_view(refs["view"], item)
 		"station":
-			label.text = StationsWindow.text_of(item, cargo_names)
+			StationsWindow.fill_view(refs["view"], item, cargo_names)
 		"industry":
-			label.text = IndustriesWindow.text_of(item)
-			IndustriesWindow.colour_status(refs["status"], item)
+			IndustriesWindow.fill_view(refs["view"], item)
 		"town":
-			label.text = TownsWindow.text_of(item, cargo_names)
+			TownsWindow.fill_view(refs["view"], item, cargo_names)
 		"depot":
 			label.text = DepotsWindow.text_of(item)
 			_pages["depots"].fill_upgrades(refs, item)
@@ -402,7 +406,7 @@ func _build_top_strip() -> void:
 	row.add_theme_constant_override("separation", 16)
 	bar.add_child(row)
 	_date = Label.new()
-	_date.custom_minimum_size = Vector2(210, 0)
+	_date.custom_minimum_size = Vector2(170, 0)
 	row.add_child(_date)
 	var speeds := HBoxContainer.new()
 	speeds.add_theme_constant_override("separation", 4)
@@ -420,7 +424,8 @@ func _build_top_strip() -> void:
 	_standing.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(_standing)
 	_dismissal = Label.new()
-	_dismissal.add_theme_color_override("font_color", Color(1.0, 0.5, 0.42))
+	_dismissal.add_theme_color_override("font_color", UiTheme.WARN_TEXT)
+	_dismissal.add_theme_stylebox_override("normal", UiTheme.plate(Color("f2b84b1f"), Color("f2b84b59"), 8))
 	_dismissal.visible = false
 	row.add_child(_dismissal)
 	row.add_child(Kit.button("Menu", func() -> void: menu_requested.emit(), "Pause menu (Esc)"))
@@ -433,10 +438,9 @@ func _build_raid_banner() -> void:
 	_raid_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_raid_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	_raid_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_raid_banner.offset_top = 72.0
-	_raid_banner.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35))
-	_raid_banner.add_theme_color_override("font_outline_color", Color.BLACK)
-	_raid_banner.add_theme_constant_override("outline_size", 6)
+	_raid_banner.offset_top = 108.0
+	_raid_banner.add_theme_color_override("font_color", UiTheme.WARN_TEXT)
+	_raid_banner.add_theme_stylebox_override("normal", UiTheme.plate(Color("2a2314"), Color("f2b84b59"), 14))
 	_root.add_child(_raid_banner)
 
 
@@ -448,7 +452,7 @@ func _build_feed() -> void:
 	_feed_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_feed_panel.offset_left = -460.0
 	_feed_panel.offset_right = -12.0
-	_feed_panel.offset_top = 72.0
+	_feed_panel.offset_top = 108.0
 	_feed_panel.visible = false
 	_root.add_child(_feed_panel)
 	var column := Kit.column()
@@ -491,9 +495,9 @@ func show_events(events: Array, quiet := false) -> void:
 		b.custom_minimum_size = Vector2(400, 0)
 		var colour := UiTheme.TEXT
 		if event["severity"] == 2:
-			colour = Color(1.0, 0.5, 0.45)
+			colour = UiTheme.BAD
 		elif event["severity"] == 1:
-			colour = Color(1.0, 0.85, 0.4)
+			colour = UiTheme.WARN_TEXT
 		b.add_theme_color_override("font_color", colour)
 		b.add_theme_color_override("font_hover_color", colour.lightened(0.3))
 		# News without a place (a call-up, the standing, power) has nowhere to take the camera.
@@ -527,8 +531,8 @@ func _build_bottom() -> void:
 	_message = Label.new()
 	_message.visible = false
 	_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_message.add_theme_color_override("font_outline_color", Color.BLACK)
-	_message.add_theme_constant_override("outline_size", 6)
+	_message.add_theme_stylebox_override("normal", UiTheme.plate(UiTheme.SURFACE, UiTheme.BORDER_HOVER))
+	_message.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stack.add_child(_message)
 
 	for category in TOOL_CATEGORIES:
@@ -557,6 +561,7 @@ func _build_bottom() -> void:
 	_pointer_button = Kit.button("Pointer", _on_tool_pressed.bind("pointer"), "No tool: look around, click something to open its window (Esc)")
 	_pointer_button.toggle_mode = true
 	Icons.put(_pointer_button, "pointer")
+	_stack_icon(_pointer_button)
 	row.add_child(_pointer_button)
 	row.add_child(VSeparator.new())
 	for i in TOOL_CATEGORIES.size():
@@ -583,8 +588,16 @@ func _group_button(group: String, action: String) -> Button:
 	b.toggle_mode = true
 	b.set_meta("action", action)
 	Icons.put(b, group)
+	_stack_icon(b)
 	_group_buttons[group] = b
 	return b
+
+
+## The icon over the label, a taller button, as on the bottom bar of the design.
+func _stack_icon(b: Button) -> void:
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.custom_minimum_size = Vector2(0, 56)
 
 
 ## Shows the row of one group; the same group again closes it.
@@ -639,7 +652,7 @@ func _build_legend() -> void:
 	_legend.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_legend.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_legend.offset_left = 12.0
-	_legend.offset_bottom = -96.0
+	_legend.offset_bottom = -150.0
 	_root.add_child(_legend)
 	var column := Kit.column()
 	_legend.add_child(column)
@@ -750,17 +763,18 @@ func show_company(company: Dictionary) -> void:
 	_company = company
 	var standing: float = company["standing"]
 	var low: bool = standing < company["dismiss_below"] + 10.0
-	_date.text = Kit.date_text(company)
-	_money.text = "Money %s%s" % [Kit.money(company["money"]), "   DISMISSED" if company["dismissed"] else ("   CAMPAIGN OVER" if company["finished"] else "")]
-	_money.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4) if company["money"] < 0 else UiTheme.TEXT)
+	var hour: float = company["hour"]
+	_date.text = "%s %d\nDay %d · %02d:%02d" % [Kit.MONTHS[(company["month"] - 1) % 12], company["year"], company["day_of_month"], int(hour), int(fmod(hour, 1.0) * 60.0)]
+	_money.text = "Money\n%s%s" % [Kit.money(company["money"]), "  DISMISSED" if company["dismissed"] else ("  CAMPAIGN OVER" if company["finished"] else "")]
+	_money.add_theme_color_override("font_color", UiTheme.BAD if company["money"] < 0 else UiTheme.TEXT)
 	var history: Array = company.get("standing_history", [])
 	var trend := ""
 	if history.size() >= 1:
 		var before: float = history[-2] if history.size() >= 2 else company.get("start_standing", history[-1])
 		trend = " ▲" if history[-1] > before + 0.05 else (" ▼" if history[-1] < before - 0.05 else " ▬")
-	_standing.text = "Standing %d%s" % [roundi(standing), trend]
+	_standing.text = "Standing\n%d%s" % [roundi(standing), trend]
 	_standing.tooltip_text = "How the government judges the committee, 0 to 100: Government > Standing tells why."
-	_standing.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4) if low else (Color(0.55, 0.9, 0.55) if trend == " ▲" else UiTheme.TEXT))
+	_standing.add_theme_color_override("font_color", UiTheme.BAD if low else (UiTheme.GOOD if trend == " ▲" else UiTheme.TEXT))
 	_dismissal.visible = company["months_to_dismissal"] > 0
 	_dismissal.text = "%d months to dismissal" % company["months_to_dismissal"]
 	for key in ["finances", "requisition", "standing"]:
@@ -826,6 +840,7 @@ func show_places(places: Array) -> void:
 
 
 func show_lines(lines: Array) -> void:
+	_latest["lines"] = lines
 	_pages["lines"].show_lines(lines)
 
 

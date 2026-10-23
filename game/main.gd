@@ -40,6 +40,7 @@ var _last_month := -1 ## for the autosave at the start of each month
 var _loaded := false ## the game came from a save
 var picking: Node ## what a click with no tool opens (picking.gd)
 const Keys := preload("res://game/keys.gd")
+const DepotsWindowKey := preload("res://game/ui/depots_window.gd")
 
 
 func _ready() -> void:
@@ -194,6 +195,8 @@ func _ready() -> void:
 		_selftest_hills()
 	if _args.has("--selftest-lines"):
 		_selftest_lines()
+	if _args.has("--selftest-ui"):
+		_selftest_ui()
 	if _args.has("--selftest-models"):
 		_selftest_models()
 	if _args.has("--selftest-industries"):
@@ -272,7 +275,7 @@ func _process(delta: float) -> void:
 		for warning in host.TakeRailWarnings():
 			hud.show_message(warning)
 
-	if _args.has("--shot") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
+	if _args.has("--shot") and not _args.has("--selftest-ui") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
 		get_tree().quit()
 
@@ -598,6 +601,40 @@ func _selftest_lines() -> void:
 	await get_tree().process_frame
 	if _args.has("--shot"):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	get_tree().quit()
+
+
+## Every list window and one object window of each kind, opened with real data on the empty map with a line, a screenshot of each
+## (--shot=<file>, files ending -<window>.png), quit.
+func _selftest_ui() -> void:
+	if _args.has("--towns"):
+		host.NewTownsWorld(Session.world_seed, 3, 6, 0.3, 0.3, 0.3, 1)
+	else:
+		host.NewEmptyWorld(Session.world_seed)
+	await get_tree().process_frame
+	host.BuildRoad(0, 0, 1200, 0, 0)
+	host.BuildDepot(0, 0, 0, false, NAN, 0.0)
+	var a: int = host.BuildStation(150, 0, false)
+	var b: int = host.BuildStation(1050, 0, true)
+	var line: int = host.CreateLine(PackedInt32Array([a, b]))
+	host.BuyVehicle("bus", line)
+	host.StepFor(20.0)
+	host.StepFor(5.0 * 60.0)
+	await get_tree().create_timer(0.6).timeout
+	var base: String = _args.get("--shot", "ui.png")
+	for key in ["lines", "vehicles", "depots", "stations", "towns", "industries", "gateways", "power", "finances", "maintenance", "requisition", "orders", "standing"]:
+		hud.open_window(key)
+		await get_tree().create_timer(0.4).timeout
+		get_viewport().get_texture().get_image().save_png(base.replace(".png", "-%s.png" % key))
+		hud.close_top_window()
+	for entry in [["vehicle", host.GetVehicles()], ["station", host.GetStations()], ["depot", host.GetDepots()], ["town", host.GetTowns()], ["industry", host.GetIndustries()]]:
+		if entry[1].is_empty():
+			continue
+		var id: Variant = DepotsWindowKey.key_of(entry[1][0]) if entry[0] == "depot" else entry[1][0]["id"]
+		hud.open_object(entry[0], id)
+		await get_tree().create_timer(0.4).timeout
+		get_viewport().get_texture().get_image().save_png(base.replace(".png", "-obj-%s.png" % entry[0]))
+		hud.close_top_window()
 	get_tree().quit()
 
 
