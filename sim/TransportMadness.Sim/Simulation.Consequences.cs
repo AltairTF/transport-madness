@@ -11,7 +11,7 @@ public sealed partial class Simulation
         foreach (var town in _towns)
         {
             float blocks = Math.Max(town.IMax - town.IMin + 1, town.JMax - town.JMin + 1);
-            float reach = blocks * _townTuning.Generation.BlockLength * 0.5f + _maint.Consequences.TownMargin;
+            float reach = (town.Organic ? town.Radius : blocks * _townTuning.Generation.BlockLength * 0.5f) + _maint.Consequences.TownMargin;
             float d = MathF.Sqrt((town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z));
             if (d > reach || d >= bestDistance) continue;
             best = town.Id;

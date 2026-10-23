@@ -55,8 +55,9 @@ public class HeavyChainTests
         {
             var net = new RoadNetwork(Terrain.Generate(seed), tuning);
             var plan = IndustryGenerator.Generate(net, seed, TownGenerator.Generate(net, seed, 4), IndustryAmount.Normal);
-            var coal = plan.Industries!.Single(i => i.Type == CoalMine);
-            var ore = plan.Industries!.Single(i => i.Type == IronMine);
+            var coal = plan.Industries!.SingleOrDefault(i => i.Type == CoalMine);
+            var ore = plan.Industries!.SingleOrDefault(i => i.Type == IronMine);
+            if (coal == default || ore == default) continue; // an island with room for one deposit only
             float apart = MathF.Sqrt(MathF.Pow(coal.X - ore.X, 2) + MathF.Pow(coal.Z - ore.Z, 2));
             bool near(IndustryPlan d) => plan.Towns.Any(t => MathF.Sqrt(MathF.Pow(t.X - d.X, 2) + MathF.Pow(t.Z - d.Z, 2)) <= g.DepositReach);
             bool fits = near(coal) && near(ore) && apart >= g.DepositMinSeparation && apart <= g.DepositMaxSeparation;

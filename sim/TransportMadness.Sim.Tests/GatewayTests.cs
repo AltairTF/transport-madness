@@ -77,7 +77,7 @@ public class GatewayTests
                 Assert.Equal(half - g.Generation.EdgeInset, MathF.Max(MathF.Abs(gate.X), MathF.Abs(gate.Z)), 0.01f);
                 Assert.False(net.Terrain.IsWater(gate.X, gate.Z));
                 foreach (var town in plan.Towns)
-                    Assert.True(MathF.Sqrt(MathF.Pow(town.X - gate.X, 2) + MathF.Pow(town.Z - gate.Z, 2)) > town.Blocks * net.Tuning.Towns.Generation.BlockLength * 0.5f);
+                    Assert.True(MathF.Sqrt(MathF.Pow(town.X - gate.X, 2) + MathF.Pow(town.Z - gate.Z, 2)) > town.Radius);
                 foreach (var industry in plan.Industries!)
                     Assert.True(MathF.Sqrt(MathF.Pow(industry.X - gate.X, 2) + MathF.Pow(industry.Z - gate.Z, 2)) >= g.Generation.MinSpacing);
             }

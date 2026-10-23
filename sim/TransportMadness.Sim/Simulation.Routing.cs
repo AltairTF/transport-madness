@@ -11,8 +11,8 @@ public sealed partial class Simulation
 
     readonly List<float[]> _fields = new();
     readonly List<int> _fieldVersion = new();
-    readonly List<float[]> _nodeFields = new(); // by node: the field of the lanes into it, for trip cars
-    readonly List<int> _nodeFieldVersion = new();
+    [NotSaved] readonly List<float[]> _nodeFields = new(); // by node: the field of the lanes into it, for trip cars; made again after a load (the shared empty entries would otherwise make a loaded game's snapshot differ)
+    [NotSaved] readonly List<int> _nodeFieldVersion = new();
     // Reverse of _nextLanes: the lanes (and moves) that lead into each lane.
     int[] _predStart = new int[1];
     int[] _preds = Array.Empty<int>();

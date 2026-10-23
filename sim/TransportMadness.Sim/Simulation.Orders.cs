@@ -390,7 +390,7 @@ public sealed partial class Simulation
         float reach = type.Size * 1.42f;
         foreach (var town in _towns)
         {
-            float clear = town.Blocks * _townTuning.Generation.BlockLength * 0.5f * 1.42f + sites.TownClearance + reach;
+            float clear = (town.Organic ? town.Radius : town.Blocks * _townTuning.Generation.BlockLength * 0.5f * 1.42f) + sites.TownClearance + reach;
             if ((town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z) < clear * clear) return false;
         }
         float spacing2 = sites.MinSpacing * sites.MinSpacing;

@@ -98,6 +98,9 @@ public sealed class Town
     // The street grid: blocks of the first grid are 0..Blocks-1 either way; growth adds columns and rows on any side.
     internal float Angle;
     internal int Blocks;
+    /// <summary>R4: an organic town has no grid; its lots are those the generator laid and <see cref="Radius"/> is how far it reaches.</summary>
+    internal bool Organic;
+    internal float Radius;
     internal int IMin, IMax, JMin, JMax;
     internal List<Lot> Lots { get; } = new();
     /// <summary>Ids of every building ever in the town, demolished ones too (ids are never reused).</summary>
@@ -113,8 +116,15 @@ public sealed class Town
 /// <summary>A building as the generator lays it out.</summary>
 public readonly record struct BuildingPlan(BuildingType Type, int Tier, float X, float Z, float Facing);
 
-/// <summary>A town as the generator lays it out: where it is, how its street grid lies, and the buildings it starts with.</summary>
-public sealed record TownPlan(string Name, float X, float Z, float Angle, int Blocks, IReadOnlyList<BuildingPlan> Buildings);
+/// <summary>
+/// A town as the generator lays it out: where it is, the buildings it starts with, and either its street grid (<c>Angle</c>, <c>Blocks</c>) or,
+/// for an organic town (R4), its radius and the lots along its streets (<c>Blocks</c> and <c>Angle</c> are 0).
+/// </summary>
+public sealed record TownPlan(string Name, float X, float Z, float Angle, int Blocks, IReadOnlyList<BuildingPlan> Buildings, float Radius = 0f, IReadOnlyList<TownGenerator.LotSite>? Lots = null)
+{
+    /// <summary>How far from its centre the town reaches: the radius of an organic town (R4), the half diagonal of the grid of an older one.</summary>
+    public float Reach(TownGenerationTuning g) => Radius > 0f ? Radius : Blocks * g.BlockLength * 0.5f * 1.42f;
+}
 
 /// <summary>An industry as the generator lays it out: its type (index into <c>industries.types</c>) and place.</summary>
 public readonly record struct IndustryPlan(int Type, float X, float Z, float Angle);

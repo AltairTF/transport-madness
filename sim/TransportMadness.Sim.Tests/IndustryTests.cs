@@ -73,7 +73,7 @@ public class IndustryTests
             foreach (var town in plan.Towns)
             {
                 float d = MathF.Sqrt(MathF.Pow(town.X - i.X, 2) + MathF.Pow(town.Z - i.Z, 2));
-                Assert.True(d > town.Blocks * tuning.Towns.Generation.BlockLength * 0.5f, "an industry inside a town");
+                Assert.True(d > town.Radius, "an industry inside a town");
             }
         }
         foreach (var a in plan.Industries!)

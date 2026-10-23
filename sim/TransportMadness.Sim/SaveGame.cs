@@ -25,7 +25,7 @@ public static class SaveGame
 {
     static readonly byte[] Magic = "TMSAVE01"u8.ToArray();
     /// <summary>Changes when the file layout or the way <see cref="StateGraph"/> writes changes, or when the generated land changes for a seed (2: the new terrain generator); a save of another version is refused.</summary>
-    public const int FormatVersion = 2;
+    public const int FormatVersion = 3;
 
     /// <summary>The snapshot of the whole simulation, uncompressed. Call between steps.</summary>
     public static byte[] Capture(Simulation sim) => StateGraph.Write(sim);

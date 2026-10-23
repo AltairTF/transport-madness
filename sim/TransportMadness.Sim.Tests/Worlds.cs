@@ -65,15 +65,67 @@ internal static class Worlds
         return chosen;
     }
 
+    /// <summary>Road nodes within <paramref name="reach"/> of a point, nearest first (the nearest ones can sit where a road cannot cross the streets, so a few are tried).</summary>
+    static List<int> NodesNear(RoadNetwork net, float x, float z, float reach, int count)
+    {
+        var found = new List<(float D, int Node)>();
+        for (int n = 0; n < net.NodeCount; n++)
+        {
+            if (net.RoadsAt(n).Count == 0) continue;
+            var (nx, nz) = net.GetNode(n);
+            float d = MathF.Sqrt((nx - x) * (nx - x) + (nz - z) * (nz - z));
+            if (d <= reach) found.Add((d, n));
+        }
+        found.Sort((p, q) => p.D.CompareTo(q.D));
+        return found.Take(count).Select(f => f.Node).ToList();
+    }
+
+    /// <summary>
+    /// Two ends for a straight track between two towns, as close to their middles as the crossing rules allow: the streets of an organic town
+    /// are many and short, so most lines through its core meet a junction too closely, and a few tries from the middle outward find one that does not.
+    /// </summary>
+    internal static ((float X, float Z) A, (float X, float Z) B)? TrackBetween(Simulation sim, Town ta, Town tb, int minBuildings = 0, float maxReach = 160f)
+    {
+        var ends = new List<(float R, float X, float Z, bool A)>();
+        foreach (var (t, isA) in new[] { (ta, true), (tb, false) })
+            foreach (float r in new[] { 0f, 40f, 80f, 120f, 160f })
+            {
+                if (r > maxReach) continue;
+                for (int k = 0; k < (r == 0f ? 1 : 12); k++)
+                {
+                    float a = k * MathF.Tau / 12f;
+                    ends.Add((r, t.X + MathF.Cos(a) * r, t.Z + MathF.Sin(a) * r, isA));
+                }
+            }
+        var pairs = from a in ends.Where(e => e.A) from b in ends.Where(e => !e.A) orderby a.R + b.R select (a, b);
+        // Of the first few that the rules allow, the one whose ends have the most buildings around them (a station there is worth having).
+        int Around(float x, float z) => sim.Buildings.Count(b => (b.X - x) * (b.X - x) + (b.Z - z) * (b.Z - z) < 150f * 150f);
+        ((float X, float Z) A, (float X, float Z) B)? best = null;
+        int bestCover = -1, found = 0;
+        foreach (var (a, b) in pairs)
+        {
+            if (sim.QuoteTrack(a.X, a.Z, b.X, b.Z) is not { Affordable: true }) continue;
+            int cover = Math.Min(Around(a.X, a.Z), Around(b.X, b.Z));
+            if (cover > bestCover) { bestCover = cover; best = ((a.X, a.Z), (b.X, b.Z)); }
+            if (++found == 12) break;
+        }
+        return bestCover >= minBuildings ? best : null;
+    }
+
     internal static bool Connect(Simulation sim, Town a, Town b)
     {
         var net = sim.Network;
         float dx = b.X - a.X, dz = b.Z - a.Z, len = MathF.Sqrt(dx * dx + dz * dz); dx /= len; dz /= len;
-        int na = net.FindNodeNear(a.X + dx * 250f, a.Z + dz * 250f, 400f, withRoadsOnly: true);
-        int nb = net.FindNodeNear(b.X - dx * 250f, b.Z - dz * 250f, 400f, withRoadsOnly: true);
-        if (na < 0 || nb < 0 || na == nb) return false;
-        var (ax, az) = net.GetNode(na); var (bx, bz) = net.GetNode(nb);
-        return sim.Execute(new BuildRoadCommand(ax, az, bx, bz, RoadType.TwoLane, 14f)) > 0;
+        var fromA = NodesNear(net, a.X + dx * 250f, a.Z + dz * 250f, 400f, 10);
+        var fromB = NodesNear(net, b.X - dx * 250f, b.Z - dz * 250f, 400f, 10);
+        foreach (int na in fromA)
+            foreach (int nb in fromB)
+            {
+                if (na == nb) continue;
+                var (ax, az) = net.GetNode(na); var (bx, bz) = net.GetNode(nb);
+                if (sim.Execute(new BuildRoadCommand(ax, az, bx, bz, RoadType.TwoLane, 14f)) > 0) return true;
+            }
+        return false;
     }
 
     internal static int Depot(Simulation sim, Town t)

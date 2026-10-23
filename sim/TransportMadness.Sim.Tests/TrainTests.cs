@@ -228,7 +228,7 @@ internal static class RailTownWorlds
     /// loop in the middle (path signals on the approaches), a station at each end, a depot at each end and a second road across the
     /// middle of the railway. Null when the layout does not fit the towns at this offset (a crossing too close to a junction, say).
     /// </summary>
-    internal static Scenario? Build(ulong seed, float sideOffset, int towns = 4)
+    internal static Scenario? Build(ulong seed, float sideOffset, int towns = 4, float margin = 90f)
     {
         var (sim, _) = Worlds.World(seed, towns);
         sim.Execute(new TakeLoanCommand(1000000));
@@ -236,7 +236,6 @@ internal static class RailTownWorlds
         var ta = sim.Towns[i]; var tb = sim.Towns[j];
         float dx = tb.X - ta.X, dz = tb.Z - ta.Z, d = MathF.Sqrt(dx * dx + dz * dz); dx /= d; dz /= d;
         float nx = -dz, nz = dx;
-        float margin = 90f;
         (float X, float Z) P(float along, float side = 0f) => (ta.X + dx * (margin + along) + nx * (sideOffset + side), ta.Z + dz * (margin + along) + nz * (sideOffset + side));
         float len = d - 2 * margin;
         if (len < 500f) return null;
@@ -286,8 +285,10 @@ internal static class RailTownWorlds
 
     internal static Scenario Find(ulong seed)
     {
-        foreach (float offset in new[] { 0f, 40f, -40f, 80f, -80f, 120f, -120f, 160f, -160f, 25f, -25f, 60f, -60f })
-            if (Build(seed, offset) is { } scenario) return scenario;
+        // The layout starts at the middle of a town by default; an organic town has streets there, so it is tried further out as well.
+        foreach (float margin in new[] { 90f, 200f, 320f })
+            foreach (float offset in new[] { 0f, 40f, -40f, 80f, -80f, 120f, -120f, 160f, -160f, 25f, -25f, 60f, -60f })
+                if (Build(seed, offset, margin: margin) is { } scenario) return scenario;
         throw new InvalidOperationException($"no rail layout fits seed {seed}");
     }
 }

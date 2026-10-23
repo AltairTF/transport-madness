@@ -26,8 +26,15 @@ public sealed partial class Simulation
         town.Blocks = plan.Blocks;
         town.IMin = town.JMin = 0;
         town.IMax = town.JMax = plan.Blocks - 1;
-        foreach (var site in TownGenerator.LotSites(_townTuning, plan.X, plan.Z, plan.Angle, plan.Blocks, 0, plan.Blocks - 1, 0, plan.Blocks - 1))
-            town.Lots.Add(new Lot(site));
+        town.Radius = plan.Reach(_townTuning.Generation);
+        if (plan.Lots != null) // an organic town (R4): the lots the generator laid along its streets
+        {
+            town.Organic = true;
+            foreach (var site in plan.Lots) town.Lots.Add(new Lot(site));
+        }
+        else
+            foreach (var site in TownGenerator.LotSites(_townTuning, plan.X, plan.Z, plan.Angle, plan.Blocks, 0, plan.Blocks - 1, 0, plan.Blocks - 1))
+                town.Lots.Add(new Lot(site));
         foreach (int id in town.BuildingIds)
         {
             var b = _buildings[id];
@@ -121,7 +128,7 @@ public sealed partial class Simulation
                     continue;
                 }
                 int lot = NearestFreeLot(town, b.X, b.Z);
-                if (lot < 0 && _growth.ExtendGrid && ExtendGrid(town, b.X, b.Z))
+                if (lot < 0 && _growth.ExtendGrid && !town.Organic && ExtendGrid(town, b.X, b.Z)) // R5 replaces this for organic towns
                 {
                     blocks++;
                     lot = NearestFreeLot(town, b.X, b.Z);
@@ -171,8 +178,7 @@ public sealed partial class Simulation
     {
         var lot = town.Lots[lotIndex];
         var s = lot.Site;
-        float half = town.Blocks * _townTuning.Generation.BlockLength * 0.5f;
-        var ring = TownGenerator.RingAt(_townTuning, s.U, s.V, half);
+        var ring = town.Organic ? TownGenerator.RingAt(_townTuning, s.U) : TownGenerator.RingAt(_townTuning, s.U, s.V, town.Blocks * _townTuning.Generation.BlockLength * 0.5f);
         var type = (BuildingType)TownGenerator.Pick(ring.Mix, _growRng.NextFloat());
         float y = _net.Terrain?.HeightAt(s.X, s.Z) ?? 0f;
         var b = new Building(_buildings.Count, town.Id, type, 0, s.X, y, s.Z, s.Facing) { StateSince = Day, Lot = lotIndex };

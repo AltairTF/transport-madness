@@ -407,6 +407,39 @@ public sealed record TownGenerationTuning
     public required float LotWidth { get; init; }
     public required float SetbackGap { get; init; }
     public required TownSizesTuning Sizes { get; init; }
+    public required StreetsTuning Streets { get; init; }
+}
+
+/// <summary>R4: how a town's streets and buildings grow, piece by piece (<see cref="StreetGenerator"/>).</summary>
+public sealed record StreetsTuning
+{
+    public required int SeedRoadsVillage { get; init; }
+    public required int SeedRoadsMedium { get; init; }
+    public required int SeedRoadsMetropolis { get; init; }
+    public required int TargetVillage { get; init; }
+    public required int TargetMedium { get; init; }
+    public required int TargetMetropolis { get; init; }
+    public required float PieceLengthMin { get; init; }
+    public required float PieceLengthMax { get; init; }
+    public required float MaxSlope { get; init; }
+    public required float StreetClearance { get; init; }
+    public required float MaxDeadEnd { get; init; }
+    public required float LinkReach { get; init; }
+    public required float BridgeMax { get; init; }
+    public required float OuterReach { get; init; }
+    public required float SeedReach { get; init; }
+    public required float RingRadius { get; init; }
+    public required int StallLimit { get; init; }
+    public required IReadOnlyList<StepWeightTuning> StepWeights { get; init; }
+}
+
+/// <summary>The weights of the three kinds of street piece for a pick at most <c>until</c> (a share of the town's radius) from its centre.</summary>
+public sealed record StepWeightTuning
+{
+    public required float Until { get; init; }
+    public required float Extend { get; init; }
+    public required float Branch { get; init; }
+    public required float Link { get; init; }
 }
 
 /// <summary>How big each town is: the best site gets the metropolis, a share the medium size, the rest <c>blocksMin..blocksMax</c> (R3).</summary>
@@ -423,6 +456,7 @@ public sealed record TownSizesTuning
     public required int MediumBlocksMin { get; init; }
     public required int MediumBlocksMax { get; init; }
     public required float SpacingGap { get; init; }
+    public required float SpacingShare { get; init; }
 }
 
 public sealed record RingTuning

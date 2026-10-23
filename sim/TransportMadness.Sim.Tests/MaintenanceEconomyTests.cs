@@ -41,7 +41,7 @@ public class MaintenanceNeglectTests
     [Fact]
     public void WithoutMaintenance_TheFleetBreaksDown_AndTheLineLosesFarMoreThanMaintenanceWouldHaveCost()
     {
-        var sc = BusScenario(3, 3, 4)!.Value;
+        var sc = BusScenario(1, 3, 4)!.Value; // seed 1, as in the test above: on seed 3 the organic towns leave this line without riders
         var sim = sc.Sim;
         sim.Execute(new SetMaintenancePolicyCommand(PolicyScope.Company, 0, MaintenancePolicy.Off));
         Worlds.Run(sim, 10);

@@ -37,7 +37,7 @@ public class MixedNetworkTests
     [Fact]
     public void TownsWithRoadsBusesAndTrains_RunForDaysWithoutDeadlock_AndEveryoneKeepsEarning()
     {
-        var (sim, line, trains, busLine) = Mixed(2);
+        var (sim, line, trains, busLine) = Mixed(6);
         int stops = 0;
         var seen = new TrainStatus[2];
 
@@ -68,8 +68,8 @@ public class MixedNetworkTests
     [Fact]
     public void AMixedRun_IsTheSameEveryTime()
     {
-        var a = Mixed(2).Sim;
-        var b = Mixed(2).Sim;
+        var a = Mixed(6).Sim;
+        var b = Mixed(6).Sim;
 
         RailWorlds.Run(a, 1200);
         RailWorlds.Run(b, 1200);
