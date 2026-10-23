@@ -96,7 +96,8 @@ public class TownTests
             for (int j = i + 1; j < all.Count; j++)
             {
                 float d = MathF.Sqrt(MathF.Pow(all[i].X - all[j].X, 2) + MathF.Pow(all[i].Z - all[j].Z, 2));
-                float needed = tuning.Of(all[i].Type, all[i].Tier).Footprint + tuning.Of(all[j].Type, all[j].Tier).Footprint;
+                // Lots are laid a building apart: the buildings stand on their lots square to a street, so their half sides add up.
+                float needed = (tuning.Of(all[i].Type, all[i].Tier).Size + tuning.Of(all[j].Type, all[j].Tier).Size) * 0.96f;
                 Assert.True(d >= needed, $"buildings {i} and {j} overlap ({d} m apart, {needed} needed)");
             }
         var sim = new Simulation(net, 9);

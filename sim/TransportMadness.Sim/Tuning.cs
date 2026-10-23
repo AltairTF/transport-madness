@@ -410,36 +410,29 @@ public sealed record TownGenerationTuning
     public required StreetsTuning Streets { get; init; }
 }
 
-/// <summary>R4: how a town's streets and buildings grow, piece by piece (<see cref="StreetGenerator"/>).</summary>
+/// <summary>Town upgrade: how a town's streets and buildings grow (<see cref="StreetGenerator"/>, docs/town-upgrade-plan.md).</summary>
 public sealed record StreetsTuning
 {
     public required int SeedRoadsVillage { get; init; }
     public required int SeedRoadsMedium { get; init; }
     public required int SeedRoadsMetropolis { get; init; }
-    public required int TargetVillage { get; init; }
-    public required int TargetMedium { get; init; }
-    public required int TargetMetropolis { get; init; }
-    public required float PieceLengthMin { get; init; }
-    public required float PieceLengthMax { get; init; }
+    public required int PopulationVillage { get; init; }
+    public required int PopulationMedium { get; init; }
+    public required int PopulationMetropolis { get; init; }
+    public required float BlockMin { get; init; }
+    public required float BlockMax { get; init; }
+    public required float DepthMin { get; init; }
+    public required float DepthMax { get; init; }
+    public required int MaxDepth { get; init; }
     public required float MaxSlope { get; init; }
     public required float StreetClearance { get; init; }
     public required float MaxDeadEnd { get; init; }
-    public required float LinkReach { get; init; }
     public required float BridgeMax { get; init; }
     public required float OuterReach { get; init; }
     public required float SeedReach { get; init; }
-    public required float RingRadius { get; init; }
-    public required int StallLimit { get; init; }
-    public required IReadOnlyList<StepWeightTuning> StepWeights { get; init; }
-}
-
-/// <summary>The weights of the three kinds of street piece for a pick at most <c>until</c> (a share of the town's radius) from its centre.</summary>
-public sealed record StepWeightTuning
-{
-    public required float Until { get; init; }
-    public required float Extend { get; init; }
-    public required float Branch { get; init; }
-    public required float Link { get; init; }
+    public required float MainReach { get; init; }
+    public required float SlotClearance { get; init; }
+    public required float Pavement { get; init; }
 }
 
 /// <summary>How big each town is: the best site gets the metropolis, a share the medium size, the rest <c>blocksMin..blocksMax</c> (R3).</summary>
@@ -465,6 +458,9 @@ public sealed record RingTuning
     public required float Fill { get; init; }
     public required IReadOnlyList<float> Mix { get; init; }
     public required IReadOnlyList<float> Tiers { get; init; }
+    /// <summary>Metres of street a lot takes along it in this zone, and the biggest size (tier index) a building may grow to there.</summary>
+    public required float Frontage { get; init; }
+    public required int MaxTier { get; init; }
 }
 
 public sealed record BuildingTypeTuning

@@ -603,7 +603,7 @@
       "minSatisfaction": 50.0,
       "minConnectivity": 0.6,
       "timeBudgetSeconds": 300.0,
-      "lotClearance": 15.0,         // a free lot is built on only when no road runs closer than this to its middle
+      "lotClearance": 13.0,         // a free lot is built on only when no road runs closer than this to its middle
       "extendGrid": true            // a town with no free lot builds a new block of streets
     },
 
@@ -618,7 +618,7 @@
       "blocksMax": 4,
       "blockLength": 120.0,         // street to street; buildings stand on all four sides of a block, two to a side
       "lotWidth": 30.0,             // between the middles of the two buildings on one side of a block
-      "setbackGap": 2.0,            // clear space between the paved edge of an avenue and a building
+      "setbackGap": 1.5,            // clear space between the pavement of a street and a building
       // R3: sites are scored, then towns are picked best first; the best gets the metropolis size, a share the medium size, the rest blocksMin..blocksMax.
       "sizes": {
         "candidates": 500,          // random sites scored for the whole map
@@ -634,41 +634,38 @@
         "spacingShare": 1.2,        // two towns are at least this share of the sum of their radii apart (streets reach outerReach times the radius) ...
         "spacingGap": 0.0           // ... plus this
       },
-      // R4: streets grow piece by piece with the buildings (docs/r4-plan.md). Two or three seed roads cross at the square; each step adds a piece of
-      // pieceLengthMin..Max to a street end or a point along a street (extend: straight on, branch: about 90 degrees, link: to a street within reach).
+      // Town upgrade (docs/town-upgrade-plan.md): two or three seed roads cross at the square; collector streets leave them at right angles at every
+      // block step, local streets close the blocks between neighbouring collectors, and the town grows from the middle out until its people add up.
       "streets": {
         "seedRoadsVillage": 2,
         "seedRoadsMedium": 3,
-        "seedRoadsMetropolis": 3,   // a metropolis also gets one ring street
-        "targetVillage": 60,        // buildings a town starts with, by size class
-        "targetMedium": 240,
-        "targetMetropolis": 700,
-        "pieceLengthMin": 40.0,
-        "pieceLengthMax": 90.0,
+        "seedRoadsMetropolis": 3,
+        "populationVillage": 400,   // people a town starts with (in its homes), by size class: the streets and buildings are laid until they add up
+        "populationMedium": 2500,
+        "populationMetropolis": 8000,
+        "blockMin": 60.0,           // one step along a seed road: the distance between two collectors
+        "blockMax": 66.0,
+        "depthMin": 60.0,           // one step along a collector: the distance between two local streets
+        "depthMax": 68.0,
+        "maxDepth": 14,             // steps a collector may take from its seed road
         "maxSlope": 0.18,           // rise over run a street piece may climb
-        "streetClearance": 66.0,    // two streets that are not joined keep this far apart: the narrowest block, which holds a row of buildings along each street
-        "maxDeadEnd": 150.0,        // a street end that joins nothing is at most this far from the junction it hangs off
-        "linkReach": 130.0,         // a link goes at most this far to a street
-        "bridgeMax": 70.0,          // the longest water a single piece may cross (as a bridge)
-        "outerReach": 1.25,         // streets stay within this share of the town's radius from its centre
+        "streetClearance": 44.0,    // two streets that are not joined keep this far apart
+        "maxDeadEnd": 84.0,         // a street end that joins nothing is at most this far from the junction it hangs off
+        "bridgeMax": 70.0,          // the longest water a seed road may cross (as a bridge)
+        "outerReach": 1.1,          // streets stay within this share of the town's nominal radius from its centre
         "seedReach": 90.0,          // seed roads run this far beyond that
-        "ringRadius": 0.55,         // the ring street of a metropolis, as a share of its radius
-        "stallLimit": 600,          // steps in a row that add nothing before the town stops growing
-        // Share of the three kinds of piece by distance from the centre (a share of the radius): the core branches and links into small blocks, the edge extends into stubs.
-        "stepWeights": [
-          { "until": 0.35, "extend": 0.10, "branch": 0.55, "link": 0.35 },
-          { "until": 0.70, "extend": 0.25, "branch": 0.50, "link": 0.25 },
-          { "until": 9.99, "extend": 0.50, "branch": 0.40, "link": 0.10 }
-        ]
+        "mainReach": 0.6,           // the first seed road is an avenue within this share of the nominal radius
+        "slotClearance": 40.0,      // a collector leaves a seed road at least this far from a junction of it
+        "pavement": 2.5             // width of the pavement each side of an urban street
       }
     },
 
     // From the middle of a town out. 'until' is the distance from the centre as a share of half the grid; 'fill' the
     // share of lots that start built on; 'mix' the weights of home, commerce and industry; 'tiers' the weights of the sizes.
     "rings": [
-      { "until": 0.35, "fill": 0.95, "mix": [0.35, 0.60, 0.05], "tiers": [0.2, 0.4, 0.4] },
-      { "until": 0.70, "fill": 0.80, "mix": [0.65, 0.25, 0.10], "tiers": [0.4, 0.4, 0.2] },
-      { "until": 1.00, "fill": 0.55, "mix": [0.70, 0.10, 0.20], "tiers": [0.7, 0.25, 0.05] }
+      { "until": 0.35, "fill": 0.95, "mix": [0.35, 0.60, 0.05], "tiers": [0.2, 0.4, 0.4], "frontage": 20.0, "maxTier": 1 },
+      { "until": 0.70, "fill": 0.85, "mix": [0.65, 0.25, 0.10], "tiers": [0.4, 0.6, 0.0], "frontage": 22.0, "maxTier": 1 },
+      { "until": 99.0, "fill": 0.70, "mix": [0.70, 0.10, 0.20], "tiers": [1.0, 0.0, 0.0], "frontage": 28.0, "maxTier": 0 }
     ],
 
     // One list per kind of building, three sizes each. size: half the side of the square it stands on, in metres.

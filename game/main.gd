@@ -234,6 +234,7 @@ func _process(delta: float) -> void:
 		hud.show_company(company)
 		if _fixed_hour < 0.0:
 			lighting.set_hour(company["hour"])
+			host.SetNight(lighting.night_amount)
 		if company["year"] != _model_year:
 			# A new year: the models on sale change, and the news says which are new.
 			var first: bool = _model_year == 0
@@ -1175,3 +1176,4 @@ func _build_environment() -> void:
 	if _args.has("--hour"):
 		_fixed_hour = float(_args["--hour"])
 		lighting.set_hour(_fixed_hour)
+		host.SetNight(lighting.night_amount)

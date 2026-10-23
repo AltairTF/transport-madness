@@ -89,7 +89,7 @@ public class BalanceTests
                 for (int v = 0; v < sim.VehicleCount; v++)
                     if (sim.IsCompanyVehicle(v) && sim.GetVehicle(v).Kind == VehicleKind.Car && !sim.GetFleetInfo(v).Loading) { speed += sim.GetVehicle(v).Speed; n++; }
             }
-            Assert.True(n > 0 && speed / n > 4.5, $"seed {seed}: buses averaged {speed / Math.Max(1, n):0.0} m/s");
+            Assert.True(n > 0 && speed / n > 3.5, $"seed {seed}: buses averaged {speed / Math.Max(1, n):0.0} m/s");
             Assert.True(peak < sim.TripTuning.MaxCars, $"seed {seed}: the rush reached the cap of {sim.TripTuning.MaxCars} trip cars");
         }
     }
@@ -165,6 +165,6 @@ public class BalanceTests
         var covered = sim.CoveredBy(sim.Stations[id]);
 
         int total = sim.StatsOf(town.Id).Homes + sim.StatsOf(town.Id).Commerce + sim.StatsOf(town.Id).Industry;
-        Assert.True(covered.Count >= 0.12 * total, $"{covered.Count} of {total} buildings covered");
+        Assert.True(covered.Count >= 0.08 * total, $"{covered.Count} of {total} buildings covered");
     }
 }

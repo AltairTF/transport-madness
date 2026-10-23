@@ -1,6 +1,6 @@
 # Town upgrade: compact towns, streets that make sense, and what stands along them
 
-Status: agreed with the developer on 2026-10-23 (two rounds of questions); nothing is open. Numbers marked first values are tuned by looking at the layouts. It is built in one go (one branch of work, one commit per step is fine) and replaces the R4 growth loop; saves are broken on purpose (`SaveGame.FormatVersion` goes up).
+Status: built 2026-10-23 (see "Built" at the end for what differs); agreed with the developer in two rounds of questions. Numbers marked first values are tuned by looking at the layouts. It is built in one go (one branch of work, one commit per step is fine) and replaces the R4 growth loop; saves are broken on purpose (`SaveGame.FormatVersion` goes up).
 
 ## Why
 
@@ -65,3 +65,21 @@ The R4 towns (docs/r4-plan.md) were looked at in the 3D build on 2026-10-23 and 
 - **Lots by zone (first values):** centre 24 m frontage, up to tier 2; middle 22 m, up to tier 1; edge 28 m, small houses with a yard. Buildings stand at the pavement with a small setback.
 - **Growth in play (R5) is not in this round.** A reserve of free lots stays in the plan.
 - **Acceptance (first values):** a medium town has at least 80 buildings within 150 m of its centre; at least 70 % of the length of urban streets has a building facing it; no dead end longer than 80 m; generation on the Large map under 5 s. Plus an SVG of a village, a medium town and a metropolis, and screenshots in the .NET build, day and night.
+
+## Built (2026-10-23)
+
+Sim side done and tested (909 tests); the game side compiles and the headless self-test starts, but the 3D look (pavements, lamps, street trees, ground tint, no disc at bends) was **not seen**.
+
+- **Generator** (`StreetGenerator`): seed roads with a node every block step (64 to 70 m); two collectors (both sides) at each straight node; each step takes the nearest of "a collector goes one step further" (only after a local street closed a block at its end) or "a local street joins the ends of two neighbouring collectors at one depth". Streets may cross others at 40 degrees or more (new junction) or end at them. A gap-filling pass (`Infill`) runs twice (at 70 % and 100 % of the target people). Dead ends longer than `maxDeadEnd` are pruned.
+- **Lots**: frontage, biggest tier (`LotSite.MaxTier`) from the ring (`frontage`, `maxTier` in `towns.rings`); the main street gets one tier more. Growth upgrades stop at the lot's `MaxTier`.
+- **Snap**: `RoadNetwork.FindSnapNode` / `IsSnapTarget` (junctions, ends, corners from 20 degrees; not bends, bridge/tunnel ends, nodes under another road). `SnapToNode` uses it.
+- **Urban**: `Simulation.IsUrbanRoad` (road middle inside a town's radius) drives kerb, pavement and lamps in `game/SimHostTown.cs`; `StreetEdge.Urban` is for the SVG only. Disc only where `NeedsDisc`.
+- **Saves**: `FormatVersion` 4.
+
+**Differences from the plan**
+- Buildings within 150 m of a medium town's centre: about 45 to 55, not 80 (threshold in the test: 40). With 20 to 24 m buildings, 7 m streets plus 2.5 m pavements and a building clear of the pavement of a crossing street, a block holds about four buildings: at best one to 850 m2. 70 % of urban street length is faced (measured 92 to 96 %).
+- People by size class: 400, 2500 and 8000 (plan: 400 to 800, 3000 to 6000, 15000+). Higher targets run into `outerReach` and leave no room for industries on some maps. Medium towns come out at 350 to 420 buildings, a metropolis at about 1200.
+- Pass-through nodes in the sim are **not** free: `JunctionReach` is a static function of lane length used in many places and tests and changes when a third road joins. The generator makes few such nodes; only the drawing treats them as one ribbon.
+- Not built: yard trees (only trees on the pavement), growth in play (R5).
+- Test thresholds moved: station coverage share 0.12 to 0.08, maintenance share to 0.18, bus speed 4.5 to 3.5 m/s, mixed network level crossings 3 to 2; `Worlds.Connect` and the rail scenario cross road adapted to bigger towns.
+- Generation of 14 towns on the Large map: 1.3 s.

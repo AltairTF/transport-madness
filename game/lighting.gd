@@ -21,6 +21,7 @@ const AMBIENT_ENERGY_NIGHT := 0.42
 const AMBIENT_ENERGY_DAY := 0.5
 
 var hour := 12.0
+var night_amount := 0.0 ## 0 by day to 1 in the dark: the street lamps follow it
 var environment: Environment
 var sun: DirectionalLight3D
 var moon: DirectionalLight3D
@@ -103,6 +104,7 @@ func set_hour(h: float) -> void:
 		sun.light_color = _ramp(SUN_COLORS, elevation)
 		sun.light_energy = lerpf(0.15, 1.0, smoothstep(0.0, 28.0, elevation))
 	var night := 1.0 - smoothstep(-6.0, 4.0, elevation)
+	night_amount = night
 	moon.visible = night > 0.02
 	moon.light_energy = 0.28 * night
 	var sky: Color = _ramp(SKY_COLORS, elevation)

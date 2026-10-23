@@ -38,13 +38,13 @@ public partial class SimHost
     }
 
     /// <summary>
-    /// Snaps a point to the nearest node within <paramref name="radius"/>, else to the nearest road's centre line
-    /// (a junction will be built there), else leaves it alone.
+    /// Snaps a point to the nearest junction or road end within <paramref name="radius"/> (not a bend inside a street, nor a bridge end, nor a node
+    /// under another road), else to the nearest road's centre line (a junction will be built there), else leaves it alone.
     /// </summary>
     public Godot.Collections.Dictionary SnapToNode(float x, float z, float radius)
     {
         var net = Sim.Network;
-        int node = net.FindNodeNear(x, z, radius, withRoadsOnly: true);
+        int node = net.FindSnapNode(x, z, radius);
         if (node >= 0)
         {
             var (nx, nz) = net.GetNode(node);

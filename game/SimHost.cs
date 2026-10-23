@@ -94,6 +94,7 @@ public partial class SimHost : Node3D
         _doorMaterial = Flat(_whitebox.DoorColor);
         _markerMaterial = Flat(_whitebox.MarkerColor);
         _lineMaterial = Flat(new Color(0.8f, 0.78f, 0.6f));
+        InitTownMaterials();
         _deckMaterial = Flat(new Color(0.55f, 0.55f, 0.58f));
         _tunnelMaterial = Flat(new Color(0.32f, 0.3f, 0.3f));
         _tunnelHintMaterial = new StandardMaterial3D
@@ -1469,17 +1470,20 @@ public partial class SimHost : Node3D
                 AddRoadRibbon(g, y0, y1, width, RoadHeight * 0.5f, surface);
                 if (!path) AddRoadRibbon(g, y0, y1, avenue ? median : 0.25f, RoadHeight * 0.5f + 0.05f, avenue ? _medianMaterial : _lineMaterial);
             }
+            AddStreetFurniture(net, road, y0, y1, width);
         }
 
         for (int n = 0; n < net.NodeCount; n++)
         {
             if (net.IncomingLanes(n).Count == 0) continue; // a node whose roads were all replaced
+            if (!NeedsDisc(net, n)) continue; // two roads that go on from each other: no disc, the ribbon runs through
             var (x, z) = net.GetNode(n);
             var disc = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 8.5f, BottomRadius = 8.5f, Height = RoadHeight, RadialSegments = 24 }, MaterialOverride = _roadMaterial };
             disc.Position = new Vector3(x, net.GetNodeHeight(n), z);
             _roadRoot.AddChild(disc);
         }
 
+        BuildLamps();
         RebuildStations();
 
         foreach (var depot in Sim.Depots)
@@ -1929,19 +1933,22 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>A flat strip following a curved road, <paramref name="lift"/> above its centre line.</summary>
-    void AddRoadRibbon(RoadGeometry g, float y0, float y1, float width, float lift, Material material)
+    void AddRoadRibbon(RoadGeometry g, float y0, float y1, float width, float lift, Material material, float lateral = 0f, float s0 = 0f, float s1 = -1f)
     {
-        int segments = Math.Max(2, (int)MathF.Ceiling(g.Length / 4f));
+        if (s1 < 0f) s1 = g.Length;
+        int segments = Math.Max(2, (int)MathF.Ceiling((s1 - s0) / 4f));
         var vertices = new Vector3[(segments + 1) * 2];
         var normals = new Vector3[vertices.Length];
         var indices = new int[segments * 6];
         for (int i = 0; i <= segments; i++)
         {
-            float t = i / (float)segments;
-            var (x, z) = g.PointAt(g.Length * t);
-            float h = g.HeadingAt(g.Length * t);
+            float along = s0 + (s1 - s0) * (i / (float)segments), t = along / g.Length;
+            var (x, z) = g.PointAt(along);
+            float h = g.HeadingAt(along);
             float rx = -MathF.Sin(h) * width * 0.5f, rz = MathF.Cos(h) * width * 0.5f;
             float y = y0 + (y1 - y0) * t + lift;
+            x -= MathF.Sin(h) * lateral;
+            z += MathF.Cos(h) * lateral;
             vertices[i * 2] = new Vector3(x - rx, y, z - rz);     // left edge
             vertices[i * 2 + 1] = new Vector3(x + rx, y, z + rz); // right edge
             normals[i * 2] = normals[i * 2 + 1] = Vector3.Up;
@@ -1984,6 +1991,7 @@ public partial class SimHost : Node3D
     {
         if (_terrainVersion == _terrain.Version && _terrainSource == _terrain && _terrainChunks.Length > 0) return;
         _terrainVersion = _terrain.Version;
+        RefreshUrban();
 
         int side = _terrain.ChunksPerSide;
         if (_terrainSource != _terrain || _terrainChunks.Length != side * side)
@@ -2137,7 +2145,7 @@ public partial class SimHost : Node3D
                 normals[k] = new Vector3(-gx, 2f * cell, -gz).Normalized();
                 float surface = _terrain.WaterSurfaceAtSample(i, j);
                 bool shore = NearWater(i, j);
-                var colour = TerrainColor(height, surface, normals[k].Y, shore, _terrain.BiomeAt(i, j)).SrgbToLinear(); // vertex colours are read as linear
+                var colour = UrbanTint(TerrainColor(height, surface, normals[k].Y, shore, _terrain.BiomeAt(i, j)).SrgbToLinear(), i * cell - half, j * cell - half); // vertex colours are read as linear
                 float depth = height - surface;
                 colour.A = depth < 0f ? 1f : shore && depth < 1.5f ? 1f - depth / 1.5f : 0f; // how much of the ground is sand (the shader takes its grain from it)
                 colors[k] = colour;

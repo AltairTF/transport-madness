@@ -180,8 +180,9 @@ public static class TownGenerator
     /// <summary>A place a building can stand: on one side of a block, facing its street. Where it is does not depend on what is built on it.</summary>
     /// <param name="I">Block column (can be negative or past the first grid when a town has grown).</param>
     /// <param name="J">Block row.</param>
+    /// <param name="MaxTier">The biggest size a building may grow to on this lot (the lot's frontage allows no wider).</param>
     /// <param name="U">Middle of the block in the town's own axes, for the ring it lies in.</param>
-    public readonly record struct LotSite(int I, int J, int Side, int Lot, float X, float Z, float Facing, float U, float V);
+    public readonly record struct LotSite(int I, int J, int Side, int Lot, float X, float Z, float Facing, float U, float V, int MaxTier = TownsTuning.Tiers - 1);
 
     /// <summary>
     /// The lots of the blocks <paramref name="i0"/>..<paramref name="i1"/> by <paramref name="j0"/>..<paramref name="j1"/> of a town
@@ -227,12 +228,12 @@ public static class TownGenerator
     static List<BuildingPlan> ReachableBuildings(RoadNetwork net, RoadIndex index, OrganicTown town)
     {
         var tuning = net.Tuning.Towns;
-        float narrow = RoadNetwork.HalfWidth(RoadType.TwoLane) + tuning.Generation.SetbackGap + MaxFootprint(tuning);
+        float clear = RoadNetwork.HalfWidth(RoadType.TwoLane) + 2f; // not on the road, whatever the street's width
         var plans = new List<BuildingPlan>();
         foreach (var b in town.Buildings)
         {
             float road = index.DistanceToNearest(b.X, b.Z, tuning.AccessRadius);
-            if (road <= tuning.AccessRadius && road >= narrow * 0.9f) plans.Add(b);
+            if (road <= tuning.AccessRadius && road >= clear) plans.Add(b);
         }
         return plans;
     }

@@ -60,7 +60,7 @@ public class MixedNetworkTests
         Assert.True(stops >= 16, $"the trains made {stops} stops in 8 days");
         Assert.All(trains, t => Assert.True(sim.Trains[t].Income > 0, $"train {t} was paid"));
         Assert.True(sim.Lines[busLine].Income > 0, "the buses were paid too");
-        Assert.True(sim.Crossings.Count >= 3);
+        Assert.True(sim.Crossings.Count >= 2); // the towns are laid out street by street: the track meets fewer streets than it did on a grid
         Assert.Equal(0, sim.Crossings.Sum(c => c.Collisions));
         Assert.Empty(sim.DeadlockedTrains);
     }

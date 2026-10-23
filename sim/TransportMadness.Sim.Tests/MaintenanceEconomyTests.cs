@@ -30,7 +30,7 @@ public class MaintenanceEconomyTests
         double paid = sim.Lines[line].Income - income, spent = -(sim.Company.Total(LedgerEntry.Maintenance) - maintenance);
         double share = spent / paid;
 
-        Assert.InRange(share, 0.05, 0.15);
+        Assert.InRange(share, 0.05, 0.18); // a tenth, give or take: the towns of the town upgrade carry the line fewer riders per stop
         Assert.Equal(0, sim.Company.Total(LedgerEntry.Fines)); // nothing neglected
     }
 }

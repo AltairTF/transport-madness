@@ -24,8 +24,8 @@ public sealed class SaveFormatException(string message) : Exception(message);
 public static class SaveGame
 {
     static readonly byte[] Magic = "TMSAVE01"u8.ToArray();
-    /// <summary>Changes when the file layout or the way <see cref="StateGraph"/> writes changes, or when the generated land changes for a seed (2: the new terrain generator); a save of another version is refused.</summary>
-    public const int FormatVersion = 3;
+    /// <summary>Changes when the file layout or the way <see cref="StateGraph"/> writes changes, or when the generated land changes for a seed (2: the new terrain generator; 4: the town upgrade, whose lots carry the biggest size a building may grow to); a save of another version is refused.</summary>
+    public const int FormatVersion = 4;
 
     /// <summary>The snapshot of the whole simulation, uncompressed. Call between steps.</summary>
     public static byte[] Capture(Simulation sim) => StateGraph.Write(sim);

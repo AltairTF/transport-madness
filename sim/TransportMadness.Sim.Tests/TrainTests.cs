@@ -243,7 +243,8 @@ internal static class RailTownWorlds
         // Roads first: the bus road between the towns, and a cross road over the middle of the railway.
         bool busRoad = Worlds.Connect(sim, ta, tb);
         var m = P(len * 0.5f);
-        sim.Execute(new BuildRoadCommand(m.X + nx * 260f, m.Z + nz * 260f, m.X - nx * 260f, m.Z - nz * 260f, RoadType.TwoLane, 14f));
+        foreach (float half in new[] { 260f, 200f, 150f, 100f }) // shorter when the ground at the ends is no good
+            if (sim.Execute(new BuildRoadCommand(m.X + nx * half, m.Z + nz * half, m.X - nx * half, m.Z - nz * half, RoadType.TwoLane, 14f)) > 0) break;
 
         float j1 = len * 0.30f, j2 = len * 0.70f, bend = 45f;
         var pts = new (float, float)[]

@@ -13,17 +13,18 @@ public class StreetLotTests
     }
 
     [Fact]
-    public void NoTwoBuildings_AreCloserThanTheirFootprint()
+    public void NoTwoBuildings_AreCloserThanTheirSizes()
     {
         var plan = Plan(11, out var net);
-        float apart = 2f * net.Tuning.Towns.Of(BuildingType.Home, TownsTuning.Tiers - 1).Footprint;
+        var t = net.Tuning.Towns;
         foreach (var town in plan.Towns)
             for (int i = 0; i < town.Buildings.Count; i++)
                 for (int j = i + 1; j < town.Buildings.Count; j++)
                 {
                     var a = town.Buildings[i]; var b = town.Buildings[j];
                     float d = MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z));
-                    Assert.True(d >= apart - 0.01f, $"{town.Name}: {d:F1} m apart");
+                    float apart = (t.Of(a.Type, a.Tier).Size + t.Of(b.Type, b.Tier).Size) * 0.96f;
+                    Assert.True(d >= apart, $"{town.Name}: {d:F1} m apart");
                 }
     }
 
@@ -39,7 +40,7 @@ public class StreetLotTests
             {
                 float d = index.DistanceToNearest(b.X, b.Z, t.AccessRadius);
                 Assert.True(d <= t.AccessRadius, $"{town.Name}: no road near {b.X:F0},{b.Z:F0}");
-                Assert.True(d > 12f, $"{town.Name}: road {d:F1} m from a building");
+                Assert.True(d > 8f, $"{town.Name}: road {d:F1} m from a building");
             }
     }
 

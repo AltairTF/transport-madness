@@ -8,7 +8,7 @@ A 3D transport management game in the lineage of Transport Tycoon and Transport 
 The player's transport business. Owns vehicles, stations and the money. In the campaign the Player chairs the development committee of the Region and the Company is the transport business that committee runs.
 
 **Town**:
-A settlement made of buildings along a grid of streets that generate and consume passengers and goods. Grows when well served. Has a name and a Satisfaction.
+A settlement made of buildings along streets laid out in a hierarchy (main streets that run on as country roads, collectors across them, local streets that close the blocks), grown until its homes hold the people of its size class, that generate and consume passengers and goods. Grows when well served. Has a name and a Satisfaction.
 _Avoid_: City
 
 **Building**:
@@ -97,7 +97,7 @@ What a Building holds of delivered Cargo. Sustain (food, goods, planks) is used 
 The share of a Town's homes that were reached in a month: a Trip group living there made a trip to work or leisure within a time budget, by any mode. Below a threshold the Town does not grow.
 
 **Lot**:
-A place beside a street of a Town where a Building can stand. A Town has the lots of its blocks and gets more when it builds a new block of streets.
+A place beside a street of a Town where a Building can stand, facing it. A Lot has a frontage and the biggest size a Building may grow to on it (a Building never goes up past that), both set by the ring of the Town it lies in. A Town has the lots laid along its streets.
 
 **Growth**:
 Once a month a Town whose Satisfaction and Connectivity are high enough lets each Building spend a full Construction stock: it goes up a size, or if it is already the biggest founds a new Building on the nearest free Lot, or on a new block of streets when no Lot is free. A Town never shrinks except by abandonment.

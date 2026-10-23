@@ -437,4 +437,17 @@ public sealed partial class Simulation
         }
         return h;
     }
+
+    /// <summary>
+    /// Whether a road lies in a built-up area: its middle is within the reach of a town. Such a street has a kerb and pavements; a road outside
+    /// has an earth shoulder. The change comes at a junction at the edge of the town, as streets are a block long.
+    /// </summary>
+    public bool IsUrbanRoad(RoadId id)
+    {
+        var road = _net.GetRoad(id);
+        var (x, z) = road.Geometry.PointAt(road.Length * 0.5f);
+        foreach (var town in _towns)
+            if (town.Radius > 0f && (town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z) <= town.Radius * town.Radius) return true;
+        return false;
+    }
 }

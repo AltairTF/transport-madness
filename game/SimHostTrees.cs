@@ -84,6 +84,7 @@ public partial class SimHost
             ChunkOfTrees(spot.X, spot.Z).Add(TreeModel, spot.X, h - TerrainSink, spot.Z, MathF.Cos(spot.Yaw), MathF.Sin(spot.Yaw), 0f, variant, null, spot.Size);
             _treeCount++;
         }
+        AddStreetTrees(variants);
         foreach (var chunk in _treeChunks.Values) chunk.End();
     }
 

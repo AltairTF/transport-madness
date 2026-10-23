@@ -9,7 +9,7 @@ namespace TransportMadness.Sim;
 public sealed partial class Simulation
 {
     const ulong GrowthSeedMix = 0x47524F57544821A7UL;
-    const float LotCrowding = 22f;  // a lot is not built on while a standing building is closer than this
+    const float LotCrowding = 18f;  // a lot is not built on while a standing building is closer than this (lots are laid a building apart)
     const float SampleSpacing = 30f; // ground is checked this far apart when a town wants a new block
     const float StockSlack = 0.01f;  // a construction stock this close to its cost counts as full (float dust)
     const float StripClearance = 12f; // a new block is refused when a building stands this close to a point of it
@@ -120,7 +120,8 @@ public sealed partial class Simulation
             {
                 var b = _buildings[id];
                 if (b.State != BuildingState.Active || !HasFullConstructionStock(b)) continue;
-                if (b.Tier < TownsTuning.Tiers - 1)
+                int biggest = b.Lot >= 0 && b.Lot < town.Lots.Count ? town.Lots[b.Lot].Site.MaxTier : TownsTuning.Tiers - 1; // its lot is no wider
+                if (b.Tier < biggest)
                 {
                     SpendConstruction(b);
                     GrowBuilding(b);

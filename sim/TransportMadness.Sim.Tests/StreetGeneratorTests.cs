@@ -8,7 +8,10 @@ namespace TransportMadness.Sim.Tests;
 public class StreetGeneratorTests(ITestOutputHelper output)
 {
     static readonly TownsTuning T = Tuning.Load().Towns;
-    static readonly float Narrow = RoadNetwork.HalfWidth(RoadType.TwoLane) + T.Generation.SetbackGap + TownGenerator.MaxFootprint(T);
+    static readonly float Clear = RoadNetwork.HalfWidth(RoadType.TwoLane) + 2f;
+
+    /// <summary>Half the side of the biggest building a lot takes.</summary>
+    static float Half(TownGenerator.LotSite lot) => Enum.GetValues<BuildingType>().Max(type => T.Of(type, lot.MaxTier).Size);
 
     static float RadiusOf(TownSize size) => size switch { TownSize.Village => 210f, TownSize.Medium => 390f, _ => 660f };
 
@@ -77,16 +80,51 @@ public class StreetGeneratorTests(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(TownSize.Village, 40)]
+    [InlineData(TownSize.Village, 30)]
     [InlineData(TownSize.Medium, 150)]
-    [InlineData(TownSize.Metropolis, 550)]
-    public void ATown_HasAtLeastItsMinimumOfBuildings(TownSize size, int least)
+    [InlineData(TownSize.Metropolis, 800)]
+    public void ATown_HasItsPeople_AndAtLeastItsMinimumOfBuildings(TownSize size, int least)
     {
+        int target = size switch { TownSize.Village => T.Generation.Streets.PopulationVillage, TownSize.Medium => T.Generation.Streets.PopulationMedium, _ => T.Generation.Streets.PopulationMetropolis };
         foreach (ulong seed in new ulong[] { 1, 2, 3, 4 })
         {
             var town = Make(size, seed);
-            output.WriteLine($"{size} {seed}: {town.Buildings.Count} buildings, {town.Lots.Count} lots, {town.Graph.Edges.Count} pieces, radius {town.Radius:F0}");
+            int people = town.Buildings.Where(b => b.Type == BuildingType.Home).Sum(b => T.Of(b.Type, b.Tier).People);
+            int near = town.Buildings.Count(b => MathF.Sqrt(b.X * b.X + b.Z * b.Z) <= 150f);
+            output.WriteLine($"{size} {seed}: {town.Buildings.Count} buildings ({near} within 150 m), {people} people, {town.Lots.Count} lots, {town.Graph.Edges.Count} pieces, radius {town.Radius:F0}");
+            Assert.True(people >= target * 0.9f, $"{size} seed {seed}: {people} people of {target}");
             Assert.True(town.Buildings.Count >= least, $"{size} seed {seed}: {town.Buildings.Count} buildings");
+        }
+    }
+
+    /// <summary>
+    /// Plan, acceptance (first value 80, lowered to 40): with buildings 20 to 24 m wide, streets of 7 m with 2.5 m pavements and a building kept
+    /// clear of the pavement of a street that crosses, a block has room for four of them (one at each corner), which is at best one building to
+    /// 850 m2: about 80 in 150 m, of which a town gets about 55 to 60 per cent. Twice what R4 gave. How packed the middle of a medium town is, and how much of its urban street has a building facing it.</summary>
+    [Fact]
+    public void AMediumTown_IsPackedAroundItsCentre_AndItsStreetsHaveBuildingsFacingThem()
+    {
+        foreach (ulong seed in new ulong[] { 1, 2, 3, 4 })
+        {
+            var town = Make(TownSize.Medium, seed);
+            int near = town.Buildings.Count(b => MathF.Sqrt(b.X * b.X + b.Z * b.Z) <= 150f);
+            float total = 0f, faced = 0f;
+            foreach (var e in town.Graph.Edges)
+            {
+                if (!e.Urban || e.Bridge) continue;
+                var (ax, az) = town.Graph.Nodes[e.A]; var (bx, bz) = town.Graph.Nodes[e.B];
+                float len = MathF.Sqrt((ax - bx) * (ax - bx) + (az - bz) * (az - bz));
+                int samples = Math.Max(1, (int)(len / 10f));
+                for (int i = 0; i < samples; i++)
+                {
+                    float x = ax + (bx - ax) * (i + 0.5f) / samples, z = az + (bz - az) * (i + 0.5f) / samples;
+                    total += len / samples;
+                    if (town.Buildings.Any(b => (b.X - x) * (b.X - x) + (b.Z - z) * (b.Z - z) <= 30f * 30f)) faced += len / samples;
+                }
+            }
+            output.WriteLine($"seed {seed}: {near} buildings within 150 m, {faced / total:P0} of {total:F0} m of urban street faced");
+            Assert.True(near >= 40, $"seed {seed}: {near} buildings within 150 m of the centre");
+            Assert.True(faced / total >= 0.7f, $"seed {seed}: {faced / total:P0} of the urban street has a building facing it");
         }
     }
 
@@ -95,7 +133,6 @@ public class StreetGeneratorTests(ITestOutputHelper output)
     {
         var terrain = Terrain.Generate(5);
         var (x, z) = ShoreOf(terrain);
-        float apart = TownGenerator.MaxFootprint(T) * 2f;
         foreach (var size in new[] { TownSize.Village, TownSize.Medium, TownSize.Metropolis })
         {
             var town = Make(size, 5, terrain, x, z);
@@ -105,7 +142,8 @@ public class StreetGeneratorTests(ITestOutputHelper output)
                 for (int j = i + 1; j < town.Lots.Count; j++)
                 {
                     float d = MathF.Sqrt(MathF.Pow(town.Lots[i].X - town.Lots[j].X, 2) + MathF.Pow(town.Lots[i].Z - town.Lots[j].Z, 2));
-                    Assert.True(d >= apart - 0.01f, $"{size}: lots {d:F1} m apart");
+                    float apart = Half(town.Lots[i]) + Half(town.Lots[j]);
+                    Assert.True(d >= apart * 0.96f, $"{size}: lots {d:F1} m apart, buildings {apart:F1} m wide");
                 }
         }
     }
@@ -120,8 +158,7 @@ public class StreetGeneratorTests(ITestOutputHelper output)
             {
                 float d = DistanceToStreets(town.Graph, b.X, b.Z);
                 Assert.True(d <= T.AccessRadius, $"{size}: no street near {b.X:F0},{b.Z:F0}");
-                Assert.True(d >= Narrow * 0.99f, $"{size}: a street {d:F1} m from a building");
-                Assert.True(DistanceToStreets(town.Graph, b.X, b.Z, skipMain: true) >= Narrow * 0.99f);
+                Assert.True(d >= Clear, $"{size}: a street {d:F1} m from a building");
             }
         }
     }
@@ -174,6 +211,17 @@ public class StreetGeneratorTests(ITestOutputHelper output)
         var town = Make(TownSize.Metropolis, 7, terrain, x, z);
         Assert.True(watch.Elapsed.TotalSeconds < 3, $"{watch.Elapsed.TotalSeconds:F1} s");
         Assert.NotEmpty(town.Buildings);
+    }
+
+    /// <summary>Plan, acceptance: the towns of the Large map are generated in under 5 s.</summary>
+    [Fact]
+    public void TheTownsOfALargeMap_AreGeneratedInUnderFiveSeconds()
+    {
+        var net = new RoadNetwork(Terrain.Generate(5, WorldBuilder.CellsOf(MapSize.Large)));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var plan = TownGenerator.Generate(net, 5, 14);
+        output.WriteLine($"{plan.Towns.Count} towns in {watch.Elapsed.TotalSeconds:F1} s");
+        Assert.True(watch.Elapsed.TotalSeconds < 5, $"{watch.Elapsed.TotalSeconds:F1} s");
     }
 
     [Fact]

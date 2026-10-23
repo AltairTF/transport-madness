@@ -112,12 +112,38 @@ internal static class Worlds
         return bestCover >= minBuildings ? best : null;
     }
 
+    /// <summary>The nodes joined to a node by roads.</summary>
+    static HashSet<int> Component(RoadNetwork net, int start)
+    {
+        var seen = new HashSet<int>();
+        if (start < 0) return seen;
+        var queue = new Queue<int>();
+        queue.Enqueue(start);
+        seen.Add(start);
+        while (queue.Count > 0)
+        {
+            int n = queue.Dequeue();
+            foreach (var road in net.RoadsAt(n))
+            {
+                var r = net.GetRoad(road);
+                int o = r.From == n ? r.To : r.From;
+                if (seen.Add(o)) queue.Enqueue(o);
+            }
+        }
+        return seen;
+    }
+
     internal static bool Connect(Simulation sim, Town a, Town b)
     {
         var net = sim.Network;
         float dx = b.X - a.X, dz = b.Z - a.Z, len = MathF.Sqrt(dx * dx + dz * dz); dx /= len; dz /= len;
-        var fromA = NodesNear(net, a.X + dx * 250f, a.Z + dz * 250f, 400f, 10);
-        var fromB = NodesNear(net, b.X - dx * 250f, b.Z - dz * 250f, 400f, 10);
+        // From the edge of each town (its radius, but never past 45 % of the way between them): the streets of a town reach far.
+        float ra = MathF.Min(a.Radius, len * 0.45f), rb = MathF.Min(b.Radius, len * 0.45f);
+        // Only nodes that belong to the town's own streets (a third town may lie between them, with streets of its own).
+        var own = Component(net, net.FindNodeNear(a.X, a.Z, 300f, withRoadsOnly: true));
+        var other = Component(net, net.FindNodeNear(b.X, b.Z, 300f, withRoadsOnly: true));
+        var fromA = NodesNear(net, a.X + dx * ra, a.Z + dz * ra, 300f, 400).Where(own.Contains).Take(10).ToList();
+        var fromB = NodesNear(net, b.X - dx * rb, b.Z - dz * rb, 300f, 400).Where(other.Contains).Take(10).ToList();
         foreach (int na in fromA)
             foreach (int nb in fromB)
             {

@@ -452,6 +452,47 @@ public sealed class RoadNetwork
     }
 
     /// <summary>
+    /// The nearest node within <paramref name="radius"/> of a point that a click may snap to (<see cref="IsSnapTarget"/>), or -1: a click
+    /// near a bend of a street, or over a bridge, takes the road's centre line instead.
+    /// </summary>
+    public int FindSnapNode(float x, float z, float radius)
+    {
+        int best = -1;
+        float bestDistance = radius * radius;
+        for (int n = 0; n < _nodes.Count; n++)
+        {
+            float d = (_nodes[n].X - x) * (_nodes[n].X - x) + (_nodes[n].Z - z) * (_nodes[n].Z - z);
+            if (d <= bestDistance && IsSnapTarget(n)) { best = n; bestDistance = d; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Whether a node is a place a new road may be joined to by a click: a junction (three roads or more), the end of a road, or a corner where
+    /// two roads meet at 20 degrees or more. Not a plain pass-through (two roads that go on from each other), not an end of a bridge or tunnel,
+    /// and not a node that another road passes over or under (it lies under that road's width).
+    /// </summary>
+    public bool IsSnapTarget(int node)
+    {
+        var roads = _nodeRoads[node];
+        if (roads.Count == 0) return false;
+        foreach (var id in roads)
+            if (_roads[id.Value].Structure != RoadStructure.None) return false;
+        if (roads.Count == 2)
+        {
+            float turn = MathF.Abs(MathF.IEEERemainder(LeavingHeading(_roads[roads[0].Value], node) - LeavingHeading(_roads[roads[1].Value], node) - MathF.PI, MathF.Tau));
+            if (turn < 0.35f) return false;
+        }
+        var (x, z) = _nodes[node];
+        foreach (var road in _roads)
+            if (!road.Retired && road.From != node && road.To != node && road.Geometry.DistanceTo(x, z) < HalfWidth(road.Type)) return false;
+        return true;
+    }
+
+    /// <summary>The heading a road leaves a node with.</summary>
+    static float LeavingHeading(Road road, int node) => road.From == node ? road.Geometry.HeadingAt(0f) : road.Geometry.HeadingAt(road.Geometry.Length) + MathF.PI;
+
+    /// <summary>
     /// The nearest node within <paramref name="radius"/> of a point, or -1. With <paramref name="withRoadsOnly"/> nodes
     /// that no road reaches any more (left behind by removing or moving roads) are skipped.
     /// </summary>
