@@ -11,24 +11,32 @@ public sealed record TerrainSettings(float Mountains = 0.5f, float Water = 0.5f,
     public static readonly TerrainSettings Default = new();
 }
 
+/// <summary>Which edges of a generated map are sea: none, one, two next to each other, three, or all four (an island).</summary>
+public enum CoastKind { None, OneSide, TwoSides, ThreeSides, Island }
+
 /// <summary>
-/// Builds the heights and biomes of a generated map. The land is a function of the position (mountain belts along ridge lines,
-/// hills with the slope-damped noise that looks eroded, plains, a rise toward the far edge, a ragged coast and lakes), so a coarse
-/// grid and a fine one show the same land. The rivers come from a drainage pass on a fixed 16 m grid: the land is filled so every
-/// cell drains to the sea or the edge, the flow of every cell is summed down its path, and the cells that carry enough water are
-/// cut into the land as channels with a flat bed and valley walls, graded to the water surface where the land is low. Big rivers
-/// cut deeper and wider, so they stay wet farther inland and leave a wide flat floodplain.
+/// Builds the heights and biomes of a generated map. The land before erosion is a function of the position (ranges of ridged
+/// mountains along belts, rolling hills, plains, a rise toward the far edge, a ragged coast and lakes). The seed picks which
+/// edges are sea (<see cref="CoastKind"/>). Then the land is eroded on a fixed 16 m grid, so a coarse grid and a fine one show the
+/// same land: the drainage of the land is found (filled so every cell drains to the sea or the edge, the flow of every cell summed
+/// down its path), the streams cut valleys in proportion to the water they carry, and steep slopes slump. The change is kept as a
+/// field that the fine heights add to. The rivers come from the same drainage: the cells that carry enough water are cut into the
+/// land as channels with a flat bed and valley walls, graded to the water surface where the land is low. Big rivers cut deeper and
+/// wider, so they stay wet farther inland and leave a wide flat floodplain.
 /// </summary>
-static class TerrainGenerator
+static partial class TerrainGenerator
 {
     const float PlainsHeight = 2.5f;   // land starts this far above the water
     const float WaterDepth = 4f;       // how far the middle of a lake or river lies below the surface
     const float SeaWidth = 400f;       // the sea reaches this far in from the edge of the map
     const float SeaShore = 120f;       // and its shore slopes over this distance
-    const float SeaMinimumApproach = 0.3f; // an edge the water runs toward at a shallower angle than this has no sea
     const float RiseInland = 3.5f;      // how much higher the far edge is than the sea edge, besides the hills
     const float DrainCell = 16f;       // metres per cell of the drainage grid
     const float Epsilon = 0.01f;       // fall forced on flat ground so water drains
+    const int ErosionRounds = 18;      // rounds of erosion on a map of the game's size
+    const int PreviewErosionRounds = 8; // and on a coarse preview, which only has to show the same shapes
+    const float StreamPower = 1.0f;    // the share of the gap to the cell downstream that a stream with 3600 cells of catchment closes in a round
+    const float Talus = 1.0f;          // the steepest slope the rock holds (rise over run)
 
     sealed class Context
     {
@@ -37,21 +45,63 @@ static class TerrainGenerator
         public float Half, Amplitude, Dx, Dz, Range;
         public bool Water;
         public TerrainSettings Settings = null!;
+        public Coast Coast;
+        public float SeaWidth;
+        public float[]? Delta;   // what the erosion changed in the relief, on the 16 m grid
+        public int DrainCells;
     }
 
-    public static void Fill(Terrain terrain, ulong seed, float amplitude, bool water, TerrainSettings settings, float dx, float dz)
+    /// <summary>The edges that are sea: bit 0 east (+x), 1 south (+z), 2 west (-x), 3 north (-z); an island is all four with a round coast.</summary>
+    internal readonly record struct Coast(CoastKind Kind, int Edges)
+    {
+        public bool Has(int edge) => (Edges >> edge & 1) != 0;
+        /// <summary>The way the water runs: toward the sea, or by the seed when there is none (or it is all around).</summary>
+        public (float Dx, float Dz) Direction(ulong seed)
+        {
+            float x = (Has(0) ? 1f : 0f) - (Has(2) ? 1f : 0f), z = (Has(1) ? 1f : 0f) - (Has(3) ? 1f : 0f);
+            if (x == 0f && z == 0f)
+            {
+                float angle = Terrain.Lattice(seed, 20, 0, 0) * MathF.Tau;
+                return (MathF.Cos(angle), MathF.Sin(angle));
+            }
+            float length = MathF.Sqrt(x * x + z * z);
+            return (x / length, z / length);
+        }
+    }
+
+    /// <summary>Draws the coast from the seed: no sea, a side, a corner, a peninsula or an island. A map with no water has none.</summary>
+    internal static Coast ChooseCoast(ulong seed, TerrainSettings settings, bool water)
+    {
+        if (!water || settings.Water < 0.05f) return new Coast(CoastKind.None, 0);
+        float roll = Terrain.Lattice(seed, 21, 0, 0);
+        int pick = Math.Min(3, (int)(Terrain.Lattice(seed, 22, 0, 0) * 4f));
+        if (roll < 0.30f) return new Coast(CoastKind.None, 0);
+        if (roll < 0.60f) return new Coast(CoastKind.OneSide, 1 << pick);
+        if (roll < 0.78f) return new Coast(CoastKind.TwoSides, 1 << pick | 1 << ((pick + 1) & 3));
+        if (roll < 0.90f) return new Coast(CoastKind.ThreeSides, 15 & ~(1 << pick));
+        return new Coast(CoastKind.Island, 15);
+    }
+
+    public static void Fill(Terrain terrain, ulong seed, float amplitude, bool water, TerrainSettings settings, float dx, float dz, Coast coast)
     {
         var c = new Context
         {
             Seed = seed, Terrain = terrain, Half = terrain.HalfSize, Amplitude = amplitude, Dx = dx, Dz = dz, Water = water,
             Range = terrain.HalfSize * (MathF.Abs(dx) + MathF.Abs(dz)),
             Settings = new TerrainSettings(Math.Clamp(settings.Mountains, 0f, 1f), Math.Clamp(settings.Water, 0f, 1f), Math.Clamp(settings.Forests, 0f, 1f)),
+            Coast = coast,
+            DrainCells = (int)MathF.Round(terrain.Cells * terrain.CellSize / DrainCell),
         };
+        float widthFactor = coast.Kind switch { CoastKind.ThreeSides => 1.5f, CoastKind.TwoSides => 1.15f, _ => 1f };
+        c.SeaWidth = SeaWidth * (0.7f + 0.9f * c.Settings.Water) * widthFactor;
+        c.Delta = Erode(c, terrain.Cells >= 256 ? ErosionRounds : PreviewErosionRounds);
         int n = terrain.Samples;
         var heights = terrain.Heights;
-        for (int j = 0; j < n; j++)
+        Parallel.For(0, n, j =>
+        {
             for (int i = 0; i < n; i++)
                 heights[j * n + i] = Ground(c, (i - terrain.Cells * 0.5f) * terrain.CellSize, (j - terrain.Cells * 0.5f) * terrain.CellSize);
+        });
 
         var nearRiver = new float[n * n];
         if (water) CutRivers(c, heights, nearRiver);
@@ -60,12 +110,29 @@ static class TerrainGenerator
 
     // ---- the land ----
 
+    /// <summary>The rise of the ground toward the far side from the sea, besides the relief.</summary>
+    static float Tilt(Context c, float x, float z)
+    {
+        float proj = (x * c.Dx + z * c.Dz) / Math.Max(c.Range, 1f);
+        float inland = 0.5f - 0.5f * Math.Clamp(proj, -1f, 1f); // 0 at the sea side, 1 at the far side
+        return RiseInland * MathF.Pow(inland, 1.1f);
+    }
+
     /// <summary>Height of the ground at a point before the rivers are cut: the sea and the lakes are in it.</summary>
     static float Ground(Context c, float x, float z)
     {
+        float relief = Relief(c, x, z);
+        if (c.Delta != null) relief = MathF.Max(0f, relief + DeltaAt(c, x, z));
+        return GroundFrom(c, x, z, relief);
+    }
+
+    /// <summary>
+    /// The relief of the land at a point before it is eroded, above the plains: rolling hills, and mountain belts along a few long
+    /// ridge lines with ridged noise on them (sharp crests, spurs between them), lowered toward the sea.
+    /// </summary>
+    static float Relief(Context c, float x, float z)
+    {
         var s = c.Settings;
-        float proj = (x * c.Dx + z * c.Dz) / Math.Max(c.Range, 1f);
-        float inland = 0.5f - 0.5f * Math.Clamp(proj, -1f, 1f); // 0 at the sea side, 1 at the far side
         // Bend the coordinates so that ridges and valleys do not run straight.
         float wx = x + (Terrain.ValueNoise(c.Seed, 30, x / 900f, z / 900f) - 0.5f) * 420f;
         float wz = z + (Terrain.ValueNoise(c.Seed, 31, x / 900f + 17f, z / 900f) - 0.5f) * 420f;
@@ -73,40 +140,113 @@ static class TerrainGenerator
         float scale = c.Amplitude / 70f;
         // Rolling hills, damped where the ground is already steep (what erosion leaves: gentle slopes with sharp detail on the tops).
         float n = Fbm(c.Seed, 0, wx, wz, 1000f, 5);
-        float shaped = MathF.Max(0f, n - 0.47f) / 0.53f;
+        float shaped = MathF.Max(0f, n - 0.45f) / 0.55f;
         // Highland and lowland: big stretches of the map are plain, with only gentle swells; hills rise in the rest.
-        float upland = Smooth(0.58f - 0.2f * s.Mountains, 0.74f - 0.2f * s.Mountains, Terrain.ValueNoise(c.Seed, 11, wx / 2000f, wz / 2000f));
-        float hills = scale * (30f + 30f * s.Mountains) * MathF.Pow(shaped, 2.4f) * 1.8f * upland + 2.2f * shaped;
-        // Mountain belts: a few long ridge lines, with ridged noise on them.
-        float belt = Smooth(0.80f - 0.08f * s.Mountains, 0.98f, 1f - MathF.Abs(2f * Terrain.ValueNoise(c.Seed, 12, wx / 2800f, wz / 2800f) - 1f));
-        float ridged = Smooth(0.55f, 0.95f, 1f - MathF.Abs(2f * Fbm(c.Seed, 13, wx, wz, 1100f, 5) - 1f));
-        float mountains = scale * (14f + 85f * MathF.Pow(s.Mountains, 1.3f)) * belt * ridged * ridged * (0.55f + 0.45f * inland);
-        float rel = PlainsHeight + RiseInland * MathF.Pow(inland, 1.1f) + hills + mountains
-            + (Terrain.ValueNoise(c.Seed, 14, x / 45f, z / 45f) - 0.5f) * 0.7f * Smooth(0f, 6f, hills + mountains);
+        float upland = Smooth(0.62f - 0.14f * s.Mountains, 0.80f - 0.14f * s.Mountains, Terrain.ValueNoise(c.Seed, 11, wx / 2000f, wz / 2000f));
+        float hills = scale * (22f + 40f * s.Mountains) * MathF.Pow(shaped, 1.3f) * (0.08f + 0.92f * upland) + 2.2f * shaped;
 
+        // Mountain belts: long ridge lines, wider the more mountains the map has, with ridged noise on them.
+        float seaDamp = 0.3f + 0.7f * Smooth(0f, 1400f, SeaDistance(c, x, z));
+        float belt = Belt(c, 0, wx, wz) + Smooth(0.75f, 1f, s.Mountains) * 0.7f * Belt(c, 1, wx, wz);
+        belt = MathF.Min(1f, belt);
+        float rx = wx + (Terrain.ValueNoise(c.Seed, 62, x / 330f, z / 330f) - 0.5f) * 160f;
+        float rz = wz + (Terrain.ValueNoise(c.Seed, 63, x / 330f + 5f, z / 330f) - 0.5f) * 160f;
+        float crest = Ridged(c.Seed, 64, rx, rz, 1300f, 6);
+        float peak = scale * (30f + 520f * MathF.Pow(s.Mountains, 1.3f));
+        float mountains = peak * belt * (0.12f + 0.88f * crest * crest) * seaDamp;
+        return hills * (0.4f + 0.6f * seaDamp) + mountains
+            + (Terrain.ValueNoise(c.Seed, 14, x / 45f, z / 45f) - 0.5f) * (0.7f + 2.5f * Smooth(0f, 60f, mountains)) * Smooth(0f, 6f, hills + mountains);
+    }
+
+    /// <summary>
+    /// How much a point lies in a mountain range, 0 to 1. Each range is a bent line across the map, from the seed, so that a map
+    /// with mountains always has them; it is wider the more mountains the map has and its height varies along it.
+    /// </summary>
+    static float Belt(Context c, int range, float x, float z)
+    {
+        float angle = Terrain.Lattice(c.Seed, 23, range, 0) * MathF.PI;
+        float ax = MathF.Cos(angle), az = MathF.Sin(angle);
+        float along = x * ax + z * az;
+        float offset = (Terrain.Lattice(c.Seed, 24, range, 0) - 0.5f) * 1.1f * c.Half;
+        float d = -x * az + z * ax - offset + (Terrain.ValueNoise(c.Seed, 65 + range, along / 1700f, 3f * range) - 0.5f) * 1000f;
+        float halfWidth = (300f + 370f * c.Settings.Mountains) * (c.Coast.Kind == CoastKind.Island ? 0.6f : 1f);
+        float strength = 0.5f + 0.5f * Terrain.ValueNoise(c.Seed, 67 + range, along / 1500f, 9f * range);
+        return (1f - Smooth(0.2f * halfWidth, halfWidth, MathF.Abs(d))) * strength;
+    }
+
+    /// <summary>The ground from its relief: the plains with the relief on them, then the lakes and the sea.</summary>
+    static float GroundFrom(Context c, float x, float z, float relief)
+    {
+        var s = c.Settings;
+        float rel = PlainsHeight + Tilt(c, x, z) + relief;
         if (!c.Water) return rel - PlainsHeight + 0.5f;
+        // Bend the coordinates the same way as the relief does.
+        float wx = x + (Terrain.ValueNoise(c.Seed, 30, x / 900f, z / 900f) - 0.5f) * 420f;
+        float wz = z + (Terrain.ValueNoise(c.Seed, 31, x / 900f + 17f, z / 900f) - 0.5f) * 420f;
         float surface = c.Terrain.WaterSurfaceAt(x, z);
         float land = surface + rel;
         // Lakes sit in the lowlands, in the highs of a noise field; the more water the map has, the more of the field is a lake.
         float lakeEdge = 0.80f - 0.12f * s.Water;
         float lake = Smooth(lakeEdge, lakeEdge + 0.07f, Terrain.ValueNoise(c.Seed, 9, wx / 800f, wz / 800f) * 0.75f + Terrain.ValueNoise(c.Seed, 10, wx / 300f, wz / 300f) * 0.25f);
         float lowland = 1f - Smooth(PlainsHeight + 3f, PlainsHeight + 10f, rel);
-        float mask = lake * lowland;
-        // The sea takes the stretch along each edge the water runs toward, with a ragged coast that is straight at the very edge.
-        float seaWidth = SeaWidth * (0.7f + 0.9f * s.Water);
-        float coast = (Terrain.ValueNoise(c.Seed, 15, x / 520f, z / 520f) - 0.5f) * 150f + (Terrain.ValueNoise(c.Seed, 16, x / 170f, z / 170f) - 0.5f) * 40f;
-        mask = MathF.Max(mask, Sea(c.Half - x, c.Dx, seaWidth, coast));
-        mask = MathF.Max(mask, Sea(c.Half + x, -c.Dx, seaWidth, coast));
-        mask = MathF.Max(mask, Sea(c.Half - z, c.Dz, seaWidth, coast));
-        mask = MathF.Max(mask, Sea(c.Half + z, -c.Dz, seaWidth, coast));
+        float mask = lake * lowland * Smooth(0.03f, 0.12f, s.Water);
+        mask = MathF.Max(mask, Sea(c, x, z));
         return land + (surface - WaterDepth - land) * mask;
     }
 
-    static float Sea(float inland, float toward, float seaWidth, float coast)
+    /// <summary>How much of a point is sea, 0 to 1: the strip along each sea edge, or all but a round island.</summary>
+    static float Sea(Context c, float x, float z)
     {
-        if (toward < SeaMinimumApproach) return 0f;
-        float width = seaWidth * toward;
-        return 1f - Smooth(width - SeaShore, width, inland + coast * Smooth(60f, 260f, inland));
+        if (c.Coast.Kind == CoastKind.None) return 0f;
+        // The coast is ragged, but straight at the very edge.
+        float coast = (Terrain.ValueNoise(c.Seed, 15, x / 520f, z / 520f) - 0.5f) * 150f + (Terrain.ValueNoise(c.Seed, 16, x / 170f, z / 170f) - 0.5f) * 40f;
+        if (c.Coast.Kind == CoastKind.Island)
+        {
+            float wobble = (Terrain.ValueNoise(c.Seed, 70, x / 700f, z / 700f) - 0.5f) * 0.30f + (Terrain.ValueNoise(c.Seed, 71, x / 230f, z / 230f) - 0.5f) * 0.08f;
+            float radius = 0.86f - 0.12f * c.Settings.Water;
+            return Smooth(radius - 0.1f, radius, MathF.Sqrt(x * x + z * z) / c.Half + wobble);
+        }
+        float mask = 0f;
+        if (c.Coast.Has(0)) mask = MathF.Max(mask, EdgeSea(c.Half - x, c.SeaWidth, coast));
+        if (c.Coast.Has(1)) mask = MathF.Max(mask, EdgeSea(c.Half - z, c.SeaWidth, coast));
+        if (c.Coast.Has(2)) mask = MathF.Max(mask, EdgeSea(c.Half + x, c.SeaWidth, coast));
+        if (c.Coast.Has(3)) mask = MathF.Max(mask, EdgeSea(c.Half + z, c.SeaWidth, coast));
+        return mask;
+    }
+
+    static float EdgeSea(float inland, float width, float coast) =>
+        1f - Smooth(width - SeaShore, width, inland + coast * Smooth(60f, 260f, inland));
+
+    /// <summary>Roughly how far a point is from the sea, in metres (a big number where there is none).</summary>
+    static float SeaDistance(Context c, float x, float z)
+    {
+        if (c.Coast.Kind == CoastKind.None) return 1e5f;
+        if (c.Coast.Kind == CoastKind.Island)
+            return (0.86f - 0.12f * c.Settings.Water - MathF.Sqrt(x * x + z * z) / c.Half) * c.Half;
+        float d = 1e5f;
+        if (c.Coast.Has(0)) d = MathF.Min(d, c.Half - x - c.SeaWidth);
+        if (c.Coast.Has(1)) d = MathF.Min(d, c.Half - z - c.SeaWidth);
+        if (c.Coast.Has(2)) d = MathF.Min(d, c.Half + x - c.SeaWidth);
+        if (c.Coast.Has(3)) d = MathF.Min(d, c.Half + z - c.SeaWidth);
+        return d;
+    }
+
+    /// <summary>Ridged multifractal noise in [0, 1]: sharp crests, with the finer octaves strongest on the crests of the coarser ones.</summary>
+    static float Ridged(ulong seed, int octave0, float x, float z, float wavelength, int octaves)
+    {
+        float sum = 0f, total = 0f, a = 1f, f = 1f / wavelength, weight = 1f;
+        for (int o = 0; o < octaves; o++)
+        {
+            float v = Terrain.ValueNoise(seed, octave0 + o, x * f + o * 7.3f, z * f - o * 3.1f);
+            float r = 1f - MathF.Abs(2f * v - 1f);
+            r *= r;
+            sum += a * r * weight;
+            total += a;
+            weight = Math.Clamp(r * 2f, 0f, 1f);
+            a *= 0.5f;
+            f *= 2f;
+        }
+        return Math.Clamp(sum / total * 1.3f, 0f, 1f);
     }
 
     /// <summary>Noise of several octaves, each lessened where the slope of the ones before is steep; in [0, 1], centred near 0.5.</summary>
@@ -154,56 +294,21 @@ static class TerrainGenerator
         int hn = (int)MathF.Round(terrain.Cells * terrain.CellSize / DrainCell);
         float origin = -hn * DrainCell * 0.5f;
         var dem = new float[hn * hn];
-        for (int j = 0; j < hn; j++)
+        Parallel.For(0, hn, j =>
+        {
             for (int i = 0; i < hn; i++)
             {
                 float x = origin + (i + 0.5f) * DrainCell, z = origin + (j + 0.5f) * DrainCell;
                 // A little roughness that the cut will smooth away makes the water wander instead of running straight down the slope.
                 dem[j * hn + i] = Ground(c, x, z) + (Terrain.ValueNoise(c.Seed, 43, x / 75f, z / 75f) - 0.5f) * 3.5f + (Terrain.ValueNoise(c.Seed, 44, x / 28f, z / 28f) - 0.5f) * 1.6f;
             }
+        });
 
-        // Fill the land from the edge inward, lowest first, so that every cell has a path down to the edge (the sea, or the side of
-        // the map); the cell it was reached from is where its water goes.
         var filled = new float[hn * hn];
         var receiver = new int[hn * hn];
         var order = new int[hn * hn];
-        var closed = new bool[hn * hn];
-        var queue = new PriorityQueue<int, (float, int)>();
-        for (int j = 0; j < hn; j++)
-            for (int i = 0; i < hn; i++)
-            {
-                int k = j * hn + i;
-                receiver[k] = -1;
-                if (i != 0 && j != 0 && i != hn - 1 && j != hn - 1) continue;
-                filled[k] = dem[k];
-                closed[k] = true;
-                queue.Enqueue(k, (filled[k], k));
-            }
-        int count = 0;
-        while (queue.TryDequeue(out int cell, out _))
-        {
-            order[count++] = cell;
-            int ci = cell % hn, cj = cell / hn;
-            for (int dj = -1; dj <= 1; dj++)
-                for (int di = -1; di <= 1; di++)
-                {
-                    int ni = ci + di, nj = cj + dj;
-                    if ((di == 0 && dj == 0) || ni < 0 || nj < 0 || ni >= hn || nj >= hn) continue;
-                    int nk = nj * hn + ni;
-                    if (closed[nk]) continue;
-                    closed[nk] = true;
-                    filled[nk] = MathF.Max(dem[nk], filled[cell] + Epsilon);
-                    receiver[nk] = cell;
-                    queue.Enqueue(nk, (filled[nk], nk));
-                }
-        }
         var flow = new float[hn * hn];
-        for (int k = 0; k < hn * hn; k++) flow[k] = 1f;
-        for (int o = count - 1; o >= 0; o--)
-        {
-            int cell = order[o];
-            if (receiver[cell] >= 0) flow[receiver[cell]] += flow[cell];
-        }
+        Drain(dem, hn, filled, receiver, order, flow);
 
         // The cells that carry enough water are river; the more water the map has, the smaller the streams that count.
         float threshold = 3600f - 2200f * c.Settings.Water;
@@ -264,7 +369,8 @@ static class TerrainGenerator
         int stride = Math.Max(1, (int)MathF.Round(DrainCell / terrain.CellSize));
         float treeLine = Math.Max(0f, 0.78f - 0.30f * c.Settings.Forests);
         float half = terrain.Cells * 0.5f;
-        for (int j = 0; j < n; j++)
+        Parallel.For(0, n, j =>
+        {
             for (int i = 0; i < n; i++)
             {
                 int k = j * n + i;
@@ -275,17 +381,18 @@ static class TerrainGenerator
                 float gz = (heights[Math.Min(n - 1, j + stride) * n + i] - heights[Math.Max(0, j - stride) * n + i]) / (2f * stride * terrain.CellSize);
                 float slope = MathF.Sqrt(gx * gx + gz * gz);
                 Biome biome = Biome.Field;
-                if (rel > 105f) biome = Biome.Snow;
-                else if (slope > 0.7f || rel > 72f) biome = Biome.Rock;
+                if (rel > 230f) biome = Biome.Snow;
+                else if (slope > 0.7f || rel > 150f) biome = Biome.Rock;
                 else if ((rel < 1.2f && NearWater(heights, terrain, i, j, stride)) || nearRiver[k] >= 1f) biome = Biome.Sand;
                 else if (rel < 2.4f && nearRiver[k] > 0.3f && Terrain.ValueNoise(c.Seed, 17, x / 90f, z / 90f) > 0.5f) biome = Biome.Swamp;
-                else if (slope < 0.55f && rel < 78f)
+                else if (slope < 0.55f && rel < 110f)
                 {
                     float f = 0.62f * Terrain.ValueNoise(c.Seed, 18, x / 260f, z / 260f) + 0.38f * Terrain.ValueNoise(c.Seed, 19, x / 70f, z / 70f);
                     if (f + 0.1f * nearRiver[k] > treeLine + 0.0f) biome = Biome.Forest;
                 }
                 biomes[k] = (byte)biome;
             }
+        });
         return biomes;
     }
 

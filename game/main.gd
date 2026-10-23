@@ -1,11 +1,10 @@
 extends Node3D
 ## Wires the world together: environment, HUD, input. Command line (after `--`):
-##   --bench                      measure frame rate with 1000 vehicles at 1x and 8x, then quit
+##   --bench                      measure frame rate on the generated map with 1000 more vehicles at 1x and 8x, then quit
 ##   --shot=<file> [--shot-after=<seconds>]   save a screenshot and quit
 ##   --hour=<0 to 24>             hold the light at that hour of the day (lighting.gd), for screenshots
 ##   --selftest-build             build roads with simulated mouse clicks, run, print stats, quit
-##   --hills                      start on an empty generated-hills map instead of the default map
-##   --towns[=<n>]                start on the generated map with n towns (default 5)
+##   --towns[=<n>]                start on the generated map with n towns (default 5); a self-test that is not told to use --towns runs on a level empty map (the generated land with nothing on it for --selftest-hills, --selftest-place, --selftest-curve and --selftest-models)
 ##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
 ##   --selftest-place             right click, drag, parallel roads, a turned and raised depot and the camera following, with simulated input on the hills map, print, quit
@@ -70,15 +69,12 @@ func _ready() -> void:
 			get_tree().change_scene_to_file.call_deferred("res://game/main_menu.tscn")
 			return
 		_loaded = true
-	var map: String = Session.map
-	if _args.has("--hills") or _args.has("--selftest-hills") or _args.has("--selftest-place") or _args.has("--selftest-curve"):
-		map = "hills"
-	if _args.has("--towns"):
-		map = "towns"
-		if _args["--towns"] is String:
-			Session.towns = int(_args["--towns"])
+	if _args.has("--towns") and _args["--towns"] is String:
+		Session.towns = int(_args["--towns"])
 	if not _loaded:
-		_new_world(map)
+		_new_world()
+		if _args.has("--bench") or _args.has("--perf-sweep"):
+			host.SpawnTraffic(VEHICLES) # the load the frame times are measured with
 	if _args.has("--focus"):
 		rig.focus_on(rig.position.x, rig.position.z) # now that the terrain exists, stand on it
 
@@ -405,34 +401,32 @@ func _restore_host_state(blob: PackedByteArray) -> void:
 	hud.restore_feed(state.get("feed", []))
 
 
-## Replaces the world: "towns" (hills with towns), "demo" (street grid with traffic), "hills" or "empty".
+## Replaces the world with a new generated map from the new-game settings. A self-test without --towns gets an empty test map instead.
 ## The names in the world keep the size of the interface text as the window or the interface size changes.
 func _apply_label_scale() -> void:
 	host.SetLabelScale(Settings.label_scale())
 
 
-func _new_world(map: String) -> void:
+func _new_world() -> void:
 	host.StartFrequency = Session.frequency
-	match map:
-		"towns":
-			var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns, Session.industries, Session.mountains, Session.water, Session.forests, Session.size)
-			_world_note = "" if placed >= Session.towns else "Only %d of %d towns fit on this map" % [placed, Session.towns]
-			var unlinked: int = host.UnlinkedIndustries
-			if unlinked > 0:
-				_world_note += ("" if _world_note == "" else ". ") + "%d industries are out of reach of their suppliers, a town or the other deposits on this map" % unlinked
-			if host.GatewaysPlaced < 2:
-				_world_note += ("" if _world_note == "" else ". ") + "Only %d of the 2 gateways fit on this map" % host.GatewaysPlaced
-			if hud != null and _world_note != "":
-				hud.show_message(_world_note)
-			var towns: Array = host.GetTowns()
-			if not towns.is_empty() and not _args.has("--focus"):
-				rig.focus_on(towns[0]["x"], towns[0]["z"])
-		"hills":
-			host.NewHillsWorld(Session.world_seed)
-		"empty":
-			host.NewEmptyWorld(Session.world_seed)
-		_:
-			host.NewDemoWorld(Session.world_seed, VEHICLES)
+	var selftest := false
+	for key in _args:
+		selftest = selftest or String(key).begins_with("--selftest")
+	if selftest and not _args.has("--towns"):
+		host.NewTestWorld(Session.world_seed, _args.has("--selftest-hills") or _args.has("--selftest-place") or _args.has("--selftest-curve") or _args.has("--selftest-models"))
+		return
+	var placed: int = host.NewTownsWorld(Session.world_seed, Session.towns, Session.industries, Session.mountains, Session.water, Session.forests, Session.size)
+	_world_note = "" if placed >= Session.towns else "Only %d of %d towns fit on this map" % [placed, Session.towns]
+	var unlinked: int = host.UnlinkedIndustries
+	if unlinked > 0:
+		_world_note += ("" if _world_note == "" else ". ") + "%d industries are out of reach of their suppliers, a town or the other deposits on this map" % unlinked
+	if host.GatewaysPlaced < 2:
+		_world_note += ("" if _world_note == "" else ". ") + "Only %d of the 2 gateways fit on this map" % host.GatewaysPlaced
+	if hud != null and _world_note != "":
+		hud.show_message(_world_note)
+	var towns: Array = host.GetTowns()
+	if not towns.is_empty() and not _args.has("--focus"):
+		rig.focus_on(towns[0]["x"], towns[0]["z"])
 
 
 func _on_action(action: String) -> void:
@@ -446,8 +440,8 @@ func _on_action(action: String) -> void:
 			hud.show_message("Advance of 100,000 granted" if host.TakeLoan(100000) else "The ministry will not advance more")
 		"repay":
 			hud.show_message("Repaid 100,000" if host.RepayLoan(100000) else "Nothing to repay, or not enough money")
-		"empty", "hills", "demo", "towns":
-			_new_world(action)
+		"towns":
+			_new_world()
 
 
 ## Buys a vehicle for a line, or deletes the line (selling its vehicles): the buttons of the Lines panel.
@@ -532,7 +526,7 @@ func _on_garage_assign(parked: int, line: int) -> void:
 
 ## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.
 func _selftest_build() -> void:
-	host.NewEmptyWorld(Session.world_seed)
+	host.NewTestWorld(Session.world_seed, false)
 	rig.distance = float(_args.get("--distance", 400.0))
 	rig.pitch = -89.0
 	rig.position = Vector3.ZERO
@@ -580,7 +574,7 @@ func _selftest_build() -> void:
 
 ## Builds a road, a depot, two stations, a bus line and a truck line through the host API, runs them for 30 days and prints the books.
 func _selftest_lines() -> void:
-	host.NewEmptyWorld(Session.world_seed)
+	host.NewTestWorld(Session.world_seed, false)
 	await get_tree().process_frame
 	print("SELFTEST lines: road built=%s depot=%s" % [host.BuildRoad(0, 0, 1200, 0, 0), host.BuildDepot(0, 0, 0, false, NAN, 0.0)])
 	var a: int = host.BuildStation(150, 0, false)
@@ -610,7 +604,7 @@ func _selftest_ui() -> void:
 	if _args.has("--towns"):
 		host.NewTownsWorld(Session.world_seed, 3, 6, 0.3, 0.3, 0.3, 1)
 	else:
-		host.NewEmptyWorld(Session.world_seed)
+		host.NewTestWorld(Session.world_seed, false)
 	await get_tree().process_frame
 	host.BuildRoad(0, 0, 1200, 0, 0)
 	host.BuildDepot(0, 0, 0, false, NAN, 0.0)
@@ -640,7 +634,7 @@ func _selftest_ui() -> void:
 
 ## The Models of M7b in the real game: the road vehicles, a train and the cars of the ambient traffic, seen from close.
 func _selftest_models() -> void:
-	host.NewHillsWorld(Session.world_seed)
+	host.NewTestWorld(Session.world_seed, true)
 	await get_tree().process_frame
 	print("MODELS road=%s" % host.BuildRoad(-200, 0, 600, 0, 0))
 	var depot_built := false

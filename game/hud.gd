@@ -159,6 +159,7 @@ var _legend: PanelContainer
 var _legend_title: Label
 var _legend_rows: VBoxContainer
 var _legend_note: Label
+var _legend_rule: Control
 
 
 func _ready() -> void:
@@ -648,20 +649,25 @@ func show_message(text: String) -> void:
 func _build_legend() -> void:
 	_legend = PanelContainer.new()
 	_legend.visible = false
-	_legend.custom_minimum_size = Vector2(320, 0)
+	_legend.custom_minimum_size = Vector2(300, 0)
 	_legend.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_legend.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_legend.offset_left = 12.0
 	_legend.offset_bottom = -150.0
 	_root.add_child(_legend)
-	var column := Kit.column()
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 10)
 	_legend.add_child(column)
+	column.add_child(Kit.section("Map view"))
 	_legend_title = Kit.heading("")
 	column.add_child(_legend_title)
-	_legend_rows = Kit.column()
+	_legend_rows = VBoxContainer.new()
+	_legend_rows.add_theme_constant_override("separation", 8)
 	column.add_child(_legend_rows)
+	_legend_rule = HSeparator.new()
+	column.add_child(_legend_rule)
 	_legend_note = Kit.note("")
-	_legend_note.custom_minimum_size = Vector2(300, 0)
+	_legend_note.add_theme_font_size_override("font_size", 16)
 	column.add_child(_legend_note)
 
 
@@ -675,6 +681,7 @@ func set_overlay_names(names: Array) -> void:
 	for i in names.size():
 		var b := Kit.button(names[i], func() -> void: overlay_selected.emit(i), "V shows the next map view, Shift+V the one before")
 		b.toggle_mode = true
+		b.theme_type_variation = "SegmentButton"
 		b.button_pressed = i == _overlay_index
 		r.add_child(b)
 		_overlay_buttons.append(b)
@@ -694,20 +701,26 @@ func show_overlay(index: int, legend: Dictionary) -> void:
 		child.queue_free()
 	for row in legend["rows"]:
 		var line := Kit.row()
-		var swatch := ColorRect.new()
-		swatch.color = row["colour"]
-		swatch.custom_minimum_size = Vector2(18, 18)
-		swatch.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		var swatch := PanelContainer.new()
+		var dot := StyleBoxFlat.new()
+		dot.bg_color = row["colour"]
+		dot.set_corner_radius_all(7)
+		dot.set_border_width_all(2)
+		dot.border_color = Color(row["colour"]).lightened(0.35)
+		swatch.add_theme_stylebox_override("panel", dot)
+		swatch.custom_minimum_size = Vector2(16, 16)
+		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(swatch)
 		var text := Label.new()
 		text.text = row["text"]
 		text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		text.custom_minimum_size = Vector2(260, 0)
+		text.custom_minimum_size = Vector2(240, 0)
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.add_child(text)
 		_legend_rows.add_child(line)
 	_legend_note.text = legend["note"]
 	_legend_note.visible = legend["note"] != ""
+	_legend_rule.visible = _legend_note.visible
 
 
 # --- debug and the end of the campaign ---
@@ -726,7 +739,7 @@ func _build_debug_panel() -> void:
 	var r := Kit.flow()
 	r.custom_minimum_size = Vector2(440, 0)
 	column.add_child(r)
-	for entry in [["+100 cars", "traffic"], ["Crash!", "crash"], ["Empty map", "empty"], ["Hills map", "hills"], ["Towns map", "towns"], ["Demo map", "demo"]]:
+	for entry in [["+100 cars", "traffic"], ["Crash!", "crash"], ["New map", "towns"]]:
 		r.add_child(Kit.button(entry[0], func() -> void: action_requested.emit(entry[1])))
 
 

@@ -49,9 +49,12 @@ public class GatewayTests
     [Fact]
     public void EveryMapHasOneRoadGatewayAndOneRailGateway_OnMostSeeds()
     {
-        int both = 0, maps = 40;
-        for (ulong seed = 1; seed <= (ulong)maps; seed++)
+        int both = 0, maps = 0;
+        for (ulong seed = 1; seed <= 40; seed++)
         {
+            // An island has no land edge for a gateway, and a peninsula has one edge, so it has the one gateway of its mode at most.
+            if (Terrain.CoastOf(seed) is CoastKind.Island or CoastKind.ThreeSides) continue;
+            maps++;
             var (_, plan) = Make(seed);
             Assert.NotNull(plan.Gateways);
             Assert.True(plan.Gateways!.Count(g => g.Kind == GatewayKind.Road) <= 1);
@@ -112,7 +115,7 @@ public class GatewayTests
     [Fact]
     public void ANewTownsWorld_HasGateways()
     {
-        var (sim, plan) = WorldBuilder.Towns(5, 3, IndustryAmount.Normal);
+        var (sim, plan) = WorldBuilder.Towns(1, 3, IndustryAmount.Normal); // not an island: an island has no land edge for a gateway
 
         Assert.Equal(plan.Gateways!.Count, sim.Gateways.Count);
         Assert.NotEmpty(sim.Gateways);

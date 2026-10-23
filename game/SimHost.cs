@@ -200,38 +200,19 @@ public partial class SimHost : Node3D
 
     IncidentFrequency StartingFrequency => (IncidentFrequency)Math.Clamp(StartFrequency, 0, 3);
 
-    /// <summary>Starts a fresh demo world with the given seed and number of ambient vehicles.</summary>
-    public void NewDemoWorld(long seed, int vehicles)
+    /// <summary>
+    /// Starts an empty map for the self-tests (<c>main.gd</c> with <c>--selftest-*</c>): level ground, or the generated land of the
+    /// seed with no towns on it when <paramref name="generated"/>. The game itself only starts <see cref="NewTownsWorld"/>.
+    /// </summary>
+    public void NewTestWorld(long seed, bool generated)
     {
-        var net = new RoadNetwork(Terrain.Flat());
-        DemoWorld.Build(net);
-        Sim = new Simulation(net, (ulong)seed, StartingFrequency);
-        // The grid itself is the initial world; everything after it goes through commands so it is logged.
-        foreach (int node in new[] { net.NodeCount / 5, net.NodeCount * 2 / 5, net.NodeCount * 3 / 5, net.NodeCount * 4 / 5 })
-            Sim.Execute(new AddDepotCommand(node, DepotLevel.Simple));
-        Sim.Execute(new SeedTrafficCommand(vehicles));
-        RebuildRoads();
-        _accumulator = 0;
-    }
-
-    /// <summary>Starts an empty flat map.</summary>
-    public void NewEmptyWorld(long seed)
-    {
-        Sim = new Simulation(new RoadNetwork(Terrain.Flat()), (ulong)seed, StartingFrequency);
-        RebuildRoads();
-        _accumulator = 0;
-    }
-
-    /// <summary>Starts an empty map of generated hills.</summary>
-    public void NewHillsWorld(long seed)
-    {
-        Sim = new Simulation(new RoadNetwork(Terrain.Generate((ulong)seed)), (ulong)seed, StartingFrequency);
+        Sim = new Simulation(new RoadNetwork(generated ? Terrain.Generate((ulong)seed) : Terrain.Flat()), (ulong)seed, StartingFrequency);
         RebuildRoads();
         _accumulator = 0;
     }
 
     /// <summary>
-    /// Starts a map of generated hills with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many; <paramref name="mountains"/>, <paramref name="water"/> and <paramref name="forests"/> from 0 to 1 say how much of each the land has; <paramref name="size"/>: 0 small, 1 normal, 2 large).
+    /// Starts a generated map (mountains, plains, rivers, lakes and a coast the seed picks) with towns and industries (<paramref name="industries"/>: 0 few, 1 normal, 2 many; <paramref name="mountains"/>, <paramref name="water"/> and <paramref name="forests"/> from 0 to 1 say how much of each the land has; <paramref name="size"/>: 0 small, 1 normal, 2 large).
     /// Returns how many towns were placed; fewer than <paramref name="towns"/> when the land ran out. A few ambient cars
     /// are put on the streets. <see cref="UnlinkedIndustries"/> says how many processors found no place within reach of their inputs.
     /// </summary>

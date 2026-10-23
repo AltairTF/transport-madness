@@ -240,7 +240,7 @@ public class RailNetworkTests
     [Fact]
     public void OnGeneratedHills_EveryTrackThatIsBuilt_RespectsTheGradeLimit_AndEveryRefusalHasAReason()
     {
-        var terrain = Terrain.Generate(7UL, 256, 8f, 70f, water: false);
+        var terrain = Terrain.Generate(7UL, 256, 8f, 70f, water: false, settings: new TerrainSettings(0.15f, 0.5f, 0.5f)); // gentle land: rails climb little
         var rail = new RailNetwork(terrain, Tuning.Load());
         int built = 0, refused = 0;
         for (int k = 0; k < 40; k++)

@@ -79,11 +79,35 @@ public sealed class Terrain
     /// </summary>
     public static Terrain Generate(ulong seed, int cells = 512, float cellSize = 8f, float amplitude = 70f, bool water = true, TerrainSettings? settings = null)
     {
-        float downhill = Lattice(seed, 20, 0, 0) * MathF.Tau; // direction in which the water surface falls
-        float dx = MathF.Cos(downhill), dz = MathF.Sin(downhill);
+        settings ??= TerrainSettings.Default;
+        var key = (seed, cells, cellSize, amplitude, water, settings);
+        if (Cache.TryGetValue(key, out var hit)) return hit.Copy();
+        var coast = TerrainGenerator.ChooseCoast(seed, settings, water);
+        var (dx, dz) = coast.Direction(seed); // the water runs toward the sea
         var terrain = water ? new Terrain(cells, cellSize, -WaterFall * dx, -WaterFall * dz) : new Terrain(cells, cellSize);
-        TerrainGenerator.Fill(terrain, seed, amplitude, water, settings ?? TerrainSettings.Default, dx, dz);
+        terrain.Coast = coast.Kind;
+        TerrainGenerator.Fill(terrain, seed, amplitude, water, settings, dx, dz, coast);
+        if (Cache.Count >= 16) Cache.Clear();
+        Cache[key] = terrain.Copy();
         return terrain;
+    }
+
+    /// <summary>Which edges of a map made from this seed and settings are sea.</summary>
+    public static CoastKind CoastOf(ulong seed, TerrainSettings? settings = null, bool water = true) =>
+        TerrainGenerator.ChooseCoast(seed, settings ?? TerrainSettings.Default, water).Kind;
+
+    /// <summary>Which edges of the map are sea (<see cref="CoastKind.None"/> on a map that was not generated).</summary>
+    public CoastKind Coast { get; private set; }
+
+    // Generated maps are kept so that the same map asked for again (a reload, a preview that was seen, a test) is a copy, not a new erosion.
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<(ulong, int, float, float, bool, TerrainSettings), Terrain> Cache = new();
+
+    Terrain Copy()
+    {
+        var copy = new Terrain(Cells, CellSize, WaterSlopeX, WaterSlopeZ) { Coast = Coast };
+        Array.Copy(_heights, copy._heights, _heights.Length);
+        copy._biomes = (byte[]?)_biomes?.Clone();
+        return copy;
     }
 
     /// <summary>The height samples, for the generator to fill.</summary>

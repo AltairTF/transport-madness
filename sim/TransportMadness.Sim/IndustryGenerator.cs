@@ -47,7 +47,14 @@ public static class IndustryGenerator
                         if (pass == 0 && !Linked(tuning, towns, placed, tuning.Types[type], x, z)) continue;
                         if (pass == 0 && !DepositFits(tuning, towns, placed, tuning.Types[type], x, z)) continue;
                         // The second pass takes any place that will do, which can still happen to keep the rules.
-                        if (pass == 1 && !(Linked(tuning, towns, placed, tuning.Types[type], x, z) && DepositFits(tuning, towns, placed, tuning.Types[type], x, z))) unlinked.Add(placed.Count);
+                        if (pass == 1 && !(Linked(tuning, towns, placed, tuning.Types[type], x, z) && DepositFits(tuning, towns, placed, tuning.Types[type], x, z)))
+                        {
+                            unlinked.Add(placed.Count);
+                            // A deposit too far from, or too near, the other kind is out of reach for that one as well.
+                            if (tuning.Types[type].Deposit)
+                                for (int k = 0; k < placed.Count; k++)
+                                    if (tuning.Types[placed[k].Type].Deposit && placed[k].Type != type && !unlinked.Contains(k) && !SeparationFits(tuning, placed[k], x, z)) unlinked.Add(k);
+                        }
                         placed.Add(new IndustryPlan(type, x, z, angle));
                         done = true;
                     }
@@ -72,6 +79,13 @@ public static class IndustryGenerator
 
     /// <summary>Whether no industry type makes a cargo: it comes from outside the region, through a gateway.</summary>
     public static bool IsImported(IndustriesTuning tuning, string cargo) => !tuning.Types.Any(t => t.Output == cargo);
+
+    static bool SeparationFits(IndustriesTuning tuning, IndustryPlan other, float x, float z)
+    {
+        var g = tuning.Generation;
+        float d2 = (other.X - x) * (other.X - x) + (other.Z - z) * (other.Z - z);
+        return d2 >= g.DepositMinSeparation * g.DepositMinSeparation && d2 <= g.DepositMaxSeparation * g.DepositMaxSeparation;
+    }
 
     /// <summary>Whether a place for a deposit is within reach of a town and a fitting distance from every deposit of another type already placed. Other industries need nothing.</summary>
     static bool DepositFits(IndustriesTuning tuning, WorldPlan towns, List<IndustryPlan> placed, IndustryTypeTuning type, float x, float z)

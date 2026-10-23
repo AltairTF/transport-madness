@@ -28,11 +28,10 @@ Needs the Godot 4.7 .NET editor build and the .NET 8 SDK (a newer SDK runs the t
 
 ```sh
 cd sim && dotnet test                                   # the whole simulation test suite, headless
-godot --path .                                          # play: build roads, +100 cars, Crash!
+godot --path .                                          # play: new game on a generated map, build roads, +100 cars, Crash!
 godot --path . -- --bench                               # frame rate with 1000 vehicles at 1x and 8x
 godot --path . -- --selftest-build --shot=build.png     # builds roads with synthetic mouse clicks
-godot --path . -- --towns=5                             # generated hills with five towns, a calendar and station coverage
-godot --path . -- --hills                              # empty generated-hills map with lakes and rivers: roads show grade, cut/fill cost, bridges and tunnels
+godot --path . -- --towns=5                             # the generated map with five towns, a calendar and station coverage (the menu starts the same thing)
 godot --path . -- --selftest-hills                      # builds roads over hills, prints grade and cost, quits
 godot --path . -- --selftest-crash                      # crashes a car and follows the rescue crew
 godot --path . -- --selftest-lines                      # builds stations and a bus and a truck line, runs 30 days, prints the books

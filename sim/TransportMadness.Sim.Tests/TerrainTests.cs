@@ -33,39 +33,103 @@ public class TerrainTests
         Assert.InRange(wet / (float)total, 0.02f, 0.45f);
     }
 
-    [Fact]
-    public void TheWaterSurfaceFallsToTheSea_RiversAndLakesFollowIt_AndTheSeaLiesAtTheLowEdge()
+    // Share of the strip along an edge (100 m deep) that is under water; edge 0 is +x, 1 is +z, 2 is -x, 3 is -z.
+    static float EdgeWet(Terrain terrain, int edge)
     {
-        foreach (ulong seed in new ulong[] { 1, 3, 6, 9, 13 })
+        float half = terrain.HalfSize;
+        int wet = 0, total = 0;
+        for (int j = 0; j <= terrain.Cells; j++)
+            for (int i = 0; i <= terrain.Cells; i++)
+            {
+                float x = (i - terrain.Cells * 0.5f) * terrain.CellSize, z = (j - terrain.Cells * 0.5f) * terrain.CellSize;
+                float inland = edge switch { 0 => half - x, 1 => half - z, 2 => half + x, _ => half + z };
+                if (inland > 100f) continue;
+                total++;
+                if (terrain.GetSample(i, j) < terrain.WaterSurfaceAtSample(i, j)) wet++;
+            }
+        return wet / (float)total;
+    }
+
+    [Fact]
+    public void TheSeedPicksTheCoast_AllFiveKindsHappen_AndTheSeaLiesAlongTheEdgesItHas()
+    {
+        var kinds = new HashSet<CoastKind>();
+        for (ulong seed = 1; seed <= 40; seed++)
         {
-            var terrain = Terrain.Generate(seed);
-            float half = terrain.HalfSize;
+            var terrain = Terrain.Generate(seed, cells: 128, cellSize: 32f);
+            kinds.Add(terrain.Coast);
+            Assert.Equal(Terrain.CoastOf(seed), terrain.Coast);
+            int seaEdges = Enumerable.Range(0, 4).Count(e => EdgeWet(terrain, e) > 0.95f);
+            Assert.Equal(terrain.Coast switch { CoastKind.None => 0, CoastKind.OneSide => 1, CoastKind.TwoSides => 2, CoastKind.ThreeSides => 3, _ => 4 }, seaEdges);
+
+            // The surface falls about 5 m across the map, toward the sea when there is one; nothing lies more than the water depth below it.
             float fall = MathF.Sqrt(terrain.WaterSlopeX * terrain.WaterSlopeX + terrain.WaterSlopeZ * terrain.WaterSlopeZ);
             Assert.InRange(fall, 0.0011f, 0.0013f);
-            // Unit vector the water runs toward; the surface drops about 5 m from one side of the map to the other.
-            float dx = -terrain.WaterSlopeX / fall, dz = -terrain.WaterSlopeZ / fall;
-            Assert.True(terrain.WaterSurfaceAt(-dx * half, -dz * half) - terrain.WaterSurfaceAt(dx * half, dz * half) > 3f, $"seed {seed}");
-
-            // Nothing in a river or lake bed lies below the water by more than its depth, and the surface is the same
-            // everywhere the water is level with it: ground is water exactly when it lies below the surface at that spot.
-            // The edge the water runs toward most squarely is sea along its length; the opposite edge is not.
-            bool alongX = MathF.Abs(dx) >= MathF.Abs(dz);
-            float toward = alongX ? dx : dz;
-            int wet = 0, seaWet = 0, sea = 0, farWet = 0, far = 0;
             for (int j = 0; j <= terrain.Cells; j++)
                 for (int i = 0; i <= terrain.Cells; i++)
+                    Assert.True(terrain.GetSample(i, j) - terrain.WaterSurfaceAtSample(i, j) >= -4.01f, $"seed {seed}");
+        }
+        Assert.Equal(5, kinds.Count);
+    }
+
+    [Fact]
+    public void TheSurfaceFallsTowardTheSea()
+    {
+        for (ulong seed = 1; seed <= 40; seed++)
+        {
+            var terrain = Terrain.Generate(seed, cells: 128, cellSize: 32f);
+            if (terrain.Coast is CoastKind.None or CoastKind.Island) continue;
+            // The surface is lowest on the sea side: no sea edge is higher than the middle of the map, and one of them is lower
+            // (the tip of a peninsula; two opposite sea edges are level with the middle).
+            float half = terrain.HalfSize, middle = terrain.WaterSurfaceAt(0f, 0f);
+            bool lower = false;
+            for (int e = 0; e < 4; e++)
+                if (EdgeWet(terrain, e) > 0.95f)
                 {
-                    float depth = terrain.GetSample(i, j) - terrain.WaterSurfaceAtSample(i, j);
-                    Assert.True(depth >= -4.01f, $"seed {seed}: {depth} m below the surface");
-                    if (depth < 0f) wet++;
-                    float x = (i - terrain.Cells * 0.5f) * terrain.CellSize, z = (j - terrain.Cells * 0.5f) * terrain.CellSize;
-                    float inland = (alongX ? x : z) * MathF.Sign(toward); // distance past the middle toward that edge
-                    if (inland > half - 100f) { sea++; if (depth < 0f) seaWet++; }
-                    if (inland < -half + 100f) { far++; if (depth < 0f) farWet++; }
+                    var (x, z) = e switch { 0 => (half, 0f), 1 => (0f, half), 2 => (-half, 0f), _ => (0f, -half) };
+                    Assert.True(terrain.WaterSurfaceAt(x, z) <= middle + 0.01f, $"seed {seed}, edge {e}");
+                    lower |= terrain.WaterSurfaceAt(x, z) < middle - 1f;
                 }
-            Assert.True(wet > 0);
-            Assert.True(seaWet > 0.95f * sea, $"seed {seed}: sea {seaWet} of {sea}");
-            Assert.True(farWet < 0.5f * far, $"seed {seed}: far edge {farWet} of {far}");
+            Assert.True(lower, $"seed {seed}");
+        }
+    }
+
+    [Fact]
+    public void WithNoWaterSetting_ThereIsNoSeaAndNoLake()
+    {
+        for (ulong seed = 1; seed <= 12; seed++)
+        {
+            var terrain = Terrain.Generate(seed, cells: 128, cellSize: 32f, settings: new TerrainSettings(0.5f, 0f, 0.5f));
+            Assert.Equal(CoastKind.None, terrain.Coast);
+            Assert.True(Share(terrain, Biome.Water) < 0.05f, $"seed {seed}: {Share(terrain, Biome.Water)}");
+        }
+    }
+
+    [Fact]
+    public void TheMountainsSliderMakesRealMountains_AndTheMapKeepsLevelGroundForTowns()
+    {
+        float Highest(Terrain t) { float max = float.MinValue; for (int j = 0; j < t.Samples; j++) for (int i = 0; i < t.Samples; i++) max = Math.Max(max, t.GetSample(i, j)); return max; }
+        for (ulong seed = 1; seed <= 20; seed++)
+        {
+            var most = Terrain.Generate(seed, settings: new TerrainSettings(1f, 0.5f, 0.5f));
+            Assert.InRange(Highest(most), 150f, 650f);
+            Assert.InRange(Highest(Terrain.Generate(seed, settings: new TerrainSettings(0f, 0.5f, 0.5f))), 5f, 70f);
+            Assert.InRange(Highest(Terrain.Generate(seed, settings: new TerrainSettings(0.5f, 0.5f, 0.5f))), 60f, 320f);
+
+            // Slope over 16 m: at least 30 % of the land is under 5 % even with the most mountains, and the mountains are steep somewhere.
+            int land = 0, level = 0, steep = 0;
+            for (int j = 1; j < most.Cells; j++)
+                for (int i = 1; i < most.Cells; i++)
+                {
+                    if (most.BiomeAt(i, j) == Biome.Water) continue;
+                    land++;
+                    float gx = (most.GetSample(i + 1, j) - most.GetSample(i - 1, j)) / (2f * most.CellSize), gz = (most.GetSample(i, j + 1) - most.GetSample(i, j - 1)) / (2f * most.CellSize);
+                    float slope = MathF.Sqrt(gx * gx + gz * gz);
+                    if (slope < 0.05f) level++;
+                    if (slope > 0.3f) steep++;
+                }
+            Assert.True(level >= 0.30f * land, $"seed {seed}: level {level / (float)land:0.00}");
+            Assert.True(steep >= 0.10f * land, $"seed {seed}: steep {steep / (float)land:0.00}");
         }
     }
 
@@ -96,14 +160,14 @@ public class TerrainTests
     }
 
     [Fact]
-    public void WaterTakesAFairShareOfTheMap_OnTheDefaultSettings_AndTheBiomesAreAllThere()
+    public void TheBiomesAreAllThere_OnTheDefaultSettings_AndWaterIsTheGroundUnderTheSurface()
     {
         foreach (ulong seed in new ulong[] { 1, 2, 3, 4, 5, 6 })
         {
             var terrain = Terrain.Generate(seed);
-            Assert.InRange(Share(terrain, Biome.Water), 0.08f, 0.35f);
-            Assert.InRange(Share(terrain, Biome.Forest), 0.05f, 0.5f);
-            Assert.True(Share(terrain, Biome.Field) > 0.3f, $"seed {seed}");
+            Assert.InRange(Share(terrain, Biome.Water), 0.005f, 0.85f);
+            Assert.InRange(Share(terrain, Biome.Forest), 0.02f, 0.6f);
+            Assert.True(Share(terrain, Biome.Field) > 0.1f, $"seed {seed}");
             // The biome Water is the ground under the water surface.
             for (int j = 0; j < terrain.Samples; j += 7)
                 for (int i = 0; i < terrain.Samples; i += 7)
@@ -155,12 +219,32 @@ public class TerrainTests
     }
 
     [Fact]
-    public void ALargeMap_IsMadeInAFewSeconds()
+    public void TheMaps_AreMadeFastEnoughForTheNewGameScreen()
     {
+        // Seeds nobody asked for before, so the map is made and not copied from the cache.
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        var terrain = Terrain.Generate(7, cells: 1024);
-        Assert.True(clock.Elapsed.TotalSeconds < 6, $"{clock.Elapsed.TotalSeconds} s");
-        Assert.Equal(1025, terrain.Samples);
+        Terrain.Generate(90001, cells: 512);
+        Assert.True(clock.Elapsed.TotalSeconds < 1.5, $"normal map {clock.Elapsed.TotalSeconds} s");
+
+        clock.Restart();
+        var large = Terrain.Generate(90002, cells: 1024);
+        Assert.True(clock.Elapsed.TotalSeconds < 4, $"large map {clock.Elapsed.TotalSeconds} s");
+        Assert.Equal(1025, large.Samples);
+
+        clock.Restart();
+        WorldBuilder.Preview(90003, MapSize.Large);
+        Assert.True(clock.Elapsed.TotalSeconds < 1.5, $"preview of a large map {clock.Elapsed.TotalSeconds} s");
+    }
+
+    [Fact]
+    public void AMapAskedForAgain_IsACopy_SoRoadsCarvedInOneDoNotShowInTheNext()
+    {
+        var first = Terrain.Generate(90004, cells: 128, cellSize: 32f);
+        var second = Terrain.Generate(90004, cells: 128, cellSize: 32f);
+        Assert.Equal(first.Hash(), second.Hash());
+        first.CarveRoad(-100f, 0f, 20f, 100f, 0f, 20f, 3.5f, 6f);
+        Assert.NotEqual(first.Hash(), second.Hash());
+        Assert.Equal(second.Hash(), Terrain.Generate(90004, cells: 128, cellSize: 32f).Hash());
     }
 
     [Fact]
@@ -269,7 +353,7 @@ public class TerrainRoadTests
     [Fact]
     public void BuildRoad_OnTerrain_CarvesTheGroundAndNodesStandOnIt()
     {
-        var terrain = Terrain.Generate(42);
+        var terrain = Terrain.Generate(1);
         var net = new RoadNetwork(terrain);
         float y0 = terrain.HeightAt(-200, 0), y1 = terrain.HeightAt(0, 0);
         var built = net.BuildRoad(-200, 0, 0, 0, RoadType.TwoLane, 14f);
