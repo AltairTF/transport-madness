@@ -106,7 +106,7 @@ static func fill_view(refs: Dictionary, industry: Dictionary) -> void:
 	refs["output_meter"]["bar"].value = 100.0 * industry["stock"] / maxf(1.0, industry["max_output"])
 	refs["output_meter"]["value"].text = "%d of %d waiting for a truck" % [industry["stock"], industry["max_output"]]
 	refs["flow"].get_child(2).visible = has_output
-	refs["made"]["value"].text = str(industry["produced"])
+	refs["made"]["value"].text = str(int(industry["produced"]))
 	refs["made"]["box"].visible = has_output
 	refs["power"]["box"].visible = industry.get("demand", 0.0) > 0.0
 	refs["power"]["value"].text = "%d MW" % roundi(industry.get("demand", 0.0))

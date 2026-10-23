@@ -3,6 +3,8 @@ extends PanelContainer
 
 signal closed
 
+const UiTheme := preload("res://game/ui_theme.gd")
+const Kit := preload("res://game/ui/ui_kit.gd")
 const PATH := "res://CREDITS.md"
 
 
@@ -36,45 +38,30 @@ static func load_rows() -> Array[Dictionary]:
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(760, 0)
+	custom_minimum_size = Vector2(820, 0)
 	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", UiTheme.PANEL_MARGIN)
 	add_child(column)
-
-	var title := Label.new()
-	title.text = "Credits"
-	title.theme_type_variation = "Title"
-	column.add_child(title)
+	column.add_child(Kit.header("Credits", func() -> void: closed.emit()))
 
 	var rows := load_rows()
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 360)
+	scroll.custom_minimum_size = Vector2(0, 460)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	column.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
 	scroll.add_child(list)
 	if rows.is_empty():
-		var none := Label.new()
-		none.text = "The game does not use any outside asset yet."
-		none.theme_type_variation = "Dim"
-		list.add_child(none)
+		list.add_child(Kit.note("The game does not use any outside asset yet."))
 	for row in rows:
+		var card := Kit.card()
+		var body: VBoxContainer = card.get_meta("body")
 		var name_label := Label.new()
 		name_label.text = row["asset"]
-		name_label.theme_type_variation = "Heading"
-		list.add_child(name_label)
-		var detail := RichTextLabel.new()
-		detail.bbcode_enabled = true
-		detail.fit_content = true
-		detail.scroll_active = false
-		detail.text = "%s, %s. [url]%s[/url]" % [row["author"], row["licence"], row["link"]]
+		body.add_child(name_label)
+		var detail := Kit.rich("%s, %s. [url]%s[/url]" % [row["author"], row["licence"], row["link"]])
 		detail.meta_clicked.connect(func(meta: Variant) -> void: OS.shell_open(str(meta)))
-		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		list.add_child(detail)
-
-	var back := Button.new()
-	back.text = "Back"
-	back.custom_minimum_size = Vector2(160, 0)
-	back.size_flags_horizontal = Control.SIZE_SHRINK_END
-	back.pressed.connect(func() -> void: closed.emit())
-	column.add_child(back)
+		body.add_child(detail)
+		list.add_child(card)

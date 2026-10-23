@@ -43,10 +43,29 @@ static func note(text: String) -> Label:
 	return label
 
 
+## A paragraph like note() but with BBCode, for a bold, brighter lead on a dim body ("[b]Patch:[/b] +15 ...").
+static func rich(text := "") -> RichTextLabel:
+	var label := RichTextLabel.new()
+	label.bbcode_enabled = true
+	label.fit_content = true
+	label.scroll_active = false
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.text = text
+	return label
+
+
+## Wraps a lead in the BBCode that the game's rich paragraphs use for emphasis (bold and full-brightness text).
+static func lead(text: String) -> String:
+	return "[color=#%s][b]%s[/b][/color]" % [UiTheme.TEXT.to_html(false), text]
+
+
 static func heading(text: String) -> Label:
 	var label := Label.new()
 	label.theme_type_variation = "Heading"
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# A title is one line: autowrap in a row next to a spacer would collapse its width and break the name letter by letter.
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	label.clip_text = true
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.text = text
 	return label
 
@@ -64,6 +83,65 @@ static func section(text: String, hint := "") -> Control:
 		dim.autowrap_mode = TextServer.AUTOWRAP_OFF
 		r.add_child(dim)
 	return r
+
+
+## A window's top line: the title and a close button at the right.
+static func header(text: String, on_close: Callable) -> Control:
+	var r := row()
+	r.add_child(heading(text))
+	var close := button("×", on_close, "Close")
+	close.custom_minimum_size = Vector2(44, 44)
+	r.add_child(close)
+	return r
+
+
+## A row of toggle buttons in one rounded well; <pick> gets the index of the pressed one. Returns {box, buttons}.
+static func segmented(labels: Array, pick: Callable) -> Dictionary:
+	var box := PanelContainer.new()
+	box.theme_type_variation = "Segmented"
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 4)
+	box.add_child(line)
+	var buttons: Array[Button] = []
+	for i in labels.size():
+		var b := Button.new()
+		b.text = labels[i]
+		b.theme_type_variation = "SegmentButton"
+		b.toggle_mode = true
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.pressed.connect(pick.bind(i))
+		line.add_child(b)
+		buttons.append(b)
+	return {"box": box, "buttons": buttons}
+
+
+## Presses one button of a segmented() and releases the others, without a signal.
+static func select_segment(buttons: Array, index: int) -> void:
+	for i in buttons.size():
+		buttons[i].set_pressed_no_signal(i == index)
+
+
+## A line of a settings card: a title with a dim sentence under it, the control at the right.
+static func setting_row(parent: Control, title: String, hint: String, control: Control) -> void:
+	if parent.get_child_count() > 0:
+		parent.add_child(HSeparator.new())
+	var r := row()
+	var text := VBoxContainer.new()
+	text.add_theme_constant_override("separation", 2)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var caption := Label.new()
+	caption.text = title
+	text.add_child(caption)
+	if hint != "":
+		var dim := note(hint)
+		dim.add_theme_font_size_override("font_size", 16)
+		text.add_child(dim)
+	r.add_child(text)
+	control.custom_minimum_size.x = maxf(control.custom_minimum_size.x, 300.0)
+	control.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	r.add_child(control)
+	parent.add_child(r)
 
 
 ## A small rounded tag next to a title ("Road").

@@ -5,7 +5,7 @@ extends "res://game/ui/page.gd"
 var _policy: Dictionary
 var _frequency: OptionButton
 var _totals: Dictionary
-var _rules: Label
+var _rules: RichTextLabel
 var _fleet: VBoxContainer
 var _fleet_empty: Label
 var _fleet_rows: Dictionary = {} # vehicle id -> {"row", "label", "bar", "go", "go_call"}
@@ -32,7 +32,7 @@ func _build() -> void:
 	_policy = Kit.make_policy_block(0, 0, hud.policy_set.emit)
 	policy_card.get_meta("body").add_child(_policy["box"])
 	add_child(policy_card)
-	_rules = Kit.note("")
+	_rules = Kit.rich("")
 	add_child(_rules)
 
 	add_child(Kit.section("Random events"))
@@ -68,8 +68,8 @@ func show_maintenance(maint: Dictionary, vehicles: Array) -> void:
 	_totals["injured"].text = "%d people injured" % maint["injured"]
 	var rules := ""
 	for repair in maint["repairs"]:
-		rules += "%s: +%d Condition (up to %d), %d s in a bay, %d%% of the price, from a %s\n" % [
-			repair["name"], roundi(repair["gain"]), roundi(repair["ceiling"]), roundi(repair["seconds"]), roundi(100.0 * repair["share"]), String(repair["level_name"]).to_lower() if repair["level"] > 0 else "depot of any level"]
+		rules += "%s +%d Condition (up to %d), %d s in a bay, %d%% of the price, from a %s\n" % [
+			Kit.lead(repair["name"] + ":"), roundi(repair["gain"]), roundi(repair["ceiling"]), roundi(repair["seconds"]), roundi(100.0 * repair["share"]), String(repair["level_name"]).to_lower() if repair["level"] > 0 else "depot of any level"]
 	rules += "A breakdown below Condition %d counts as negligence and is fined." % roundi(maint["critical"])
 	_rules.text = rules
 

@@ -5,6 +5,8 @@ extends PanelContainer
 signal closed
 
 const Keys := preload("res://game/keys.gd")
+const UiTheme := preload("res://game/ui_theme.gd")
+const Kit := preload("res://game/ui/ui_kit.gd")
 ## What the mouse and Esc do: these are not rebound.
 const FIXED_CONTROLS := [
 	["Orbit the camera", "Right mouse button + drag"],
@@ -13,6 +15,16 @@ const FIXED_CONTROLS := [
 	["Place, pick, open what is clicked", "Left mouse button"],
 	["Cancel the tool, close a window, the menu", "Esc"],
 ]
+const HINTS := {
+	"Window mode": "Windowed or fullscreen.",
+	"Window size": "Only sizes that fit this screen are listed.",
+	"Interface size": "On top of the display's own scale.",
+	"Vertical sync": "Stops tearing; may lower the frame rate.",
+	"Anti-aliasing": "Smooths the edges of shapes.",
+	"3D resolution": "How big the 3D picture is drawn; the interface stays sharp.",
+	"Shadows": "Of buildings, vehicles and hills.",
+	"Ambient occlusion": "Darkens creases and the foot of buildings; costs frame time.",
+}
 const MSAA_NAMES := ["Off", "2x", "4x", "8x"]
 
 var _resolution: OptionButton
@@ -20,32 +32,38 @@ var _resolutions: Array[Vector2i] = []
 var _key_buttons: Dictionary = {} ## action -> its Button in the Controls tab
 var _listening := "" ## the action waiting for its new key
 var _key_note: Label
+var tabs_buttons: Array = []
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(760, 0)
+	custom_minimum_size = Vector2(980, 0)
 	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", UiTheme.PANEL_MARGIN)
 	add_child(column)
+	column.add_child(Kit.header("Settings", func() -> void: closed.emit()))
 
-	var title := Label.new()
-	title.text = "Settings"
-	title.theme_type_variation = "Title"
-	column.add_child(title)
+	var pages: Array[Control] = [_display_tab(), _audio_tab(), _controls_tab(), _gameplay_tab()]
+	var names: Array = []
+	for page in pages:
+		names.append(page.name)
+	var tabs := Kit.segmented(names, func(index: int) -> void: _open_tab(pages, tabs_buttons, index))
+	tabs_buttons = tabs["buttons"]
+	column.add_child(tabs["box"])
+	var card := Kit.card()
+	card.custom_minimum_size = Vector2(0, 500)
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for page in pages:
+		card.get_meta("body").add_child(page)
+	column.add_child(card)
+	_open_tab(pages, tabs_buttons, 0)
+	column.add_child(HSeparator.new())
+	column.add_child(Kit.note("Changes apply and are saved as you make them."))
 
-	var tabs := TabContainer.new()
-	tabs.custom_minimum_size = Vector2(0, 360)
-	column.add_child(tabs)
-	tabs.add_child(_display_tab())
-	tabs.add_child(_audio_tab())
-	tabs.add_child(_controls_tab())
-	tabs.add_child(_gameplay_tab())
 
-	var back := Button.new()
-	back.text = "Back"
-	back.custom_minimum_size = Vector2(160, 0)
-	back.size_flags_horizontal = Control.SIZE_SHRINK_END
-	back.pressed.connect(func() -> void: closed.emit())
-	column.add_child(back)
+func _open_tab(pages: Array[Control], buttons: Array, index: int) -> void:
+	Kit.select_segment(buttons, index)
+	for i in pages.size():
+		pages[i].visible = i == index
 
 
 func _display_tab() -> Control:
@@ -83,12 +101,7 @@ func _display_tab() -> Control:
 		_commit())
 	_row(grid, "Interface size", interface_size)
 
-	var vsync := CheckBox.new()
-	vsync.button_pressed = Settings.vsync
-	vsync.text = "On"
-	vsync.toggled.connect(func(on: bool) -> void:
-		Settings.vsync = on
-		_commit())
+	var vsync := _on_off(Settings.vsync, func(on: bool) -> void: Settings.vsync = on)
 	_row(grid, "Vertical sync", vsync)
 
 	var msaa := OptionButton.new()
@@ -103,7 +116,7 @@ func _display_tab() -> Control:
 	var render := OptionButton.new()
 	render.add_item("Automatic")
 	for step in Settings.RENDER_SCALES:
-		render.add_item("%d %%" % roundi(step * 100.0))
+		render.add_item("%d%%" % roundi(step * 100.0))
 	render.selected = 0 if Settings.render_scale <= 0.0 else 1 + maxi(0, Settings.RENDER_SCALES.find(Settings.render_scale))
 	render.tooltip_text = "How big the 3D picture is drawn, against the window; the interface stays sharp. Automatic keeps it near 8 million pixels, which a very large window needs to hold 60 frames a second."
 	render.item_selected.connect(func(index: int) -> void:
@@ -121,15 +134,21 @@ func _display_tab() -> Control:
 		_commit())
 	_row(grid, "Shadows", shadows)
 
-	var ssao := CheckBox.new()
-	ssao.button_pressed = Settings.ssao
-	ssao.text = "On"
-	ssao.tooltip_text = "Darkens creases and the foot of buildings. Costs frame time on a large window."
-	ssao.toggled.connect(func(on: bool) -> void:
-		Settings.ssao = on
-		_commit())
+	var ssao := _on_off(Settings.ssao, func(on: bool) -> void: Settings.ssao = on)
 	_row(grid, "Ambient occlusion", ssao)
 	return page
+
+
+## An Off / On dropdown that sets a setting and saves.
+func _on_off(value: bool, setter: Callable) -> OptionButton:
+	var option := OptionButton.new()
+	option.add_item("Off")
+	option.add_item("On")
+	option.selected = 1 if value else 0
+	option.item_selected.connect(func(index: int) -> void:
+		setter.call(index == 1)
+		_commit())
+	return option
 
 
 func _audio_tab() -> Control:
@@ -149,7 +168,7 @@ func _audio_tab() -> Control:
 func _controls_tab() -> Control:
 	var page := _page("Controls")
 	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, 460)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	page.add_child(scroll)
 	var inner := VBoxContainer.new()
@@ -235,32 +254,20 @@ func _gameplay_tab() -> Control:
 func _page(tab_name: String) -> VBoxContainer:
 	var page := VBoxContainer.new()
 	page.name = tab_name
+	page.add_theme_constant_override("separation", 12)
 	return page
 
 
-## A two-column grid of label and control rows, added to a page.
-func _grid(page: VBoxContainer) -> GridContainer:
-	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_top", 12)
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 12)
-	margin.add_child(grid)
-	page.add_child(margin)
-	return grid
+## What a page adds its rows to (the page itself: rows are Kit.setting_row lines).
+func _grid(page: VBoxContainer) -> VBoxContainer:
+	return page
 
 
-func _row(grid: GridContainer, text: String, control: Control) -> void:
-	var label := Label.new()
-	label.text = text
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	grid.add_child(label)
-	control.custom_minimum_size.x = maxf(control.custom_minimum_size.x, 280.0)
-	grid.add_child(control)
+func _row(grid: VBoxContainer, text: String, control: Control) -> void:
+	Kit.setting_row(grid, text, HINTS.get(text, ""), control)
 
 
-func _slider(grid: GridContainer, text: String, value: float, setter: Callable) -> void:
+func _slider(grid: VBoxContainer, text: String, value: float, setter: Callable) -> void:
 	var slider := HSlider.new()
 	slider.max_value = 1.0
 	slider.step = 0.05

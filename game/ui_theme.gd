@@ -28,6 +28,7 @@ const PANEL_MARGIN := 16
 static func build() -> Theme:
 	var theme := Theme.new()
 	theme.default_font_size = FONT_SIZE
+	var bold := _bold()
 
 	# Panels and windows keep their content well inside the border (M6d: the developer asked for more room).
 	theme.set_stylebox("panel", "PanelContainer", _box(PANEL, BORDER, 10, PANEL_MARGIN))
@@ -87,11 +88,39 @@ static func build() -> Theme:
 	theme.set_type_variation("FlatButton", "Button")
 	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
 		theme.set_stylebox(state, "FlatButton", _box(Color(0, 0, 0, 0) if state != "hover" else BUTTON_HOVER, Color(0, 0, 0, 0), 8, 8))
+	# A segmented choice (map, size): a dark well holding flat buttons, the chosen one filled blue.
+	theme.set_type_variation("Segmented", "PanelContainer")
+	theme.set_stylebox("panel", "Segmented", _box(SURFACE_LOW, BORDER, 10, 4))
+	theme.set_type_variation("SegmentButton", "Button")
+	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		var fill := Color(0, 0, 0, 0)
+		if state == "hover":
+			fill = BUTTON_HOVER
+		elif state == "pressed" or state == "hover_pressed":
+			fill = ACCENT
+		var segment := _box(fill, Color(0, 0, 0, 0), 7, 10)
+		segment.set_border_width_all(0)
+		segment.content_margin_top = 6
+		segment.content_margin_bottom = 6
+		theme.set_stylebox(state, "SegmentButton", segment)
+	theme.set_color("font_color", "SegmentButton", TEXT_DIM)
+	# The side of the main menu.
+	theme.set_type_variation("Side", "PanelContainer")
+	var side := _box(SURFACE_LOW, BORDER, 0, 0)
+	side.border_width_left = 0
+	side.border_width_top = 0
+	side.border_width_bottom = 0
+	theme.set_stylebox("panel", "Side", side)
 	# Fields: a dark well inside a card.
 	for kind in ["LineEdit", "SpinBox"]:
-		theme.set_stylebox("normal", kind, _box(PANEL.darkened(0.0), BORDER, 8, 10))
+		var well_box := _box(PANEL.darkened(0.0), BORDER, 8, 10)
+		var read_only_box := _box(SURFACE_LOW, BORDER, 8, 10)
+		for fieldbox in [well_box, read_only_box]:
+			fieldbox.content_margin_top = 6
+			fieldbox.content_margin_bottom = 6
+		theme.set_stylebox("normal", kind, well_box)
 		theme.set_stylebox("focus", kind, _focus_box(8))
-		theme.set_stylebox("read_only", kind, _box(SURFACE_LOW, BORDER, 8, 10))
+		theme.set_stylebox("read_only", kind, read_only_box)
 	theme.set_color("font_color", "LineEdit", TEXT)
 	theme.set_stylebox("panel", "PopupMenu", _box(SURFACE, BORDER_HOVER, 8, 6))
 	theme.set_stylebox("hover", "PopupMenu", _box(BUTTON_HOVER, BUTTON_HOVER, 6, 6))
@@ -141,19 +170,35 @@ static func build() -> Theme:
 	theme.set_constant("v_separation", "HFlowContainer", 8)
 	theme.set_constant("separation", "HSeparator", 18)
 
+	# Titles, headings and section labels carry the hierarchy, so they are bold and brighter than the body.
 	theme.set_type_variation("Title", "Label")
+	theme.set_font("font", "Title", bold)
 	theme.set_font_size("font_size", "Title", 34)
 	theme.set_type_variation("Heading", "Label")
+	theme.set_font("font", "Heading", bold)
 	theme.set_font_size("font_size", "Heading", 24)
+	theme.set_color("font_color", "Heading", Color.WHITE)
 	theme.set_type_variation("Dim", "Label")
 	theme.set_color("font_color", "Dim", TEXT_DIM)
 	# The small spaced caps over a block of a panel ("AVAILABLE IMPORTS").
 	theme.set_type_variation("Section", "Label")
+	theme.set_font("font", "Section", bold)
 	theme.set_font_size("font_size", "Section", 16)
-	theme.set_color("font_color", "Section", TEXT_DIM)
+	theme.set_color("font_color", "Section", Color("c2ccdb"))
 	theme.set_type_variation("Warn", "Label")
 	theme.set_color("font_color", "Warn", WARN_TEXT)
+	# Rich paragraphs (Kit.rich): a bold lead on a dim body, so a block of lines is scannable.
+	theme.set_font("bold_font", "RichTextLabel", bold)
+	theme.set_color("default_color", "RichTextLabel", TEXT_DIM)
 	return theme
+
+
+## A bold weight of the system sans, for the titles, headings and section labels. No font ships with the game.
+static func _bold() -> SystemFont:
+	var font := SystemFont.new()
+	font.font_names = PackedStringArray(["Sans-serif"])
+	font.font_weight = 700
+	return font
 
 
 ## A rounded plate for a Label or a panel that is not part of the theme (the message line, the raid banner).
