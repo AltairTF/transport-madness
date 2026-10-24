@@ -21,8 +21,8 @@ public partial class MapPreview : RefCounted
         for (int j = 0; j < Cells; j++)
             for (int i = 0; i < Cells; i++)
             {
-                // Light from the north-west: the height difference toward it makes the slopes bright or dark.
-                float slope = terrain.GetSample(i - 1, j - 1) - terrain.GetSample(i + 1, j + 1);
+                // Light from the north-west: a slope that rises away from it faces it and is bright, one that falls away is dark.
+                float slope = terrain.GetSample(i + 1, j + 1) - terrain.GetSample(i - 1, j - 1);
                 float light = Mathf.Clamp(1f + slope * 0.012f * (Cells / 128f), 0.6f, 1.35f);
                 var colour = BiomeColour(terrain.BiomeAt(i, j)) * light;
                 int k = (j * Cells + i) * 3;

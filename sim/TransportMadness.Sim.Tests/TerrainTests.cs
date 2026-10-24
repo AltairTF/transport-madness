@@ -236,6 +236,17 @@ public class TerrainTests
         Assert.True(clock.Elapsed.TotalSeconds < 1.5, $"preview of a large map {clock.Elapsed.TotalSeconds} s");
     }
 
+    [Theory]
+    [InlineData(436212UL)]
+    [InlineData(7UL)]
+    public void WaterAtZero_LeavesNoRiversOrLakes(ulong seed)
+    {
+        var t = WorldBuilder.Preview(seed, MapSize.Large, new TerrainSettings(0.25f, 0f, 0.65f), 256);
+        for (float x = -t.HalfSize; x < t.HalfSize; x += 32f)
+            for (float z = -t.HalfSize; z < t.HalfSize; z += 32f)
+                Assert.False(t.IsWater(x, z), $"water at {x}, {z}");
+    }
+
     [Fact]
     public void AMapAskedForAgain_IsACopy_SoRoadsCarvedInOneDoNotShowInTheNext()
     {

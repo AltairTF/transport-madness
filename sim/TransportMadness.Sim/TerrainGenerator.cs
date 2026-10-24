@@ -311,7 +311,10 @@ static partial class TerrainGenerator
         Drain(dem, hn, filled, receiver, order, flow);
 
         // The cells that carry enough water are river; the more water the map has, the smaller the streams that count.
-        float threshold = 3600f - 2200f * c.Settings.Water;
+        // At the bottom of the slider there are none; a dry map keeps only the bigger rivers.
+        if (c.Settings.Water < 0.05f) return;
+        float wet = c.Settings.Water, dryness = 1f - wet;
+        float threshold = 1400f + 4400f * dryness * dryness + 30000f * MathF.Max(0f, 0.25f - wet);
         var reaches = new List<Reach>();
         for (int k = 0; k < hn * hn; k++)
         {
