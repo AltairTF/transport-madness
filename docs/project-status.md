@@ -1,6 +1,6 @@
 # Transport Madness: Project Status and Technical Overview
 
-Last updated: 2026-10-21, after M6f (free-standing depots 5.49, stops at industries and the line preview 5.50) on top of M6e (roads stay where put and Paths to access points, 5.48) and M6d (the interface, section 5.47); M6 is done; the work before M6 is finished. Every milestone except M6 is built: M0 to M5 (rail is M4, sections 5.19 to 5.22; maintenance is M5, 5.24) and the campaign slices C1 to C15 (the time scale 5.23, the chain, gateways, budget, orders, electricity, workers, fleet by year, rationing, call-up, requisition and raids, 5.25 to 5.35, access points 5.36, residents as workers 5.37, dynamic raids 5.38, anti-aircraft 5.39, civilians 5.40, rebuilding 5.41, the requisition rule 5.42, call-up capacity 5.43), M6a, save and load (5.44), M6b, overlays (5.45), M6c, the campaign balance (5.46), and M6d, the interface (5.47). 846 tests pass (and 8 whole-campaign balance tests run by hand). All the slices that were decided on 2026-10-21 to come before M6 (C10 to C15) are built; M6 is the only thing left, and open work is in section 11. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md` and `/docs/campaign-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
+Last updated: 2026-10-23, after R4 and the town upgrade (5.74), on top of R1 to R3 (5.70 to 5.73) and M7 (5.60 to 5.69). Built: M0 to M5, the campaign C1 to C15, M6 (save and load, overlays, balance, the interface, whiteboxes 5.48 to 5.59), M7a to M7g (art), and the world revamp R1 to R4. 913 tests pass (full run on 2026-10-23). Open work is in section 11: the 3D look of R4 and the town upgrade, R5 organic growth in play, M8 period art, audio, and the balance of the new land. Vocabulary is in `/CONTEXT.md`, the plan in `/docs/game-plan.md` and `/docs/campaign-plan.md`, decisions in `/docs/adr/`; `/docs/README.md` is the index. This file records what exists, how it works, what was learned, and what comes next.
 
 ## 1. Where the project stands
 
@@ -35,9 +35,17 @@ Last updated: 2026-10-21, after M6f (free-standing depots 5.49, stops at industr
 | M6 Save/load, overlays, balancing, the interface | Done: M6a save and load (5.44), M6b overlays (5.45), M6c balance (5.46), M6d the interface (5.47); M6a, M6b and M6d seen in the .NET editor through the bridge, not played by hand (`docs/m6-plan.md`) |
 | M6e Roads stay where put, Paths to access points, preview of terrain and bridges, whiteboxes | Done (5.48; seen in the editor through the bridge, not played by hand; `docs/m6e-plan.md`) |
 | M6f Free-standing depots, stops at industries with load and unload options, the line preview | Done (5.49, 5.50; seen in the editor through the bridge, not played by hand; `docs/m6f-plan.md`) |
-| M7 Art | M7a to M7g built (`docs/m7-plan.md`); audio postponed |
+| M7 Art | M7a to M7g built with CC0 models from Kenney and plain-shape models, the lit scene, ground and trees, interface icons (5.60 to 5.69; `docs/m7-plan.md`). Audio postponed. Many pieces were seen only in screenshots (section 11) |
+| M6g to M6i Whiteboxes | Done (5.51 to 5.59): drag and right click, pads with rotation and raising, one-drag roads, parallel roads, camera following, the ghost road, coverage previews, rail depot pad. No undo (decided with the developer) |
+| R1 Terrain and biomes | Done (5.70): generated land with biomes, rivers by drainage, settings for mountains, water and forests |
+| R2 Preview and map sizes | Done (5.71): Small, Normal and Large maps, a 2D preview on the new-game screen |
+| R3 Town sites and sizes | Done (5.72): sites scored by flat dry ground and water, a metropolis and medium towns |
+| R1b Coast, relief, erosion; one map | Done (5.73): coast by seed, mountain belts, erosion; the demo and test maps are gone |
+| R4 Organic towns and the town upgrade | Built (5.74): a hierarchy of streets with lots by ring, kerb, pavement, lamps, street trees, snapping to junctions and ends; save format 4. Not looked at in 3D |
+| R5 Organic growth in play | Not started: towns grow on the old block logic |
+| M8 Period art | Not started: painted ground, period models and textures, ruins of destroyed buildings |
 
-What has been played. The developer played M0 to M5 and the campaign slices C2 to C9 in the 3D game on 2026-10-21 and found them working; the interface is awkward and hard to reach (many buttons and windows) and is to be dealt with after the features are done. Not played: the road signs and sign tools (5.22) and the presentation of raids (section 11). Remarks in section 5 and in section 10 that a slice was "not played" describe the state when it was written. Nothing in this environment can run the 3D game: the Godot available here has no .NET support (section 3).
+What has been played. The developer played M0 to M5 and the campaign slices C2 to C9 in the 3D game on 2026-10-21 and found them working; the interface was awkward and is being reworked (M6d, M6h). Not played: the road signs and sign tools (5.22), the presentation of raids, and the town upgrade and R1 to R4 in the 3D game (section 11). Remarks in section 5 and in section 10 that a slice was "not played" describe the state when it was written. The .NET Godot on this machine runs the game headless and in a window for self-tests and screenshots (section 3); looks were judged in those screenshots.
 
 ## 2. M0 exit criteria
 
@@ -95,7 +103,7 @@ Tooling: Godot 4.7.2 (the .NET build is needed to run the game; the copy on the 
 
 ### Current status (2026-10-21)
 
-M0 to M5 and the campaign slices C1 to C15 are built and 827 tests pass (macOS; CI is green on Ubuntu as of C12). M6 is the only milestone left (all four slices are done, 5.44 to 5.47; M7 art and audio is next); the slices decided on 2026-10-21 to come before it (C10 to C15) are all built (section 11). The design changed on 2026-10-21: the game is a campaign about a region at war, 1938 to 1945 (ADR 0006, `docs/campaign-plan.md`). The developer has played the 3D side of everything from M0 to C9 (see section 1 for what was not played). Open work is in section 11.
+Built: M0 to M5, the campaign C1 to C15, M6 (save and load, overlays, balance, the interface, whiteboxes), M7a to M7g (art, icons), and the world revamp R1 to R4 with the town upgrade. 913 tests pass (2026-10-23). Open work is in section 11. The design changed on 2026-10-21: the game is a campaign about a region at war, 1938 to 1945 (ADR 0006, `docs/campaign-plan.md`). The developer has played the 3D side of everything from M0 to C9 (see section 1 for what was not played).
 
 ## 4. Architecture
 
@@ -1071,6 +1079,19 @@ Engineering:
 ## 11. What comes next
 
 Everything is built that was planned before M6 (M0 to M5, the campaign, the access points, residents as workers, dynamic raids, anti-aircraft, civilians taking cover, rebuilding, the requisition rule and the call-up capacity). The developer played the 3D side on 2026-10-21 and found it working; balance is ok for now; the interface is awkward and hard to reach and is deferred until the features are done. The decisions and the open points are in `docs/campaign-plan.md` ("Decided with the developer, 2026-10-21" and "Open"); this section is the summary.
+
+### Open now (2026-10-23)
+
+The code is committed through `b898b5c`, which is not pushed yet (origin/main is at `26ee413`). What is left, in no fixed order:
+1. **The town upgrade and R1 to R4 in the 3D game.** Pavements, lamps, street trees, the ground tint and the snapping (5.74) were not looked at; R1 to R3 were checked in screenshots and the menu only. Play a Large map with 14 towns at the normal speed.
+2. **R5, organic growth in play.** Towns still grow by the old block logic; the organic streets of R4 are made at generation only (section 10, Growth).
+3. **M7 look still unseen in 3D:** aircraft and bombs, the anti-aircraft battery, road signs, a wreck (5.64, 5.65); the shadows (5.68) and their frame cost (not measured); the cutaway sides still in flat colours (5.66).
+4. **Audio:** postponed from M7; nothing decided beyond `docs/m7-plan.md`.
+5. **M8, period art:** painted ground tiles with blending by height, period-correct models and textures, ruins of destroyed buildings, upgrade parts on buildings, people on the streets (`docs/m7-plan.md`). Not started.
+6. **M6g leftovers:** no undo (the developer chose it, a mistake is pulled down); no green or orange fill on the pad preview; the battery not exercised in the self-test (month 20); parallel roads on curves.
+7. **Balance on the new land:** the `BalanceTests` pass on 2026-10-23, including `ARailwayCostsAboutTwiceWhatBusesCostForTheSameSeats_AndEarnsMore`, which failed in 5.72 and 5.73 (the cause of the change was not looked into); the campaign balance was not measured on R1 to R4 maps.
+8. **Tools usability with the developer:** road building, snapping, curves, one-drag roads, undo, what each mouse button does (section 11, Play-test).
+
 
 ### 5.69 M7g: interface icons (2026-10-22)
 - **Pack:** game-icons.net (CC BY 3.0), chosen and approved by the developer on 2026-10-22 over Kenney's CC0 packs for its train, bus, signal and anti-aircraft shapes. `data/icons.json` maps a button key (a tool, a window or a group name, plus "pointer") to an icon; `tools/make_icons.py <unzipped game-icons folder>` copies the 54 SVGs into `game/assets/icons/game-icons/` and drops the black square each ships with. The pack itself stays in `../transport-madness-packs/game-icons/`. One row in `CREDITS.md` (so the Credits screen shows it).
