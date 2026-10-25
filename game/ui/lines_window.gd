@@ -265,12 +265,10 @@ func _add(id: int, rail := false) -> void:
 	main_body.add_child(stats_row)
 	var stats := {}
 	for entry in [["vehicles", "Vehicles"], ["delivered", "Delivered"], ["income", "Income"], ["upkeep", "Upkeep"], ["profit", "Profit"]]:
-		var stat := Kit.stat(entry[1])
-		stat["value"].add_theme_font_size_override("font_size", 20)
+		var stat := Kit.stat(entry[1], "Figure")
 		if entry[0] == "vehicles":
 			var loading := Label.new()
 			loading.theme_type_variation = "Small"
-			loading.add_theme_font_size_override("font_size", 14)
 			stat["box"].get_child(0).add_child(loading)
 			stat["loading"] = loading
 		stats_row.add_child(stat["box"])

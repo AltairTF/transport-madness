@@ -33,7 +33,6 @@ var _land_sliders: Dictionary = {}
 var _preview_maker: RefCounted
 
 ## Every field of the screen (segmented choice, seed, dropdown) is this tall.
-const FIELD_HEIGHT := 52
 const SIZE_NAMES := ["Small", "Normal", "Large"]
 const INDUSTRY_NAMES := ["Few", "Normal", "Many"]
 const LEGEND := [["Plains", Color(0.52, 0.62, 0.32)], ["Forest", Color(0.20, 0.42, 0.22)], ["Mountains", Color(0.46, 0.44, 0.42)], ["Water", Color(0.18, 0.36, 0.56)]]
@@ -69,8 +68,7 @@ func _ready() -> void:
 
 	var footer := Label.new()
 	footer.text = "Whitebox build"
-	footer.theme_type_variation = "Dim"
-	footer.add_theme_font_size_override("font_size", 16)
+	footer.theme_type_variation = "Small"
 	footer.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 24)
 	add_child(footer)
 	_show(_main_page)
@@ -122,14 +120,15 @@ func _build_main_page() -> Control:
 	var latest: String = slots.Latest()
 	var continue_button := _button(column, "Continue", func() -> void: _load(latest))
 	continue_button.theme_type_variation = "PrimaryButton"
-	continue_button.custom_minimum_size = Vector2(0, 54)
-	continue_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	# Left only to make room for the save hint on the right; with no save the label stays centred like the other buttons.
+	if latest != "":
+		continue_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	continue_button.disabled = latest == ""
 	continue_button.tooltip_text = "Load the newest save." if latest != "" else "No save yet."
 	if latest != "":
 		var hint := Label.new()
 		hint.text = _save_hint(slots.List())
-		hint.add_theme_font_size_override("font_size", 16)
+		hint.theme_type_variation = "Small"
 		hint.add_theme_color_override("font_color", UiTheme.ACCENT_TEXT)
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -137,11 +136,10 @@ func _build_main_page() -> Control:
 		hint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 0)
 		hint.offset_right = -18
 		continue_button.add_child(hint)
-	_button(column, "New game", _open_new_game).custom_minimum_size = Vector2(0, 48)
+	_button(column, "New game", _open_new_game)
 	var load_button := _button(column, "Load game", func() -> void:
 		_load_page.show_load()
 		_show(_load_page))
-	load_button.custom_minimum_size = Vector2(0, 48)
 	load_button.disabled = slots.List().is_empty()
 	var small := Kit.row()
 	column.add_child(small)
@@ -201,13 +199,13 @@ func _option(names: Array, pick: Callable) -> OptionButton:
 		option.add_item(text)
 	option.item_selected.connect(pick)
 	option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	option.custom_minimum_size = Vector2(0, FIELD_HEIGHT)
+	option.custom_minimum_size = Vector2(0, UiTheme.FIELD_HEIGHT)
 	return option
 
 
 func _build_new_game_page() -> Control:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(1180, 0)
+	Kit.fit_width(panel, 1180)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", UiTheme.PANEL_MARGIN)
 	panel.add_child(column)
@@ -215,7 +213,7 @@ func _build_new_game_page() -> Control:
 	var head := Kit.row()
 	column.add_child(head)
 	var back_arrow := _button(head, "‹", func() -> void: _show(_main_page))
-	back_arrow.custom_minimum_size = Vector2(44, 44)
+	back_arrow.custom_minimum_size = Vector2(UiTheme.ICON_BUTTON, UiTheme.ICON_BUTTON)
 	back_arrow.tooltip_text = "Back"
 	var heading := Kit.heading("New game")
 	heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -234,7 +232,7 @@ func _build_new_game_page() -> Control:
 	left.add_child(size_seed)
 	var sizes := Kit.segmented(SIZE_NAMES, _on_size_changed)
 	_size_buttons = sizes["buttons"]
-	sizes["box"].custom_minimum_size = Vector2(0, FIELD_HEIGHT)
+	sizes["box"].custom_minimum_size = Vector2(0, UiTheme.FIELD_HEIGHT)
 	var size_column := VBoxContainer.new()
 	size_column.add_theme_constant_override("separation", 8)
 	size_column.add_child(Kit.section("Size"))
@@ -248,14 +246,14 @@ func _build_new_game_page() -> Control:
 	_seed.max_value = 999999
 	_seed.value = Session.world_seed
 	_seed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_seed.custom_minimum_size = Vector2(0, FIELD_HEIGHT)
+	_seed.custom_minimum_size = Vector2(0, UiTheme.FIELD_HEIGHT)
 	_seed.add_theme_icon_override("updown", ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RGBA8))) # no arrows: the seed is typed or rolled
 	_seed.value_changed.connect(func(_v: float) -> void:
 		_queue_preview()
 		_update_summary())
 	seed_row.add_child(_seed)
 	var random := Kit.button("↻", func() -> void: _seed.value = randi_range(1, 999999), "Random seed")
-	random.custom_minimum_size = Vector2(FIELD_HEIGHT, FIELD_HEIGHT)
+	random.custom_minimum_size = Vector2(UiTheme.FIELD_HEIGHT, UiTheme.FIELD_HEIGHT)
 	random.add_theme_font_size_override("font_size", 22)
 	seed_row.add_child(random)
 	var seed_column := _field("Map seed", seed_row)
@@ -347,10 +345,8 @@ func _build_new_game_page() -> Control:
 	_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	footer.add_child(_summary)
 	var back := _button(footer, "Back", func() -> void: _show(_main_page))
-	back.custom_minimum_size = Vector2(90, 44)
 	var start := _button(footer, "Start", _start)
 	start.theme_type_variation = "PrimaryButton"
-	start.custom_minimum_size = Vector2(90, 44)
 
 	_on_towns_changed(Session.towns)
 	_on_size_changed(Session.size)
@@ -481,9 +477,6 @@ func _show(page: Control) -> void:
 
 
 func _button(parent: Control, text: String, action: Callable) -> Button:
-	var button := Button.new()
-	button.text = text
-	if action.is_valid():
-		button.pressed.connect(action)
+	var button := Kit.menu_button(text, action)
 	parent.add_child(button)
 	return button

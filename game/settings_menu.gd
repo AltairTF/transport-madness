@@ -36,7 +36,7 @@ var tabs_buttons: Array = []
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(980, 0)
+	Kit.fit_width(self, 980)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", UiTheme.PANEL_MARGIN)
 	add_child(column)
@@ -218,9 +218,13 @@ func _input(event: InputEvent) -> void:
 	_listening = ""
 	if key != KEY_ESCAPE:
 		var clash := Keys.action_on(key, event.shift_pressed, Settings.key_bindings, action)
+		var old := Keys.binding(action, Settings.key_bindings)
 		Settings.key_bindings[action] = {"key": key, "shift": event.shift_pressed}
+		# The clashing action takes the old key (a swap), so no two actions share a key.
+		if clash != "":
+			Settings.key_bindings[clash] = {"key": old["key"], "shift": old["shift"]}
 		_key_note.text = "%s now on %s.%s" % [Keys.label(action), Keys.text(action, Settings.key_bindings),
-			"  It was on %s too: bind that one again." % Keys.label(clash) if clash != "" else ""]
+			"  %s moved to %s." % [Keys.label(clash), Keys.text(clash, Settings.key_bindings)] if clash != "" else ""]
 	_keys_changed()
 
 

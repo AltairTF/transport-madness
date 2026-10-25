@@ -100,6 +100,8 @@ func _show(key: String) -> void:
 	_order.erase(key)
 	_order.append(key)
 	_keep_inside(frame)
+	# Not the close button: Enter (finish line) would close the window.
+	frame.grab_focus.call_deferred()
 	window_opened.emit(key)
 
 
@@ -113,6 +115,7 @@ func _raise(key: String) -> void:
 func _frame(key: String, title: String, content: Control, size_wanted: Vector2, rect_key: String) -> PanelContainer:
 	var frame := PanelContainer.new()
 	frame.mouse_filter = Control.MOUSE_FILTER_STOP
+	frame.focus_mode = Control.FOCUS_ALL # Tab starts here; the close button is the first stop
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", Kit.GAP)
 	frame.add_child(column)
@@ -126,7 +129,7 @@ func _frame(key: String, title: String, content: Control, size_wanted: Vector2, 
 	label.mouse_default_cursor_shape = Control.CURSOR_MOVE
 	label.tooltip_text = "Drag to move"
 	head.add_child(label)
-	head.add_child(Kit.button("✕", close.bind(key), "Close (Esc closes the topmost window)"))
+	head.add_child(Kit.close_button(close.bind(key), "Close (Esc closes the topmost window)"))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED

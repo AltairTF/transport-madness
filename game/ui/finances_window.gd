@@ -21,14 +21,13 @@ func _build() -> void:
 	body.add_child(_money)
 	var flows := Kit.row()
 	for entry in [["income", "Income"], ["upkeep", "Upkeep"], ["interest", "Interest"]]:
-		var stat := Kit.stat(entry[1])
-		stat["value"].add_theme_font_size_override("font_size", 20)
+		var stat := Kit.stat(entry[1], "Figure")
 		flows.add_child(stat["box"])
 		_flows[entry[0]] = stat
 	body.add_child(flows)
 	add_child(summary)
 	add_child(Kit.section("Advance from the ministry"))
-	_loan = Kit.meter("Owed", Color("9cc2ff"))
+	_loan = Kit.meter("Owed", UiTheme.METER)
 	add_child(_loan["box"])
 	var buttons := Kit.row()
 	var ask := Kit.button("Ask for 100,000", func() -> void: hud.action_requested.emit("loan"))

@@ -23,6 +23,12 @@ const WARN_TEXT := Color("f6cd80")
 const BAD := Color("ef6b6b")
 const BUTTON_HEIGHT := 40
 const PANEL_MARGIN := 16
+const ICON_BUTTON := 44 # square icon-only buttons (close)
+const MENU_BUTTON_HEIGHT := 48 # the big buttons of the main and pause menus
+const FIELD_HEIGHT := 52 # option buttons, text fields and segments in the menus
+const METER := Color("9cc2ff") # the fill of a progress bar
+const METER_WELL := Color("222a37") # its empty part, and tags
+const POOR := Color("f08a3c") # the orange step of a Condition
 
 
 static func build() -> Theme:
@@ -126,13 +132,13 @@ static func build() -> Theme:
 	theme.set_stylebox("hover", "PopupMenu", _box(BUTTON_HOVER, BUTTON_HOVER, 6, 6))
 	theme.set_color("font_color", "PopupMenu", TEXT)
 	# Bars are thin, rounded and flat.
-	var well := _box(Color("222a37"), Color(0, 0, 0, 0), 4, 0)
+	var well := _box(METER_WELL, Color(0, 0, 0, 0), 4, 0)
 	well.set_border_width_all(0)
-	var fill := _box(Color("9cc2ff"), Color(0, 0, 0, 0), 4, 0)
+	var fill := _box(METER, Color(0, 0, 0, 0), 4, 0)
 	fill.set_border_width_all(0)
 	theme.set_stylebox("background", "ProgressBar", well)
 	theme.set_stylebox("fill", "ProgressBar", fill)
-	var track := _box(Color("222a37"), Color(0, 0, 0, 0), 4, 0)
+	var track := _box(METER_WELL, Color(0, 0, 0, 0), 4, 0)
 	track.set_border_width_all(0)
 	track.content_margin_top = 4
 	track.content_margin_bottom = 4
@@ -147,6 +153,8 @@ static func build() -> Theme:
 	theme.set_font_size("font_size", "BigNumber", 32)
 	theme.set_type_variation("Stat", "Label")
 	theme.set_font_size("font_size", "Stat", 26)
+	theme.set_type_variation("Figure", "Label")
+	theme.set_font_size("font_size", "Figure", 20)
 	theme.set_type_variation("Small", "Label")
 	theme.set_font_size("font_size", "Small", 16)
 	theme.set_color("font_color", "Small", TEXT_DIM)
@@ -154,7 +162,7 @@ static func build() -> Theme:
 	theme.set_type_variation("Card", "PanelContainer")
 	theme.set_stylebox("panel", "Card", _box(SURFACE, BORDER, 8, 12))
 	theme.set_type_variation("CardMuted", "PanelContainer")
-	theme.set_stylebox("panel", "CardMuted", _dashed_box(SURFACE_LOW, Color("3a4558"), 8, 12))
+	theme.set_stylebox("panel", "CardMuted", _muted_box(Color(0, 0, 0, 0), Color("3a4558"), 8, 12))
 	# A notice: a warning strip.
 	theme.set_type_variation("Notice", "PanelContainer")
 	theme.set_stylebox("panel", "Notice", _box(Color("f2b84b1f"), Color("f2b84b59"), 8, 12))
@@ -215,8 +223,8 @@ static func _focus_box(radius: int) -> StyleBoxFlat:
 	return box
 
 
-static func _dashed_box(fill: Color, border: Color, radius: int, margin: int) -> StyleBoxFlat:
-	# StyleBoxFlat has no dash; a darker plain border says "not available" well enough.
+static func _muted_box(fill: Color, border: Color, radius: int, margin: int) -> StyleBoxFlat:
+	# StyleBoxFlat has no dash; a transparent fill with a dim border reads as an outline against the filled Card.
 	return _box(fill, border, radius, margin)
 
 

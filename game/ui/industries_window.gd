@@ -95,7 +95,7 @@ static func fill_view(refs: Dictionary, industry: Dictionary) -> void:
 		var name := Label.new()
 		name.text = String(input["cargo"])
 		body.add_child(name)
-		var meter := Kit.meter("", Color("9cc2ff"))
+		var meter := Kit.meter("", UiTheme.METER)
 		meter["caption"].visible = false
 		meter["bar"].value = 100.0 * input["stock"] / maxf(1.0, input["max"])
 		body.add_child(meter["box"])

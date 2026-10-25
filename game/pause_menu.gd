@@ -9,6 +9,7 @@ signal save_requested(save_name: String)
 signal load_requested(path: String)
 
 const UiTheme := preload("res://game/ui_theme.gd")
+const Kit := preload("res://game/ui/ui_kit.gd")
 const SettingsMenu := preload("res://game/settings_menu.gd")
 const SaveMenu := preload("res://game/save_menu.gd")
 
@@ -156,9 +157,6 @@ func _show(page: Control) -> void:
 
 
 func _button(parent: Control, text: String, action: Callable) -> Button:
-	var button := Button.new()
-	button.text = text
-	if action.is_valid():
-		button.pressed.connect(action)
+	var button := Kit.menu_button(text, action)
 	parent.add_child(button)
 	return button

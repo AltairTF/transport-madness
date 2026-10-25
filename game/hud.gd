@@ -103,14 +103,16 @@ const TOOL_CATEGORIES := [
 ]
 ## The information groups: [name, [[window key, title, page script], ...]]; the Map group holds the map views instead.
 const INFO_GROUPS := [
-	["Network", [["lines", "Lines", "lines"], ["vehicles", "Vehicles", "vehicles"], ["depots", "Depots", "depots"], ["stations", "Stations", "stations"]]],
-	["Region", [["towns", "Towns", "towns"], ["industries", "Industries", "industries"], ["gateways", "Gateways", "gateways"], ["power", "Power", "power"]]],
-	["Company", [["finances", "Finances", "finances"], ["maintenance", "Maintenance", "maintenance"], ["requisition", "Requisition", "requisition"]]],
-	["Government", [["orders", "Orders", "orders"], ["standing", "Standing", "standing"]]],
+	["Network", [["lines", "Lines", "lines", "Routes, stops and timetables"], ["vehicles", "Vehicles", "vehicles", "Every vehicle and its condition"], ["depots", "Depots", "depots", "Where vehicles are kept and bought"], ["stations", "Stations", "stations", "Stations and the cargo waiting"]]],
+	["Region", [["towns", "Towns", "towns", "Population, needs and connections"], ["industries", "Industries", "industries", "What each industry makes and needs"], ["gateways", "Gateways", "gateways", "Where cargo enters and leaves"], ["power", "Power", "power", "Electricity supply and demand"]]],
+	["Company", [["finances", "Finances", "finances", "Money in, money out"], ["maintenance", "Maintenance", "maintenance", "Wear, repairs and upkeep"], ["requisition", "Requisition", "requisition", "Goods the government requisitions"]]],
+	["Government", [["orders", "Orders", "orders", "What the government demands of you"], ["standing", "Standing", "standing", "How the government judges you"]]],
 	["Map", []],
 ]
 const MESSAGE_SECONDS := 8.0
 const FEED_MAX := 6
+## A text mark per event severity (0 info, 1 warning, 2 serious): the cue that does not rely on colour.
+const SEVERITY_MARK := ["", "! ", "!! "]
 
 ## Shared with the pages.
 var models: Array = []
@@ -141,6 +143,7 @@ var _raid_banner: Label
 var _feed: VBoxContainer
 var _feed_panel: PanelContainer
 var _feed_fold: Button
+var _feed_title: Label
 var _feed_items: Array = [] ## the entries of the event feed: {"node": Button, "age": float, "lifetime": float, "event": Dictionary}
 var _campaign_end: Control
 var _campaign_end_title: Label
@@ -178,6 +181,8 @@ func _ready() -> void:
 	_build_feed()
 	_build_legend()
 	_build_bottom()
+	# Windows draw above the feed, banner and legend, or the feed hides a window's close button.
+	_root.move_child(_windows, -1)
 	_build_debug_panel()
 	_build_campaign_end()
 	select_tool("pointer")
@@ -202,6 +207,7 @@ func _process(delta: float) -> void:
 		if item["age"] > item["lifetime"]:
 			item["node"].queue_free()
 			_feed_items.remove_at(i)
+			_refresh_feed_title()
 
 
 ## The keys of the HUD, read before the buttons so that Space does not press the button that has the focus; nothing while a name is typed.
@@ -437,38 +443,49 @@ func _build_raid_banner() -> void:
 	_raid_banner.visible = false
 	_raid_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_raid_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_raid_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_raid_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_raid_banner.offset_top = 108.0
+	_raid_banner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_raid_banner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_raid_banner.add_theme_color_override("font_color", UiTheme.WARN_TEXT)
 	_raid_banner.add_theme_stylebox_override("normal", UiTheme.plate(Color("2a2314"), Color("f2b84b59"), 14))
-	_root.add_child(_raid_banner)
+	# The banner and the news feed share one right-hand column, so they stack instead of overlapping.
+	var alerts := VBoxContainer.new()
+	alerts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	alerts.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	alerts.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	alerts.offset_left = -460.0
+	alerts.offset_right = -12.0
+	alerts.offset_top = 108.0
+	alerts.add_theme_constant_override("separation", Kit.GAP)
+	_root.add_child(alerts)
+	alerts.add_child(_raid_banner)
 
 
 # --- the news feed, on the right ---
 
 func _build_feed() -> void:
 	_feed_panel = PanelContainer.new()
-	_feed_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_feed_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	_feed_panel.offset_left = -460.0
-	_feed_panel.offset_right = -12.0
-	_feed_panel.offset_top = 108.0
 	_feed_panel.visible = false
-	_root.add_child(_feed_panel)
+	_raid_banner.get_parent().add_child(_feed_panel)
 	var column := Kit.column()
 	_feed_panel.add_child(column)
 	var head := Kit.row()
 	column.add_child(head)
-	var title := Kit.heading("News")
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(title)
+	_feed_title = Kit.heading("News")
+	_feed_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(_feed_title)
 	_feed_fold = Kit.button("▾", func() -> void:
 		_feed.visible = not _feed.visible
-		_feed_fold.text = "▾" if _feed.visible else "▸", "Fold the news away")
+		_feed_fold.text = "▾" if _feed.visible else "▸"
+		_feed_fold.tooltip_text = "Fold the news away" if _feed.visible else "Show the news"
+		_refresh_feed_title(), "Fold the news away")
 	head.add_child(_feed_fold)
 	_feed = Kit.column()
 	column.add_child(_feed)
+
+
+## "News (n)" while the feed is folded, so the entries do not vanish unseen; "News" otherwise.
+func _refresh_feed_title() -> void:
+	_feed_title.text = "News" if _feed.visible else "News (%d)" % _feed_items.size()
 
 
 ## The entries of the feed as they are now, for a save: [{"event": the event's dictionary, "age": seconds shown so far}].
@@ -490,7 +507,7 @@ func restore_feed(entries: Array) -> void:
 func show_events(events: Array, quiet := false) -> void:
 	for event in events:
 		var b := Button.new()
-		b.text = event["text"]
+		b.text = SEVERITY_MARK[event["severity"]] + event["text"]
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.custom_minimum_size = Vector2(400, 0)
@@ -515,6 +532,7 @@ func show_events(events: Array, quiet := false) -> void:
 		_feed_items[0]["node"].queue_free()
 		_feed_items.remove_at(0)
 	_feed_panel.visible = not _feed_items.is_empty()
+	_refresh_feed_title()
 
 
 # --- the bottom bar ---
@@ -528,6 +546,8 @@ func _build_bottom() -> void:
 	stack.offset_bottom = -12.0
 	stack.add_theme_constant_override("separation", Kit.GAP)
 	_root.add_child(stack)
+	# The legend sits above the stack, however tall its rows grow.
+	stack.resized.connect(func() -> void: _legend.offset_bottom = -(stack.size.y + 12.0 + Kit.GAP))
 
 	_message = Label.new()
 	_message.visible = false
@@ -547,7 +567,7 @@ func _build_bottom() -> void:
 	for group in INFO_GROUPS:
 		var r := _group_row(stack, group[0])
 		for entry in group[1]:
-			var b := Kit.button(entry[1], toggle_window.bind(entry[0]))
+			var b := Kit.button(entry[1], toggle_window.bind(entry[0]), entry[3])
 			b.toggle_mode = true
 			Icons.put(b, entry[0])
 			r.add_child(b)
@@ -591,6 +611,9 @@ func _group_button(group: String, action: String) -> Button:
 	Icons.put(b, group)
 	_stack_icon(b)
 	_group_buttons[group] = b
+	# "<name> (<key>)", read on hover so a rebind shows.
+	b.mouse_entered.connect(func() -> void: b.tooltip_text = "%s (%s)" % [group, Keys.text(action, Settings.key_bindings)])
+	b.tooltip_text = "%s (%s)" % [group, Keys.text(action, Settings.key_bindings)]
 	return b
 
 
@@ -653,7 +676,7 @@ func _build_legend() -> void:
 	_legend.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	_legend.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_legend.offset_left = 12.0
-	_legend.offset_bottom = -150.0
+	_legend.offset_bottom = -150.0 # until the bottom stack reports its height (see _build_bottom)
 	_root.add_child(_legend)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 10)
@@ -667,7 +690,7 @@ func _build_legend() -> void:
 	_legend_rule = HSeparator.new()
 	column.add_child(_legend_rule)
 	_legend_note = Kit.note("")
-	_legend_note.add_theme_font_size_override("font_size", 16)
+	_legend_note.theme_type_variation = "Small"
 	column.add_child(_legend_note)
 
 
@@ -777,7 +800,7 @@ func show_company(company: Dictionary) -> void:
 	var standing: float = company["standing"]
 	var low: bool = standing < company["dismiss_below"] + 10.0
 	var hour: float = company["hour"]
-	_date.text = "%s %d\nDay %d · %02d:%02d" % [Kit.MONTHS[(company["month"] - 1) % 12], company["year"], company["day_of_month"], int(hour), int(fmod(hour, 1.0) * 60.0)]
+	_date.text = Kit.date_text(company, "\n")
 	_money.text = "Money\n%s%s" % [Kit.money(company["money"]), "  DISMISSED" if company["dismissed"] else ("  CAMPAIGN OVER" if company["finished"] else "")]
 	_money.add_theme_color_override("font_color", UiTheme.BAD if company["money"] < 0 else UiTheme.TEXT)
 	var history: Array = company.get("standing_history", [])
@@ -785,7 +808,7 @@ func show_company(company: Dictionary) -> void:
 	if history.size() >= 1:
 		var before: float = history[-2] if history.size() >= 2 else company.get("start_standing", history[-1])
 		trend = " ▲" if history[-1] > before + 0.05 else (" ▼" if history[-1] < before - 0.05 else " ▬")
-	_standing.text = "Standing\n%d%s" % [roundi(standing), trend]
+	_standing.text = "Standing\n%d%s%s" % [roundi(standing), trend, "  LOW" if low else ""]
 	_standing.tooltip_text = "How the government judges the committee, 0 to 100: Government > Standing tells why."
 	_standing.add_theme_color_override("font_color", UiTheme.BAD if low else (UiTheme.GOOD if trend == " ▲" else UiTheme.TEXT))
 	_dismissal.visible = company["months_to_dismissal"] > 0

@@ -24,7 +24,7 @@ var _pending_delete := ""
 
 func _init() -> void:
 	_slots = load("res://game/SaveSlots.cs").new() # C#: loaded at run time, as the menus need it
-	custom_minimum_size = Vector2(820, 0)
+	Kit.fit_width(self, 820)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", UiTheme.PANEL_MARGIN)
 	add_child(column)
@@ -46,12 +46,11 @@ func _init() -> void:
 	_name_edit.placeholder_text = "Name of the save"
 	_name_edit.max_length = 40
 	_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_name_edit.custom_minimum_size = Vector2(0, 48)
+	_name_edit.custom_minimum_size = Vector2(0, UiTheme.FIELD_HEIGHT)
 	_name_edit.text_submitted.connect(func(_text: String) -> void: _save_named(_name_edit.text))
 	_name_row.add_child(_name_edit)
-	var save_button := Kit.button("Save", func() -> void: _save_named(_name_edit.text))
-	save_button.theme_type_variation = "PrimaryButton"
-	save_button.custom_minimum_size = Vector2(100, 48)
+	var save_button := Kit.menu_button("Save", func() -> void: _save_named(_name_edit.text), "PrimaryButton")
+	save_button.custom_minimum_size.x = 100
 	_name_row.add_child(save_button)
 
 	column.add_child(Kit.section("Saved games", "Newest first"))
@@ -147,7 +146,7 @@ func _build_row(row: Dictionary) -> Control:
 	title.clip_text = true
 	text.add_child(title)
 	var detail := Kit.note("")
-	detail.add_theme_font_size_override("font_size", 16)
+	detail.theme_type_variation = "Small"
 	if row["error"] != "":
 		detail.text = "%s Saved %s" % [row["error"], row["saved"]]
 		detail.add_theme_color_override("font_color", UiTheme.BAD)

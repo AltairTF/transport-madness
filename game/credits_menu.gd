@@ -38,7 +38,7 @@ static func load_rows() -> Array[Dictionary]:
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(820, 0)
+	Kit.fit_width(self, 820)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", UiTheme.PANEL_MARGIN)
 	add_child(column)

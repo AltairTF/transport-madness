@@ -68,13 +68,13 @@ static func make_view() -> Dictionary:
 	box.add_child(Kit.section("Last month"))
 	refs["needs"] = Kit.meter("Needs met", UiTheme.GOOD)
 	refs["reached"] = Kit.meter("Homes reached", UiTheme.GOOD)
-	refs["satisfaction"] = Kit.meter("Satisfaction", Color("9cc2ff"))
+	refs["satisfaction"] = Kit.meter("Satisfaction", UiTheme.METER)
 	for key in ["needs", "reached", "satisfaction"]:
 		box.add_child(refs[key]["box"])
 	refs["satisfaction"]["bar"].tooltip_text = "Satisfaction falls when buildings are demolished or abandoned, and slowly recovers."
 	box.add_child(Kit.section("Your stations"))
 	var stations := Kit.card()
-	refs["covered"] = Kit.meter("Buildings reached", Color("9cc2ff"))
+	refs["covered"] = Kit.meter("Buildings reached", UiTheme.METER)
 	stations.get_meta("body").add_child(refs["covered"]["box"])
 	refs["no_station"] = Kit.note("No station of yours reaches this town, so nothing can be delivered to it.")
 	refs["no_station"].theme_type_variation = "Warn"
@@ -118,7 +118,7 @@ static func make_view() -> Dictionary:
 	return refs
 
 
-const TRIP_KINDS := [["walked", "On foot", Color("9cc2ff")], ["drove", "By car", Color("3f78e0")], ["rode", "By bus", Color("5fd4b0")], ["stayed", "Could not go", Color("f2b84b")]]
+const TRIP_KINDS := [["walked", "On foot", UiTheme.METER], ["drove", "By car", Color("3f78e0")], ["rode", "By bus", UiTheme.GOOD], ["stayed", "Could not go", UiTheme.WARN]]
 
 
 static func fill_view(refs: Dictionary, town: Dictionary, cargo_names: Array) -> void:

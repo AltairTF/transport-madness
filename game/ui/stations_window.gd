@@ -25,8 +25,7 @@ static func make_view() -> Dictionary:
 	var covers := Kit.row()
 	refs["covers"] = {}
 	for entry in [["homes", "Homes"], ["shops", "Shops"], ["workplaces", "Workplaces"], ["industries", "Industries"]]:
-		var stat := Kit.stat(entry[1])
-		stat["value"].add_theme_font_size_override("font_size", 22)
+		var stat := Kit.stat(entry[1], "Figure")
 		covers.add_child(stat["box"])
 		refs["covers"][entry[0]] = stat
 	box.add_child(covers)

@@ -26,7 +26,7 @@ func _build() -> void:
 	_trend.size_flags_vertical = Control.SIZE_SHRINK_END
 	head.add_child(_trend)
 	body.add_child(head)
-	_meter = Kit.meter("Allocation factor", Color("9cc2ff"))
+	_meter = Kit.meter("Allocation factor", UiTheme.METER)
 	body.add_child(_meter["box"])
 	_dismissal = Kit.notice("Dismissal", "")
 	body.add_child(_dismissal)
@@ -117,7 +117,7 @@ func _show_history(history: Array, line: float) -> void:
 		gap.custom_minimum_size = Vector2(12, 90.0 * (1.0 - float(value) / 100.0))
 		cell.add_child(gap)
 		var bar := ColorRect.new()
-		bar.color = Color(0.85, 0.3, 0.25) if value < line else UiTheme.ACCENT
+		bar.color = UiTheme.BAD if value < line else UiTheme.ACCENT
 		bar.custom_minimum_size = Vector2(12, maxf(1.0, 90.0 * float(value) / 100.0))
 		bar.tooltip_text = "Standing %d" % roundi(value)
 		cell.add_child(bar)

@@ -17,9 +17,7 @@ var _roads_empty: Label
 func _build() -> void:
 	var totals := Kit.row()
 	for entry in [["maintenance", "Spent on maintenance"], ["compensation", "Compensation paid"], ["fines", "Fines"]]:
-		var stat := Kit.stat(entry[1])
-		stat["value"].add_theme_font_size_override("font_size", 20)
-		stat["caption"].add_theme_font_size_override("font_size", 14)
+		var stat := Kit.stat(entry[1], "Figure")
 		totals.add_child(stat["box"])
 		_totals[entry[0]] = stat
 	add_child(totals)

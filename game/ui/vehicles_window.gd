@@ -99,7 +99,7 @@ static func make_view() -> Dictionary:
 	refs["state"] = Kit.badge("")
 	head.add_child(refs["state"])
 	box.add_child(head)
-	refs["load"] = Kit.meter("Load", Color("9cc2ff"))
+	refs["load"] = Kit.meter("Load", UiTheme.METER)
 	box.add_child(refs["load"]["box"])
 	var condition := Kit.make_condition_bar()
 	refs["condition"] = condition
@@ -114,11 +114,10 @@ static func make_view() -> Dictionary:
 	condition["bar"].custom_minimum_size = Vector2(0, 8)
 	box.add_child(condition["bar"])
 	var money := Kit.row()
-	refs["income"] = Kit.stat("Income")
-	refs["upkeep"] = Kit.stat("Upkeep")
-	refs["profit"] = Kit.stat("Profit")
+	refs["income"] = Kit.stat("Income", "Figure")
+	refs["upkeep"] = Kit.stat("Upkeep", "Figure")
+	refs["profit"] = Kit.stat("Profit", "Figure")
 	for key in ["income", "upkeep", "profit"]:
-		refs[key]["value"].add_theme_font_size_override("font_size", 20)
 		money.add_child(refs[key]["box"])
 	box.add_child(money)
 	refs["repair"] = Kit.note("")

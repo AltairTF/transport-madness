@@ -22,10 +22,10 @@ static func money(amount: Variant) -> String:
 	return ("-" if value < 0 else "") + out
 
 
-## "2 Mar 1938   14:30": the calendar day and the time of day (a day is 20 minutes long, a month three days).
-static func date_text(company: Dictionary) -> String:
+## "2 Mar 1938   14:30": the calendar day and the time of day (a day is 20 minutes long, a month three days). <separator> sits between date and time.
+static func date_text(company: Dictionary, separator := "   ") -> String:
 	var hour: float = company["hour"]
-	return "%d %s %d   %02d:%02d" % [company["day_of_month"], MONTHS[(company["month"] - 1) % 12], company["year"], int(hour), int(fmod(hour, 1.0) * 60.0)]
+	return "%d %s %d%s%02d:%02d" % [company["day_of_month"], MONTHS[(company["month"] - 1) % 12], company["year"], separator, int(hour), int(fmod(hour, 1.0) * 60.0)]
 
 
 static func spacer() -> Control:
@@ -89,10 +89,37 @@ static func section(text: String, hint := "") -> Control:
 static func header(text: String, on_close: Callable) -> Control:
 	var r := row()
 	r.add_child(heading(text))
-	var close := button("×", on_close, "Close")
-	close.custom_minimum_size = Vector2(44, 44)
-	r.add_child(close)
+	r.add_child(close_button(on_close))
 	return r
+
+
+## The one close button every window and menu uses: a square icon button.
+static func close_button(action: Callable, tooltip := "Close") -> Button:
+	var b := button("✕", action, tooltip)
+	b.custom_minimum_size = Vector2(UiTheme.ICON_BUTTON, UiTheme.ICON_BUTTON)
+	return b
+
+
+## A big menu button (main and pause menus); <variation> is a theme variation such as "PrimaryButton".
+static func menu_button(text: String, action: Callable, variation := "") -> Button:
+	var b := button(text, action)
+	b.custom_minimum_size.y = UiTheme.MENU_BUTTON_HEIGHT
+	if variation != "":
+		b.theme_type_variation = variation
+	return b
+
+
+## Keeps <panel> at <wanted> logical pixels wide, but never wider than the screen minus its margins (a big interface scale shrinks the logical screen).
+static func fit_width(panel: Control, wanted: float) -> void:
+	var apply := func() -> void:
+		if panel.is_inside_tree():
+			panel.custom_minimum_size.x = minf(wanted, panel.get_viewport_rect().size.x - 2.0 * UiTheme.PANEL_MARGIN)
+	var later := func() -> void: apply.call_deferred()
+	apply.call()
+	panel.tree_entered.connect(apply)
+	panel.visibility_changed.connect(apply)
+	Settings.changed.connect(later)
+	panel.tree_exiting.connect(func() -> void: Settings.changed.disconnect(later))
 
 
 ## A row of toggle buttons in one rounded well; <pick> gets the index of the pressed one. Returns {box, buttons}.
@@ -135,7 +162,7 @@ static func setting_row(parent: Control, title: String, hint: String, control: C
 	text.add_child(caption)
 	if hint != "":
 		var dim := note(hint)
-		dim.add_theme_font_size_override("font_size", 16)
+		dim.theme_type_variation = "Small"
 		text.add_child(dim)
 	r.add_child(text)
 	control.custom_minimum_size.x = maxf(control.custom_minimum_size.x, 300.0)
@@ -148,7 +175,7 @@ static func setting_row(parent: Control, title: String, hint: String, control: C
 static func badge(text: String) -> Control:
 	var panel := PanelContainer.new()
 	var box := StyleBoxFlat.new()
-	box.bg_color = Color("222a37")
+	box.bg_color = UiTheme.METER_WELL
 	box.set_corner_radius_all(11)
 	box.content_margin_left = 8
 	box.content_margin_right = 8
@@ -157,9 +184,8 @@ static func badge(text: String) -> Control:
 	panel.add_theme_stylebox_override("panel", box)
 	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var label := Label.new()
-	label.theme_type_variation = "Dim"
+	label.theme_type_variation = "Small"
 	label.text = text
-	label.add_theme_font_size_override("font_size", 16)
 	panel.add_child(label)
 	return panel
 
@@ -288,12 +314,12 @@ static func column() -> VBoxContainer:
 
 static func condition_color(value: float) -> Color:
 	if value >= 60.0:
-		return Color(0.25, 0.75, 0.35)
+		return UiTheme.GOOD
 	if value >= 40.0:
-		return Color(0.85, 0.75, 0.2)
+		return UiTheme.WARN
 	if value >= 20.0:
-		return Color(0.9, 0.5, 0.15)
-	return Color(0.85, 0.2, 0.15)
+		return UiTheme.POOR
+	return UiTheme.BAD
 
 
 ## A bar for a Condition from 0 to 100; returns the bar and the style of its fill (to colour by the value).
