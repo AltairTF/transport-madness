@@ -5,3 +5,5 @@ bin/
 obj/
 *.user
 .DS_Store
+production/session-state/active.md
+production/session-logs/
