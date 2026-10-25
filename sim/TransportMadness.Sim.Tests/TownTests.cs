@@ -230,6 +230,19 @@ public class TownTests
     }
 
     [Fact]
+    public void ExtraLanes_WidenTheRoadSoABuildingJustBeyondItsEdgeIsDemolished()
+    {
+        var (sim, home, _, _) = SmallTown();
+        float x = 100 + 3.5f + sim.TownTuning.Of(BuildingType.Home, 0).Footprint + 1.5f; // clear of a 2-lane road, inside a 3 + 1 lane one
+        Assert.Equal(Simulation.Demolition.None, sim.EstimateRoadDemolition(x, -60, x, 60, RoadType.TwoLane));
+        var estimate = sim.EstimateRoadDemolition(x, -60, x, 60, RoadType.TwoLane, 0f, 3, 1);
+        Assert.Equal(1, estimate.Count);
+
+        Assert.True(sim.Execute(new BuildRoadCommand(x, -60, x, 60, RoadType.TwoLane, 14f, 0f, 3, 1)) > 0);
+        Assert.Equal(BuildingState.Demolished, sim.Buildings[home].State);
+    }
+
+    [Fact]
     public void ARoadBesideABuilding_LeavesItStanding()
     {
         var (sim, home, _, _) = SmallTown();

@@ -350,7 +350,7 @@ public sealed partial class Simulation
         if (plan == null || cost == null) return 0;
         var geometry = RoadGeometry.FromChord(c.X0, c.Z0, c.X1, c.Z1, c.Sweep);
         if (!TrackCrossingsAllowed(geometry, plan, out int crossings)) return 0;
-        var inTheWay = BuildingsInTheWay(new[] { (geometry, RoadType.TwoLane) });
+        var inTheWay = BuildingsInTheWay(new[] { (geometry, RoadNetwork.HalfWidth(RoadType.TwoLane)) });
         if (!CanAfford(cost.Value.Money + crossings * _railTuning.Crossings.Price + DemolitionOf(inTheWay).Price)) return 0;
         int built = _rail.BuildTrack(c.X0, c.Z0, c.X1, c.Z1, c.Sweep).Count;
         if (built == 0) return 0;
@@ -768,7 +768,7 @@ public sealed partial class Simulation
         if (plan == null || cost == null) return null;
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
         if (!TrackCrossingsAllowed(geometry, plan, out int crossings)) return null;
-        var inTheWay = BuildingsInTheWay(new[] { (geometry, RoadType.TwoLane) });
+        var inTheWay = BuildingsInTheWay(new[] { (geometry, RoadNetwork.HalfWidth(RoadType.TwoLane)) });
         var demolition = DemolitionOf(inTheWay);
         long price = Price(cost.Value.Money) + crossings * _railTuning.Crossings.Price + demolition.Price;
         return new TrackQuote(cost.Value, price, CanAfford(price), crossings, inTheWay.Count, demolition.Price);

@@ -54,7 +54,7 @@ public partial class SimHost
     /// </summary>
     void AddStreetFurniture(RoadNetwork net, Road road, float y0, float y1, float width)
     {
-        if (road.Structure != RoadStructure.None || road.Type == RoadType.Path || !Sim.IsUrbanRoad(road.Id)) return;
+        if (road.Structure != RoadStructure.None || road.Type == RoadType.Path || road.Type == RoadType.Dirt || !Sim.IsUrbanRoad(road.Id)) return;
         var g = road.Geometry;
         float from = NeedsDisc(net, road.From) ? JunctionCut : 0f, to = g.Length - (NeedsDisc(net, road.To) ? JunctionCut : 0f);
         if (to - from < 4f) return;
@@ -150,9 +150,9 @@ public partial class SimHost
         for (int r = 0; r < net.RoadCount; r++)
         {
             var road = net.GetRoad(new RoadId(r));
-            if (road.Retired || road.Structure != RoadStructure.None || road.Type == RoadType.Path || !Sim.IsUrbanRoad(road.Id)) continue;
+            if (road.Retired || road.Structure != RoadStructure.None || road.Type == RoadType.Path || road.Type == RoadType.Dirt || !Sim.IsUrbanRoad(road.Id)) continue;
             var g = road.Geometry;
-            float width = road.Type == RoadType.Avenue2x2 ? 4 * Simulation.LaneWidth + RoadNetwork.MedianWidth : 2 * Simulation.LaneWidth;
+            float width = (road.LanesForward + road.LanesBack) * Simulation.LaneWidth + (road.Type == RoadType.Avenue2x2 ? RoadNetwork.MedianWidth : 0f);
             float from = NeedsDisc(net, road.From) ? JunctionCut + 4f : 4f, to = g.Length - (NeedsDisc(net, road.To) ? JunctionCut + 4f : 4f);
             for (float s = from + 4f, k = 0; s < to; s += TreeSpacing, k++)
             {

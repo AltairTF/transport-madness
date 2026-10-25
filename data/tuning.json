@@ -109,6 +109,8 @@
   "roads": {
     "twoLane": { "speedLimit": 14.0, "costPerMetre": 40.0 },
     "avenue": { "speedLimit": 19.0, "costPerMetre": 90.0 },
+    "extraLaneShare": 0.35, // road-types GDD: each lane above a type's normal count adds this share of the two-lane price
+    "dirt": { "speedLimit": 9.0, "costPerMetre": 12.0 }, // road-types GDD: the cheap first road; upgrades to a two-lane road
     "path": { "speedLimit": 8.0, "costPerMetre": 15.0 }, // the stone road that joins an access point to the roads (M6e); never chosen by the player
     "cutCostPerCubicMetre": 6.0,
     "fillCostPerCubicMetre": 9.0,
@@ -532,6 +534,7 @@
     },
     "roads": {
       "passesPerPoint": 4000.0,     // vehicles driving a section's whole length, for one point of Condition lost
+      "dirtPassesPerPoint": 2000.0, // the same on a dirt road (road-types GDD): it wears twice as fast
       "noEffectAbove": 80.0,        // no effect on speed or risk at or above this Condition
       "worstSpeedShare": 0.7,       // of the speed limit at Condition 0 (it falls evenly below noEffectAbove)
       "worstRiskFactor": 3.0,       // times the breakdown risk of a company vehicle at Condition 0

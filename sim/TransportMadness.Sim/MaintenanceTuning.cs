@@ -74,6 +74,8 @@ public sealed record RoadWearTuning
 {
     /// <summary>Vehicles driving the whole length of a section (ambient ones count too) for one point of Condition to be lost.</summary>
     public required float PassesPerPoint { get; init; }
+    /// <summary>The same for a dirt road, which wears faster.</summary>
+    public required float DirtPassesPerPoint { get; init; }
     /// <summary>At or above this Condition a section has no effect on speed or risk.</summary>
     public required float NoEffectAbove { get; init; }
     /// <summary>The share of the speed limit drivers keep on a section of Condition 0 (it falls evenly from <see cref="NoEffectAbove"/>).</summary>
@@ -155,7 +157,7 @@ public sealed record MaintenanceTuning
         if (!Enum.TryParse<RepairKind>(DefaultPolicy.Repair, ignoreCase: true, out _)) throw new JsonException("maintenance.defaultPolicy.repair must be patch, service or overhaul");
         foreach (var repair in new[] { Patch, Service, Overhaul })
             if (repair.Seconds <= 0f || repair.Gain <= 0f || repair.Ceiling <= 0f || repair.Ceiling > 100f) throw new JsonException("maintenance repair is out of range");
-        if (Roads.PassesPerPoint <= 0f || Roads.NoEffectAbove <= 0f || Roads.NoEffectAbove > 100f || Roads.WorstSpeedShare <= 0f || Roads.WorstSpeedShare > 1f || Roads.ResurfaceMetresPerSecond <= 0f)
+        if (Roads.PassesPerPoint <= 0f || Roads.DirtPassesPerPoint <= 0f || Roads.NoEffectAbove <= 0f || Roads.NoEffectAbove > 100f || Roads.WorstSpeedShare <= 0f || Roads.WorstSpeedShare > 1f || Roads.ResurfaceMetresPerSecond <= 0f)
             throw new JsonException("maintenance.roads is out of range");
         if (Bays.Simple < 1 || Bays.Workshop < 1 || Bays.Complex < 1) throw new JsonException("maintenance.bays must be at least 1");
     }

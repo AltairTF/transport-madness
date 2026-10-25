@@ -42,6 +42,23 @@ public class RoadConditionTests
     }
 
     [Fact]
+    public void ADirtRoadWearsAtItsOwnRate()
+    {
+        float Wear(RoadType type)
+        {
+            var tuning = Tuned(m => m with { Roads = m.Roads with { PassesPerPoint = 10f, DirtPassesPerPoint = 5f } });
+            var sim = new Simulation(new RoadNetwork(Terrain.Flat(), tuning), 1, IncidentFrequency.Off);
+            sim.Execute(new BuildRoadCommand(0, 0, 400, 0, type, 9f));
+            int car = sim.SpawnVehicle(new LaneId(0), 5f, 8f);
+            sim.SetKeepLane(car, true);
+            for (int i = 0; i < 20 * 15; i++) sim.Step();
+            return 100f - sim.RoadConditionOf(0);
+        }
+
+        Assert.Equal(2f, Wear(RoadType.Dirt) / Wear(RoadType.TwoLane), 0.05f);
+    }
+
+    [Fact]
     public void ARoadAbove80HasNoEffectOnSpeed_BelowItDriversSlowDownToTheWorstShareAtZero()
     {
         var sim = new Simulation(new RoadNetwork(Terrain.Flat(), Worn(passesPerPoint: 1f)), 1, IncidentFrequency.Off);

@@ -66,6 +66,7 @@ const Icons := preload("res://game/ui/icons.gd")
 const SPEEDS := [["||", 0.0], ["1x", 1.0], ["2x", 2.0], ["4x", 4.0], ["8x", 8.0]]
 const TOOL_CATEGORIES := [
 	{"name": "Roads", "tools": [
+		["Dirt road", "road1", "Build a cheap, slow dirt road. It can be upgraded to a 2-lane road."],
 		["2-lane road", "road2", "Build a road with one lane each way."],
 		["2x2 avenue", "road4", "Build a road with two lanes each way."],
 		["Curve", "curve2", "Build a curved 2-lane road: start, bend, end."],

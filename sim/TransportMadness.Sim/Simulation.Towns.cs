@@ -245,7 +245,7 @@ public sealed partial class Simulation
     }
 
     /// <summary>Buildings under a road's paved width (and its own footprint), by id.</summary>
-    List<int> BuildingsInTheWay(IEnumerable<(RoadGeometry Geometry, RoadType Type)> roads)
+    List<int> BuildingsInTheWay(IEnumerable<(RoadGeometry Geometry, float Half)> roads)
     {
         var hit = new SortedSet<int>();
         if (_buildings.Count == 0) return new List<int>();
@@ -253,9 +253,9 @@ public sealed partial class Simulation
         float widest = _townTuning.Of(BuildingType.Home, TownsTuning.Tiers - 1).Footprint;
         foreach (var type in new[] { BuildingType.Commerce, BuildingType.Industry })
             widest = MathF.Max(widest, _townTuning.Of(type, TownsTuning.Tiers - 1).Footprint);
-        foreach (var (g, type) in roads)
+        foreach (var (g, half) in roads)
         {
-            float reach = RoadNetwork.HalfWidth(type) + widest;
+            float reach = half + widest;
             int steps = Math.Max(1, (int)MathF.Ceiling(g.Length / step));
             for (int k = 0; k <= steps; k++)
             {
@@ -263,7 +263,7 @@ public sealed partial class Simulation
                 foreach (int id in BuildingsNear(x, z, reach + step))
                 {
                     var b = _buildings[id];
-                    if (g.DistanceTo(b.X, b.Z) < RoadNetwork.HalfWidth(type) + _townTuning.Of(b.Type, b.Tier).Footprint) hit.Add(id);
+                    if (g.DistanceTo(b.X, b.Z) < half + _townTuning.Of(b.Type, b.Tier).Footprint) hit.Add(id);
                 }
             }
         }
@@ -278,8 +278,8 @@ public sealed partial class Simulation
     }
 
     /// <summary>The buildings a new road from (x0, z0) to (x1, z1) would demolish and what that costs, on top of the road's own price.</summary>
-    public Demolition EstimateRoadDemolition(float x0, float z0, float x1, float z1, RoadType type, float sweep = 0f) =>
-        DemolitionOf(BuildingsInTheWay(new[] { (RoadGeometry.FromChord(x0, z0, x1, z1, sweep), type) }));
+    public Demolition EstimateRoadDemolition(float x0, float z0, float x1, float z1, RoadType type, float sweep = 0f, int lanesForward = 0, int lanesBack = 0) =>
+        DemolitionOf(BuildingsInTheWay(new[] { (RoadGeometry.FromChord(x0, z0, x1, z1, sweep), RoadNetwork.HalfWidth(type, lanesForward, lanesBack)) }));
 
     /// <summary>The same for dragging a node to a new place (the roads at it are rebuilt).</summary>
     public Demolition EstimateMoveDemolition(int node, float x, float z) =>

@@ -65,7 +65,9 @@ public sealed partial class Simulation
             float distance = _speed[i] * StepSeconds;
             if (distance <= 0f) continue;
             int road = _laneRoad[_lane[i]];
-            _roadPasses[road] += distance * _roadInvLength[road];
+            // Passes are counted in the units of a normal road, so a dirt road counts for more of them and Condition stays one formula.
+            float weight = _net.GetRoad(new RoadId(road)).Type == RoadType.Dirt ? _maint.Roads.PassesPerPoint / _maint.Roads.DirtPassesPerPoint : 1f;
+            _roadPasses[road] += distance * _roadInvLength[road] * weight;
         }
     }
 

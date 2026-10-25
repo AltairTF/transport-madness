@@ -155,7 +155,7 @@ public sealed partial class Simulation
     int BuildRoadWithAccess(BuildRoadCommand c)
     {
         var join = JoinRoad(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.Sweep);
-        int built = BuildRoadPiece(join.X0, join.Z0, join.X1, join.Z1, c.Type, c.SpeedLimit, c.Sweep, join.SpurMoney);
+        int built = BuildRoadPiece(join.X0, join.Z0, join.X1, join.Z1, c.Type, c.SpeedLimit, c.Sweep, join.SpurMoney, c.LanesForward, c.LanesBack);
         if (built == 0) return 0;
         foreach (var spur in join.Spurs)
             if (spur.Buildable) BuildRoadPiece(spur.FromX, spur.FromZ, spur.ToX, spur.ToZ, RoadType.Path, _net.Tuning.Roads.Path.SpeedLimit, 0f, 0f);
@@ -167,16 +167,16 @@ public sealed partial class Simulation
     /// Builds one road piece sequence and charges it: refused when it cannot be built, would cross rails where that is not allowed, or cannot be
     /// afforded together with <paramref name="reserve"/> (the spurs to come). Returns the pieces built.
     /// </summary>
-    int BuildRoadPiece(float x0, float z0, float x1, float z1, RoadType type, float speedLimit, float sweep, float reserve)
+    int BuildRoadPiece(float x0, float z0, float x1, float z1, RoadType type, float speedLimit, float sweep, float reserve, int lanesForward = 0, int lanesBack = 0)
     {
-        var cost = _net.EstimateCost(x0, z0, x1, z1, type, sweep);
+        var cost = _net.EstimateCost(x0, z0, x1, z1, type, sweep, lanesForward, lanesBack);
         if (cost == null) return 0;
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
-        var inTheWay = BuildingsInTheWay(new[] { (geometry, type) });
+        var inTheWay = BuildingsInTheWay(new[] { (geometry, RoadNetwork.HalfWidth(type, lanesForward, lanesBack)) });
         int crossings = 0;
         if (RailInUse && (_net.PlannedPoints(x0, z0, x1, z1, sweep) is not { } plan || !RoadCrossingsAllowed(geometry, plan, out crossings))) return 0;
         if (!CanAfford(cost.Value.Money + DemolitionOf(inTheWay).Price + crossings * _railTuning.Crossings.Price + reserve)) return 0;
-        int built = _net.BuildRoad(x0, z0, x1, z1, type, speedLimit, sweep).Count;
+        int built = _net.BuildRoad(x0, z0, x1, z1, type, speedLimit, sweep, lanesForward, lanesBack).Count;
         if (built > 0)
         {
             Charge(Price(cost.Value.Money), LedgerEntry.Construction);

@@ -35,6 +35,8 @@ public sealed class Terrain
     public int ChunksPerSide => (Cells + ChunkCells - 1) / ChunkCells;
 
     readonly float[] _heights;
+    /// <summary>Samples a road has levelled for its carriageway, so that the shoulder of a later road does not lift the ground over it.</summary>
+    bool[]? _paved;
     readonly HashSet<int> _changedChunks = new();
 
     Terrain(int cells, float cellSize, float waterSlopeX = 0f, float waterSlopeZ = 0f)
@@ -106,6 +108,7 @@ public sealed class Terrain
     {
         var copy = new Terrain(Cells, CellSize, WaterSlopeX, WaterSlopeZ) { Coast = Coast };
         Array.Copy(_heights, copy._heights, _heights.Length);
+        copy._paved = (bool[]?)_paved?.Clone();
         copy._biomes = (byte[]?)_biomes?.Clone();
         return copy;
     }
@@ -190,8 +193,18 @@ public sealed class Terrain
                 if (distance >= reach) continue;
                 float blend = distance <= halfWidth ? 1f : 1f - (distance - halfWidth) / shoulder;
                 blend = blend * blend * (3f - 2f * blend);
-                ref float h = ref _heights[j * Samples + i];
-                float target = h + (road - h) * blend;
+                int index = j * Samples + i;
+                ref float h = ref _heights[index];
+                _paved ??= new bool[_heights.Length];
+                float target;
+                if (distance <= halfWidth)
+                {
+                    // Where two roads share a sample (a junction, a bend) the lower surface wins: the ground never stands above either road.
+                    target = _paved[index] ? MathF.Min(h, road) : road;
+                    _paved[index] = true;
+                }
+                else if (_paved[index]) continue; // a shoulder never moves the carriageway of an earlier road
+                else target = h + (road - h) * blend;
                 if (target != h) { h = target; changed = true; }
             }
         if (changed)

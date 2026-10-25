@@ -63,7 +63,7 @@ public partial class SimHost : Node3D
     MeshInstance3D _water = null!;
     MeshInstance3D _cutaway = null!; // the four sides and the bottom of the slice of world
     StandardMaterial3D _waterMaterial = null!, _deckMaterial = null!, _tunnelMaterial = null!, _tunnelHintMaterial = null!;
-    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!, _pathMaterial = null!, _depotIdleMaterial = null!;
+    StandardMaterial3D _roadMaterial = null!, _medianMaterial = null!, _depotMaterial = null!, _lineMaterial = null!, _stationMaterial = null!, _pathMaterial = null!, _dirtMaterial = null!, _depotIdleMaterial = null!;
     readonly StandardMaterial3D[] _depotLevelMaterials = new StandardMaterial3D[3];
 
     // Per-lane drawing data: start point, unit direction and sideways offset of the lane centre (to the driver's right).
@@ -85,6 +85,7 @@ public partial class SimHost : Node3D
         AddChild(_stationRoot);
         _roadMaterial = Textured(new Color(0.23f, 0.24f, 0.26f), "asphalt", 4f);
         _pathMaterial = Textured(new Color(0.5f, 0.44f, 0.34f), "paving", 3f); // the stone road of an access connection (M6e)
+        _dirtMaterial = Textured(new Color(0.55f, 0.42f, 0.3f), "dirt", 4f); // the unpaved road: bare earth, no markings
         _medianMaterial = Textured(new Color(0.35f, 0.5f, 0.3f), "grass", 6f);
         for (int level = 0; level < 3; level++) _depotLevelMaterials[level] = Flat(_whitebox.Depots[level].Color);
         _depotMaterial = _depotLevelMaterials[1];
@@ -256,9 +257,10 @@ public partial class SimHost : Node3D
     public Godot.Collections.Dictionary EstimateCurveCost(float x0, float z0, float x1, float z1, int type, float sweep)
     {
         var join = Sim.JoinRoad(x0, z0, x1, z1, RoadTypeOf(type), sweep);
-        var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        var (lf, lb) = LanesFor(type);
+        var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep, lf, lb);
         if (cost is not { } c) return new Godot.Collections.Dictionary { ["valid"] = false };
-        var demolition = Sim.EstimateRoadDemolition(x0, z0, x1, z1, RoadTypeOf(type), sweep);
+        var demolition = Sim.EstimateRoadDemolition(x0, z0, x1, z1, RoadTypeOf(type), sweep, LanesFor(type).Forward, LanesFor(type).Back);
         var built = join.Spurs.Where(s => s.Buildable).ToList();
         int demolished = demolition.Count + built.Sum(s => s.Demolished);
         long demolitionPrice = demolition.Price + built.Sum(s => s.DemolitionPrice);
@@ -303,7 +305,8 @@ public partial class SimHost : Node3D
         var plan = Sim.Network.PlannedRuns(x0, z0, x1, z1, sweep);
         if (plan == null) return runs;
         var g = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
-        float half = RoadNetwork.HalfWidth(type), slope = Sim.Network.Tuning.Roads.EarthworkSlope;
+        var (lf, lb) = LanesFor(type == RoadType.Avenue2x2 ? 1 : type == RoadType.TwoLane ? 0 : 2);
+        float half = RoadNetwork.HalfWidth(type, lf, lb), slope = Sim.Network.Tuning.Roads.EarthworkSlope;
         for (int i = 0; i + 1 < plan.Count; i++)
         {
             var a = plan[i];
@@ -369,7 +372,20 @@ public partial class SimHost : Node3D
         return points;
     }
 
-    static RoadType RoadTypeOf(int type) => type switch { 1 => RoadType.Avenue2x2, 2 => RoadType.Path, _ => RoadType.TwoLane };
+    int _lanesForward, _lanesBack; // lane counts for the next two-lane road or avenue (0, 0: the type's own)
+
+    /// <summary>Sets the lanes each way of the roads built next (two-lane and avenue only); 0, 0 is the normal layout. False when the counts are not allowed.</summary>
+    public bool SetRoadLanes(int forward, int back)
+    {
+        if (!RoadNetwork.ValidLanes(RoadType.Avenue2x2, forward, back)) return false;
+        (_lanesForward, _lanesBack) = (forward, back);
+        return true;
+    }
+
+    /// <summary>The lane counts to build a road of this type with: the chosen ones when the type takes them.</summary>
+    (int Forward, int Back) LanesFor(int type) => type is 0 or 1 ? (_lanesForward, _lanesBack) : (0, 0);
+
+    static RoadType RoadTypeOf(int type) => type switch { 1 => RoadType.Avenue2x2, 2 => RoadType.Path, 3 => RoadType.Dirt, _ => RoadType.TwoLane };
 
     /// <summary>Builds a straight road. Type 0 is 2-lane, 1 is the 2x2 avenue.</summary>
     public bool BuildRoad(float x0, float z0, float x1, float z1, int type) => BuildCurve(x0, z0, x1, z1, type, 0f);
@@ -380,7 +396,7 @@ public partial class SimHost : Node3D
     /// </summary>
     public bool BuildCurve(float x0, float z0, float x1, float z1, int type, float sweep)
     {
-        int built = Sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadTypeOf(type), Sim.Network.Tuning.Roads.Of(RoadTypeOf(type)).SpeedLimit, sweep));
+        int built = Sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadTypeOf(type), Sim.Network.Tuning.Roads.Of(RoadTypeOf(type)).SpeedLimit, sweep, LanesFor(type).Forward, LanesFor(type).Back));
         if (built == 0) return false;
         RebuildRoads();
         return true;
@@ -422,7 +438,8 @@ public partial class SimHost : Node3D
     /// <summary>Widens a two-lane road to an avenue.</summary>
     public bool UpgradeRoad(int road)
     {
-        if (Sim.Execute(new UpgradeRoadCommand(road, Sim.Network.Tuning.Roads.Avenue.SpeedLimit)) == 0) return false;
+        if (RoadNetwork.UpgradeTarget(Sim.Network.GetRoad(new RoadId(road)).Type) is not { } target) return false;
+        if (Sim.Execute(new UpgradeRoadCommand(road, Sim.Network.Tuning.Roads.Of(target).SpeedLimit)) == 0) return false;
         RebuildRoads();
         return true;
     }
@@ -1444,9 +1461,10 @@ public partial class SimHost : Node3D
             float y0 = net.GetNodeHeight(road.From), y1 = net.GetNodeHeight(road.To);
             bool avenue = road.Type == RoadType.Avenue2x2;
             float median = avenue ? RoadNetwork.MedianWidth : 0f;
-            bool path = road.Type == RoadType.Path;
-            float width = path ? RoadNetwork.HalfWidth(RoadType.Path) * 2f : (avenue ? 4 : 2) * Simulation.LaneWidth + median;
-            var surface = path ? _pathMaterial : _roadMaterial;
+            bool path = road.Type == RoadType.Path, dirt = road.Type == RoadType.Dirt;
+            bool unmarked = path || dirt; // no centre line on a track
+            float width = path || dirt ? RoadNetwork.HalfWidth(road.Type) * 2f : (road.LanesForward + road.LanesBack) * Simulation.LaneWidth + median;
+            var surface = path ? _pathMaterial : dirt ? _dirtMaterial : _roadMaterial;
 
             // Tables for every road: retired lanes may still be referred to by finished incidents.
             SetLaneTable(net, road.ForwardLanes, y0);
@@ -1456,19 +1474,24 @@ public partial class SimHost : Node3D
             if (road.Structure == RoadStructure.Bridge) AddBridge(net, road, y0, y1, width);
             else if (road.Structure == RoadStructure.Tunnel) AddTunnel(net, road, y0, y1, width);
 
-            if (g.IsStraight)
+            if (road.Structure == RoadStructure.None)
+            {
+                AddRoadRibbon(g, y0, y1, width, RoadHeight * 0.5f, surface, drape: true);
+                if (!unmarked) AddRoadRibbon(g, y0, y1, avenue ? median : 0.25f, RoadHeight * 0.5f + 0.02f, avenue ? _medianMaterial : _lineMaterial, drape: true);
+            }
+            else if (g.IsStraight)
             {
                 var (x0, z0) = net.GetNode(road.From);
                 var (x1, z1) = net.GetNode(road.To);
                 float dx = (x1 - x0) / g.Length, dz = (z1 - z0) / g.Length;
                 var middle = new Vector3((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, (z0 + z1) * 0.5f);
                 AddRoadBox(middle, g.Length, y1 - y0, dx, dz, width, RoadHeight, 0f, surface);
-                if (!path) AddRoadBox(middle, g.Length, y1 - y0, dx, dz, avenue ? median : 0.25f, 0.04f, RoadHeight * 0.5f + 0.01f, avenue ? _medianMaterial : _lineMaterial);
+                if (!unmarked) AddRoadBox(middle, g.Length, y1 - y0, dx, dz, avenue ? median : 0.25f, 0.04f, RoadHeight * 0.5f + 0.01f, avenue ? _medianMaterial : _lineMaterial);
             }
             else
             {
                 AddRoadRibbon(g, y0, y1, width, RoadHeight * 0.5f, surface);
-                if (!path) AddRoadRibbon(g, y0, y1, avenue ? median : 0.25f, RoadHeight * 0.5f + 0.05f, avenue ? _medianMaterial : _lineMaterial);
+                if (!unmarked) AddRoadRibbon(g, y0, y1, avenue ? median : 0.25f, RoadHeight * 0.5f + 0.05f, avenue ? _medianMaterial : _lineMaterial);
             }
             AddStreetFurniture(net, road, y0, y1, width);
         }
@@ -1476,10 +1499,22 @@ public partial class SimHost : Node3D
         for (int n = 0; n < net.NodeCount; n++)
         {
             if (net.IncomingLanes(n).Count == 0) continue; // a node whose roads were all replaced
+            if (net.RoadsAt(n).Count >= 2) AddJunctionStrips(net, n); // also where the road only bends a little: its pieces meet at an angle and leave a wedge
             if (!NeedsDisc(net, n)) continue; // two roads that go on from each other: no disc, the ribbon runs through
             var (x, z) = net.GetNode(n);
-            var disc = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 8.5f, BottomRadius = 8.5f, Height = RoadHeight, RadialSegments = 24 }, MaterialOverride = _roadMaterial };
-            disc.Position = new Vector3(x, net.GetNodeHeight(n), z);
+            var roadsHere = net.RoadsAt(n);
+            if (roadsHere.Count < 2) continue; // a dead end: the road simply stops, no disc
+            float radius = 0f; // only as wide as the widest road here, so it fills the wedge at a bend or crossing without showing as a circle
+            var widest = RoadType.Path;
+            foreach (var rid in roadsHere)
+            {
+                var type = net.GetRoad(rid).Type;
+                float half = RoadNetwork.HalfWidth(type);
+                if (half > radius) { radius = half; widest = type; }
+            }
+            var discMaterial = widest == RoadType.Path ? _pathMaterial : widest == RoadType.Dirt ? _dirtMaterial : _roadMaterial; // the surface of the widest road here
+            var disc = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = radius, BottomRadius = radius, Height = RoadHeight, RadialSegments = 24 }, MaterialOverride = discMaterial };
+            disc.Position = new Vector3(x, OnGround(net, n) ? _terrain.HeightAt(x, z) : net.GetNodeHeight(n), z);
             _roadRoot.AddChild(disc);
         }
 
@@ -1930,10 +1965,10 @@ public partial class SimHost : Node3D
     }
 
     /// <summary>A flat strip following a curved road, <paramref name="lift"/> above its centre line.</summary>
-    void AddRoadRibbon(RoadGeometry g, float y0, float y1, float width, float lift, Material material, float lateral = 0f, float s0 = 0f, float s1 = -1f)
+    void AddRoadRibbon(RoadGeometry g, float y0, float y1, float width, float lift, Material material, float lateral = 0f, float s0 = 0f, float s1 = -1f, bool drape = false)
     {
         if (s1 < 0f) s1 = g.Length;
-        int segments = Math.Max(2, (int)MathF.Ceiling((s1 - s0) / 4f));
+        int segments = Math.Max(2, (int)MathF.Ceiling((s1 - s0) / (drape ? 2f : 4f)));
         var vertices = new Vector3[(segments + 1) * 2];
         var normals = new Vector3[vertices.Length];
         var indices = new int[segments * 6];
@@ -1946,8 +1981,10 @@ public partial class SimHost : Node3D
             float y = y0 + (y1 - y0) * t + lift;
             x -= MathF.Sin(h) * lateral;
             z += MathF.Cos(h) * lateral;
-            vertices[i * 2] = new Vector3(x - rx, y, z - rz);     // left edge
-            vertices[i * 2 + 1] = new Vector3(x + rx, y, z + rz); // right edge
+            // A draped ribbon lies on the ground, edge by edge, so that the road never floats above the land beside it or is cut by it.
+            float yl = drape ? _terrain.HeightAt(x - rx, z - rz) + lift : y, yr = drape ? _terrain.HeightAt(x + rx, z + rz) + lift : y;
+            vertices[i * 2] = new Vector3(x - rx, yl, z - rz);     // left edge
+            vertices[i * 2 + 1] = new Vector3(x + rx, yr, z + rz); // right edge
             normals[i * 2] = normals[i * 2 + 1] = Vector3.Up;
         }
         for (int i = 0; i < segments; i++)
@@ -1966,6 +2003,106 @@ public partial class SimHost : Node3D
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
         _roadRoot.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
     }
+
+    /// <summary>Whether every road at a node lies on the ground (no bridge or tunnel), so that what is drawn at the node can lie on the land.</summary>
+    static bool OnGround(RoadNetwork net, int node)
+    {
+        foreach (var id in net.RoadsAt(node)) if (net.GetRoad(id).Structure != RoadStructure.None) return false;
+        return net.Terrain != null;
+    }
+
+    /// <summary>
+    /// The surface where two roads meet at a node: one strip along the centre line of the way from one road to the next (the curve the vehicles follow, moved to the
+    /// middle of the road), as wide as the road it leaves where it starts and as the road it enters where it ends, lying on the ground. Where the two roads
+    /// have different surfaces the second surface fades in over the second half of the strip.
+    /// </summary>
+    void AddJunctionStrips(RoadNetwork net, int node)
+    {
+        const int pieces = 16;
+        bool ground = OnGround(net, node);
+        float nodeY = net.GetNodeHeight(node) + RoadHeight * 0.5f;
+        foreach (var from in net.IncomingLanes(node))
+        {
+            var fromLane = net.GetLane(from);
+            if (fromLane.Index != 0) continue; // one strip for the pair of roads, along the right-most lane's line moved to the road's middle
+            foreach (var to in fromLane.Next)
+            {
+                var toLane = net.GetLane(to);
+                if (toLane.Index != 0 || toLane.Road.Value <= fromLane.Road.Value) continue; // each pair of roads once
+                var fromRoad = net.GetRoad(fromLane.Road);
+                var toRoad = net.GetRoad(toLane.Road);
+                float widthFrom = RoadNetwork.HalfWidth(fromRoad.Type) * 2f, widthTo = RoadNetwork.HalfWidth(toRoad.Type) * 2f;
+                var first = SurfaceOf(fromRoad.Type);
+                var second = SurfaceOf(toRoad.Type);
+                var centre = new Vector3[pieces + 1];
+                var side = new Vector3[pieces + 1];
+                for (int i = 0; i <= pieces; i++)
+                {
+                    float t = i / (float)pieces;
+                    var (x, z, h) = net.JunctionPoint(from, to, t);
+                    float offset = fromLane.SideOffset + (toLane.SideOffset - fromLane.SideOffset) * t;
+                    x += MathF.Sin(h) * offset; z -= MathF.Cos(h) * offset; // the lane's line moved back to the road's middle
+                    float half = (widthFrom + (widthTo - widthFrom) * t) * 0.5f;
+                    centre[i] = new Vector3(x, 0f, z);
+                    side[i] = new Vector3(-MathF.Sin(h) * half, 0f, MathF.Cos(h) * half);
+                }
+                AddStrip(centre, side, ground, nodeY, 0.015f, first, null);
+                if (!ReferenceEquals(first, second)) AddStrip(centre, side, ground, nodeY, 0.025f, BlendOf(second), (pieces / 2, pieces));
+                else AddStrip(centre, side, ground, nodeY, 0.015f, second, null);
+            }
+        }
+    }
+
+    /// <summary>A strip along <paramref name="centre"/> with <paramref name="side"/> the half-width vector at each point. With <paramref name="fade"/> the strip covers that range of points and its colour goes from clear to full.</summary>
+    void AddStrip(Vector3[] centre, Vector3[] side, bool ground, float nodeY, float lift, Material material, (int From, int To)? fade)
+    {
+        int i0 = fade?.From ?? 0, i1 = fade?.To ?? centre.Length - 1;
+        var vertices = new Vector3[(i1 - i0 + 1) * 2];
+        var normals = new Vector3[vertices.Length];
+        var colors = new Color[vertices.Length];
+        var indices = new int[(i1 - i0) * 6];
+        for (int i = i0; i <= i1; i++)
+        {
+            var l = centre[i] - side[i];
+            var r = centre[i] + side[i];
+            int k = (i - i0) * 2;
+            vertices[k] = new Vector3(l.X, (ground ? _terrain.HeightAt(l.X, l.Z) + RoadHeight * 0.5f : nodeY) + lift, l.Z);
+            vertices[k + 1] = new Vector3(r.X, (ground ? _terrain.HeightAt(r.X, r.Z) + RoadHeight * 0.5f : nodeY) + lift, r.Z);
+            normals[k] = normals[k + 1] = Vector3.Up;
+            float alpha = fade == null ? 1f : (i - i0) / (float)Math.Max(1, i1 - i0);
+            colors[k] = colors[k + 1] = new Color(1f, 1f, 1f, alpha);
+        }
+        for (int i = 0; i < i1 - i0; i++)
+        {
+            int l = i * 2, r = l + 1, nl = l + 2, nr = l + 3, o = i * 6;
+            indices[o] = l; indices[o + 1] = nl; indices[o + 2] = r;
+            indices[o + 3] = nl; indices[o + 4] = nr; indices[o + 5] = r;
+        }
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = normals;
+        arrays[(int)Mesh.ArrayType.Color] = colors;
+        arrays[(int)Mesh.ArrayType.Index] = indices;
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        _roadRoot.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+    }
+
+    readonly Dictionary<StandardMaterial3D, StandardMaterial3D> _blendMaterials = new();
+
+    /// <summary>The same surface that fades in by the alpha of the vertex colour, to lie over another surface.</summary>
+    StandardMaterial3D BlendOf(StandardMaterial3D surface)
+    {
+        if (_blendMaterials.TryGetValue(surface, out var blend)) return blend;
+        blend = (StandardMaterial3D)surface.Duplicate();
+        blend.Transparency = BaseMaterial3D.TransparencyEnum.Alpha;
+        blend.VertexColorUseAsAlbedo = true;
+        _blendMaterials[surface] = blend;
+        return blend;
+    }
+
+    StandardMaterial3D SurfaceOf(RoadType type) => type == RoadType.Path ? _pathMaterial : type == RoadType.Dirt ? _dirtMaterial : _roadMaterial;
 
     /// <summary>A flat slab lying along a road that climbs <paramref name="rise"/> over <paramref name="run"/> metres.</summary>
     void AddRoadBox(Vector3 centre, float run, float rise, float dx, float dz, float width, float height, float lift, Material material)

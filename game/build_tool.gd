@@ -28,11 +28,12 @@ const PATH_BLOCKED_COLOR := Color(0.95, 0.25, 0.25, 0.85)
 const PATH_WIDTH := 5.0
 const GHOST_SURFACE := {"valid": Color(0.08, 0.22, 0.22, 0.82), "invalid": Color(0.38, 0.08, 0.08, 0.80)} ## the ghost road's surface: dark like asphalt, tinted by whether it can be built
 const GHOST_EDGE := {"valid": Color(0.45, 1.0, 0.92, 1.0), "invalid": Color(1.0, 0.3, 0.3, 1.0)}      ## its two edge lines, bright so it reads on any ground
+const GHOST_DIRT_SURFACE := Color(0.5, 0.38, 0.26, 0.82) ## the bare earth of a dirt road
 const GHOST_PATH_SURFACE := Color(0.46, 0.39, 0.29, 0.82) ## the stone of a path to an access point
 const GHOST_LINE := Color(1.0, 1.0, 0.9, 1.0)
 const GHOST_MEDIAN := Color(0.75, 0.8, 0.72, 0.85)
 const GHOST_LIFT := 0.4
-const GHOST_DISC_RADIUS := 8.5 ## as the discs the real roads have at their nodes
+const GHOST_DISC_RADIUS := 3.5 ## as the discs the real roads have at their nodes (a road's half width)
 const GHOST_EDGE_WIDTH := 1.4
 const MEDIAN_WIDTH := 2.0
 const EARTH_FULL_AT := 2.0 ## metres of fill or cut at which the earthwork strip is at full strength
@@ -54,6 +55,8 @@ const RANGE_WIDTH := 3.0
 const DRAG_SLOP := 12.0 ## pixels the mouse must travel with the button down for letting go to build a road started by that press
 const PARALLEL_GAP := 4.0 ## metres of ground between a road and the parallel road built beside it
 const PARALLEL_RAIL_GAP := 3.0
+const LANE_LAYOUTS := [[0, 0], [2, 1], [1, 2], [2, 2], [3, 1], [1, 3]] ## lanes forward and back of the next 2-lane road or avenue, 0 0 the normal layout
+var _lanes_index := 0
 var _parallel := 0        ## 0 off, 1 a second road on one side of the one drawn, -1 on the other
 var _drag_from := Vector2(-1.0, -1.0) ## where the left button went down on the press that started a road, (-1, -1) when that press is not a possible drag
 var _pad_mesh: MeshInstance3D ## the cut (orange) and fill (green) a building's pad would make, as squares on the ground
@@ -129,14 +132,18 @@ func set_tool(tool_name: String) -> void:
 	_turned = false
 	_raise = 0.0
 	_parallel = 0
+	_lanes_index = 0
+	if host:
+		host.SetRoadLanes(0, 0)
 	_free_toggle = false
 	_reset()
 	match tool:
+		"road1": message.emit("Dirt road: click to start, click again to build (right click or Esc stops)")
 		"road2": message.emit("2-lane road: click to start, click again to build (right click or Esc stops)")
 		"road4": message.emit("2x2 avenue: click to start, click again to build (right click or Esc stops)")
 		"curve2": message.emit("Curved 2-lane road: click the start, a point on the curve, then the end (right click or Esc stops)")
 		"curve4": message.emit("Curved avenue: click the start, a point on the curve, then the end (right click or Esc stops)")
-		"upgrade": message.emit("Upgrade: click a 2-lane road to widen it to an avenue")
+		"upgrade": message.emit("Upgrade: click a dirt road to make it a 2-lane road, or a 2-lane road to widen it to an avenue")
 		"downgrade": message.emit("Downgrade: click an avenue to narrow it to a 2-lane road")
 		"faster": message.emit("Faster: click a road to raise its speed limit by 10 km/h")
 		"slower": message.emit("Slower: click a road to lower its speed limit by 10 km/h")
@@ -173,13 +180,24 @@ func _is_curve() -> bool:
 	return tool == "curve2" or tool == "curve4" or tool == "track_curve"
 
 
+## Half the width of the road being drawn: its lanes (the chosen layout, or the type's own), plus the avenue's median.
+func _road_half(avenue: bool, dirt: bool) -> float:
+	if dirt:
+		return 3.0
+	var lanes: Array = LANE_LAYOUTS[_lanes_index]
+	var count: int = (lanes[0] + lanes[1]) if lanes[0] > 0 else (4 if avenue else 2)
+	return count * 1.75 + (1.0 if avenue else 0.0)
+
+
 func _road_type() -> int:
+	if tool == "road1":
+		return 3
 	return 1 if tool == "road4" or tool == "curve4" else 0
 
 
 ## The tools that draw a straight road or track from a start to an end (a drag works for them, and a parallel one can go beside).
 func _is_straight_tool() -> bool:
-	return tool == "road2" or tool == "road4" or tool == "track"
+	return tool == "road1" or tool == "road2" or tool == "road4" or tool == "track"
 
 
 ## The two ends of the road or track built beside the one from a to b, on the side the player chose; null while that is off.
@@ -191,7 +209,7 @@ func _twin_ends(a: Vector3, b: Vector3) -> Variant:
 	if along.length() < 0.1:
 		return null
 	along = along.normalized()
-	var half := RAIL_WIDTH * 0.5 if _is_rail_tool() else (8.0 if _road_type() == 1 else 3.5)
+	var half := RAIL_WIDTH * 0.5 if _is_rail_tool() else _road_half(_road_type() == 1, _road_type() == 3)
 	var gap := PARALLEL_RAIL_GAP if _is_rail_tool() else PARALLEL_GAP
 	var side := Vector3(-along.z, 0.0, along.x) * (float(_parallel) * (2.0 * half + gap))
 	return [_ground(a.x + side.x, a.z + side.z), _ground(b.x + side.x, b.z + side.z)]
@@ -241,6 +259,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		_free_toggle = not _free_toggle
 		_update_preview(get_viewport().get_mouse_position())
 		message.emit("Placing without snapping is %s" % ("on (G or Alt)" if _free_toggle else "off"))
+	elif event is InputEventKey and event.pressed and not event.echo and (tool == "road2" or tool == "road4" or tool == "curve2" or tool == "curve4") and Keys.pressed(event, "road_lanes"):
+		_lanes_index = (_lanes_index + 1) % LANE_LAYOUTS.size()
+		var lanes: Array = LANE_LAYOUTS[_lanes_index]
+		host.SetRoadLanes(lanes[0], lanes[1])
+		message.emit("Normal lanes" if lanes[0] == 0 else "%d lanes forward, %d back (L changes it)" % lanes)
+		get_viewport().set_input_as_handled()
+		_update_preview(get_viewport().get_mouse_position())
 	elif event is InputEventKey and event.pressed and not event.echo and _is_straight_tool() and Keys.pressed(event, "parallel_road"):
 		_parallel = [0, 1, -1][(([0, 1, -1].find(_parallel)) + 1) % 3] # off, one side, the other side
 		message.emit(["Parallel road off", "Parallel road on the right", "Parallel road on the left"][[0, 1, -1].find(_parallel)])
@@ -454,7 +479,7 @@ func _click_road(screen: Vector2) -> void:
 			var cost: float = host.DemolitionCost(road)
 			message.emit("Road removed (demolition %s)" % _money(cost) if host.RemoveRoad(road) else "Can't remove that")
 		"upgrade":
-			message.emit("Upgraded to an avenue" if host.UpgradeRoad(road) else "Only 2-lane roads can be upgraded")
+			message.emit("Upgraded" if host.UpgradeRoad(road) else "Only dirt and 2-lane roads can be upgraded")
 		"downgrade":
 			message.emit("Narrowed to a 2-lane road" if host.DowngradeRoad(road) else "Only avenues can be narrowed")
 		"faster", "slower":
@@ -492,9 +517,9 @@ func _hover(screen: Vector2) -> void:
 			var cost: Dictionary = host.EstimateUpgrade(_hover_road)
 			if cost["valid"]:
 				color = ROAD_COLORS["valid"]
-				message.emit("Upgrade %d m to an avenue: cut %d m3   fill %d m3   cost %s" % [hit["length"], cost["cut"], cost["fill"], _money(cost["money"])])
+				message.emit("Upgrade %d m: cut %d m3   fill %d m3   cost %s" % [hit["length"], cost["cut"], cost["fill"], _money(cost["money"])])
 			else:
-				message.emit("Already an avenue")
+				message.emit("Can't be upgraded further")
 		"downgrade":
 			var cost: Dictionary = host.EstimateDowngrade(_hover_road)
 			if cost["valid"]:
@@ -633,7 +658,7 @@ func _update_preview(screen: Vector2) -> void:
 func _ghost_kind() -> String:
 	if _is_rail_tool():
 		return "rail"
-	return "road4" if _road_type() == 1 else "road2"
+	return "road4" if _road_type() == 1 else ("road1" if _road_type() == 3 else "road2")
 
 
 func _clear_ghosts() -> void:
@@ -741,7 +766,7 @@ func _draw_ghost(target: MeshInstance3D, points: PackedVector3Array, kind: Strin
 	var tint := "valid" if ok else "invalid"
 	var edge: Color = GHOST_EDGE[tint]
 	var surface: Color = GHOST_SURFACE[tint]
-	var half := RAIL_WIDTH * 0.5 if kind == "rail" else (8.0 if kind == "road4" else 3.5)
+	var half := RAIL_WIDTH * 0.5 if kind == "rail" else _road_half(kind == "road4", kind == "road1")
 	var edge_width := GHOST_EDGE_WIDTH
 	if kind == "path": # the narrow stone road to an access point: no node discs, stone coloured
 		half = PATH_WIDTH * 0.5
@@ -751,6 +776,8 @@ func _draw_ghost(target: MeshInstance3D, points: PackedVector3Array, kind: Strin
 			edge = PATH_COLOR
 			edge.a = 1.0
 	else:
+		if kind == "road1" and ok:
+			surface = GHOST_DIRT_SURFACE
 		_ghost_disc(target, points[0], ok)
 		_ghost_disc(target, points[points.size() - 1], ok)
 	_ghost_strip(mesh, points, -half, half, surface, GHOST_LIFT + 0.02)

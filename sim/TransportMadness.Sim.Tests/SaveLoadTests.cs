@@ -35,6 +35,21 @@ public class SaveLoadTests
     }
 
     [Fact]
+    public void DirtAndAsymmetricRoads_RoundTrip_AndRunOnTheSame()
+    {
+        var sim = new Simulation(new RoadNetwork(Terrain.Flat()), 7);
+        sim.Execute(new BuildRoadCommand(0, 0, 300, 0, RoadType.Dirt, 9f));
+        sim.Execute(new BuildRoadCommand(300, 0, 600, 0, RoadType.TwoLane, 14f, 0f, 2, 1));
+        sim.Execute(new SeedTrafficCommand(20));
+        Step(sim, 5);
+        var loaded = SaveAndLoad(sim);
+        var road = loaded.Network.GetRoad(new RoadId(1));
+        Assert.Equal((RoadType.TwoLane, 2, 1), (road.Type, road.LanesForward, road.LanesBack));
+        Assert.Equal(RoadType.Dirt, loaded.Network.GetRoad(new RoadId(0)).Type);
+        AssertLoadedGameRunsOnTheSame(sim, 60);
+    }
+
+    [Fact]
     public void AnEmptyMap_RoundTrips()
     {
         var sim = new Simulation(new RoadNetwork(Terrain.Flat()), 7);

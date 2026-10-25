@@ -7,7 +7,7 @@ namespace TransportMadness.Sim;
 public abstract record SimCommand;
 
 /// <summary>Builds a road (straight, or bending by <paramref name="Sweep"/> radians). Result: number of road pieces built, 0 when refused.</summary>
-public sealed record BuildRoadCommand(float X0, float Z0, float X1, float Z1, RoadType Type, float SpeedLimit, float Sweep = 0f) : SimCommand;
+public sealed record BuildRoadCommand(float X0, float Z0, float X1, float Z1, RoadType Type, float SpeedLimit, float Sweep = 0f, int LanesForward = 0, int LanesBack = 0) : SimCommand;
 
 /// <summary>Tears a road down. Result: 1 when removed, 0 when refused.</summary>
 public sealed record RemoveRoadCommand(int Road) : SimCommand;

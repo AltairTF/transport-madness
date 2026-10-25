@@ -31,3 +31,5 @@ engine:
   version: "4.7"
   language: C#
   code_root: "sim game"
+  rendering: "Forward+"
+  physics: "Jolt Physics"

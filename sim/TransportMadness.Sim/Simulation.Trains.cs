@@ -649,7 +649,7 @@ public sealed partial class Simulation
     }
 
     /// <summary>Whether roads rebuilt by moving a node would cross a track at grade (not allowed: crossings are laid out when roads and tracks are built).</summary>
-    bool MovedRoadsMeetTracks(IReadOnlyList<(RoadGeometry Geometry, RoadType Type)> roads)
+    bool MovedRoadsMeetTracks(IReadOnlyList<(RoadGeometry Geometry, float Half)> roads)
     {
         for (int t = 0; t < _rail.TrackCount; t++)
         {

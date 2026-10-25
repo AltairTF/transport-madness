@@ -8,6 +8,8 @@ public enum RoadType
     Avenue2x2,
     /// <summary>A narrow, slow, cheap road: one lane per direction like a two-lane road. Only made as the connection of an access point; not offered to build, nor upgradable.</summary>
     Path,
+    /// <summary>A cheap, slow, narrow road for young networks: one lane per direction, no overtaking. Upgrades to <see cref="TwoLane"/>.</summary>
+    Dirt,
 }
 
 /// <summary>How a road piece is carried over or through the ground.</summary>
@@ -130,6 +132,10 @@ public sealed class Road
     public LaneId[] ForwardLanes { get; }
     /// <summary>Lanes running To to From, right-most first.</summary>
     public LaneId[] BackwardLanes { get; }
+    public int LanesForward => ForwardLanes.Length;
+    public int LanesBack => BackwardLanes.Length;
+    /// <summary>Half the paved width, from the lane counts.</summary>
+    public float HalfWidth => RoadNetwork.HalfWidth(Type, LanesForward, LanesBack);
 }
 
 /// <summary>What building a road would take: its length and how much earth it moves.</summary>
@@ -554,10 +560,10 @@ public sealed class RoadNetwork
     /// Where the new road meets another one at a different height (at least <c>crossingClearance</c> apart, with a bridge
     /// above or a tunnel below) it passes over or under it and no junction forms.
     /// </summary>
-    public IReadOnlyList<RoadId> BuildRoad(float x0, float z0, float x1, float z1, RoadType type, float speedLimit, float sweep = 0f)
+    public IReadOnlyList<RoadId> BuildRoad(float x0, float z0, float x1, float z1, RoadType type, float speedLimit, float sweep = 0f, int lanesForward = 0, int lanesBack = 0)
     {
         var plan = Plan(x0, z0, x1, z1, sweep);
-        if (plan == null) return Array.Empty<RoadId>();
+        if (plan == null || !ValidLanes(type, lanesForward, lanesBack)) return Array.Empty<RoadId>();
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
 
         var nodes = new List<int>(plan.Count);
@@ -583,8 +589,8 @@ public sealed class RoadNetwork
         for (int i = 0; i + 1 < nodes.Count; i++)
         {
             float pieceSweep = sweep * (plan[i + 1].Along - plan[i].Along) / geometry.Length;
-            built.Add(AddRoad(nodes[i], nodes[i + 1], type, speedLimit, pieceSweep, plan[i].After));
-            if (plan[i].After == RoadStructure.None) Terrain?.CarvePath(Profile(geometry, plan[i], plan[i + 1]), HalfWidth(type), Shoulder);
+            built.Add(AddRoad(nodes[i], nodes[i + 1], type, speedLimit, pieceSweep, plan[i].After, lanesForward, lanesBack));
+            if (plan[i].After == RoadStructure.None) Terrain?.CarvePath(Profile(geometry, plan[i], plan[i + 1]), HalfWidth(type, lanesForward, lanesBack), Shoulder);
         }
         return built;
     }
@@ -609,23 +615,50 @@ public sealed class RoadNetwork
     float GroundHeight(float x, float z) => Terrain?.HeightAt(x, z) ?? 0f;
 
     /// <summary>Half the width of the paved road including any median.</summary>
-    public static float HalfWidth(RoadType type) => type switch { RoadType.Avenue2x2 => 8f, RoadType.Path => 2.5f, _ => 3.5f };
+    public static float HalfWidth(RoadType type) => type switch { RoadType.Avenue2x2 => 8f, RoadType.Path => 2.5f, RoadType.Dirt => 3f, _ => 3.5f };
+
+    /// <summary>Half the paved width of a road with the given lane counts (0 for both means the type's own).</summary>
+    public static float HalfWidth(RoadType type, int lanesForward, int lanesBack) =>
+        lanesForward == 0 || (type != RoadType.TwoLane && type != RoadType.Avenue2x2) ? HalfWidth(type)
+            : (lanesForward + lanesBack) * LaneWidth * 0.5f + (type == RoadType.Avenue2x2 ? MedianWidth * 0.5f : 0f);
+
+    /// <summary>Lanes each way of a type's normal layout.</summary>
+    public static int DefaultLanes(RoadType type) => type == RoadType.Avenue2x2 ? 2 : 1;
+
+    /// <summary>Most lanes one way, and in total, of a road with its own lane counts.</summary>
+    public const int MaxLanesOneWay = 3, MaxLanesTotal = 4;
+
+    /// <summary>Whether a road of this type can have these lane counts. (0, 0) means the type's normal layout; only two-lane roads and avenues can differ from it.</summary>
+    public static bool ValidLanes(RoadType type, int lanesForward, int lanesBack)
+    {
+        if (lanesForward == 0 && lanesBack == 0) return true;
+        if (lanesForward == DefaultLanes(type) && lanesBack == lanesForward) return true;
+        if (type != RoadType.TwoLane && type != RoadType.Avenue2x2) return false;
+        return lanesForward is >= 1 and <= MaxLanesOneWay && lanesBack is >= 1 and <= MaxLanesOneWay && lanesForward + lanesBack <= MaxLanesTotal;
+    }
+
+    /// <summary>Money per metre of a road of this type and lane counts: the type's price plus a share of the two-lane price for each lane above its normal count.</summary>
+    float PricePerMetre(RoadType type, int lanesForward, int lanesBack)
+    {
+        int extra = lanesForward == 0 ? 0 : Math.Max(0, lanesForward + lanesBack - 2 * DefaultLanes(type));
+        return Tuning.Roads.Of(type).CostPerMetre + extra * Tuning.Roads.ExtraLaneShare * Tuning.Roads.TwoLane.CostPerMetre;
+    }
 
     /// <summary>
     /// What a road would cost, or null if it cannot be built. Earthworks are the volume between the ground and the
     /// road surface along the way, with side slopes of 1 in 1.5.
     /// </summary>
-    public RoadCost? EstimateCost(float x0, float z0, float x1, float z1, RoadType type, float sweep = 0f)
+    public RoadCost? EstimateCost(float x0, float z0, float x1, float z1, RoadType type, float sweep = 0f, int lanesForward = 0, int lanesBack = 0)
     {
         var plan = Plan(x0, z0, x1, z1, sweep);
-        if (plan == null) return null;
-        return Price(plan, RoadGeometry.FromChord(x0, z0, x1, z1, sweep), type);
+        if (plan == null || !ValidLanes(type, lanesForward, lanesBack)) return null;
+        return Price(plan, RoadGeometry.FromChord(x0, z0, x1, z1, sweep), type, lanesForward, lanesBack);
     }
 
     /// <summary>Length, earthworks and money for building a planned road.</summary>
-    RoadCost Price(List<Meeting> plan, RoadGeometry geometry, RoadType type)
+    RoadCost Price(List<Meeting> plan, RoadGeometry geometry, RoadType type, int lanesForward = 0, int lanesBack = 0)
     {
-        float width = HalfWidth(type) * 2f;
+        float width = HalfWidth(type, lanesForward, lanesBack) * 2f;
         float cut = 0f, fill = 0f, length = 0f, bridge = 0f, tunnel = 0f, money = 0f;
         var prices = Tuning.Roads;
         for (int i = 0; i + 1 < plan.Count; i++)
@@ -641,7 +674,7 @@ public sealed class RoadNetwork
                 money += run * prices.StructureCostPerMetre(a.After, type);
                 continue;
             }
-            money += run * prices.Of(type).CostPerMetre;
+            money += run * PricePerMetre(type, lanesForward, lanesBack);
             if (Terrain == null) continue;
             int steps = Math.Max(1, (int)MathF.Ceiling(run / 4f));
             float ds = run / steps;
@@ -1024,8 +1057,11 @@ public sealed class RoadNetwork
         _nodeRoads[road.To].Remove(road.Id);
     }
 
-    /// <summary>Whether a road can be widened to an avenue: only two-lane roads can.</summary>
-    public bool CanUpgrade(RoadId id) => !_roads[id.Value].Retired && _roads[id.Value].Type == RoadType.TwoLane;
+    /// <summary>The type a road of the given type upgrades to (dirt to two-lane, two-lane to avenue), or null if it cannot be.</summary>
+    public static RoadType? UpgradeTarget(RoadType type) => type switch { RoadType.Dirt => RoadType.TwoLane, RoadType.TwoLane => RoadType.Avenue2x2, _ => null };
+
+    /// <summary>Whether a road can be upgraded: dirt and two-lane roads can.</summary>
+    public bool CanUpgrade(RoadId id) => !_roads[id.Value].Retired && UpgradeTarget(_roads[id.Value].Type) != null;
 
     static bool ValidLimit(float speedLimit) => speedLimit > 0f && float.IsFinite(speedLimit);
 
@@ -1034,12 +1070,13 @@ public sealed class RoadNetwork
     {
         if (!CanUpgrade(id)) return null;
         var road = _roads[id.Value];
-        float width = HalfWidth(RoadType.Avenue2x2) * 2f;
+        var target = UpgradeTarget(road.Type)!.Value;
+        float width = HalfWidth(target) * 2f;
         var prices = Tuning.Roads;
         if (road.Structure != RoadStructure.None)
         {
             // On a bridge or in a tunnel there are no earthworks: the deck or bore is simply wider.
-            float structurePerMetre = prices.StructureCostPerMetre(road.Structure, RoadType.Avenue2x2) - prices.UpgradeRefundShare * prices.StructureCostPerMetre(road.Structure, RoadType.TwoLane);
+            float structurePerMetre = prices.StructureCostPerMetre(road.Structure, target) - prices.UpgradeRefundShare * prices.StructureCostPerMetre(road.Structure, road.Type);
             return new RoadCost(road.Length, 0f, 0f, road.Length * structurePerMetre,
                 road.Structure == RoadStructure.Bridge ? road.Length : 0f, road.Structure == RoadStructure.Tunnel ? road.Length : 0f);
         }
@@ -1055,14 +1092,14 @@ public sealed class RoadNetwork
                 var (x, z) = road.Geometry.PointAt(road.Length * t);
                 // Ground right beside the existing carriageway, where the extra width goes.
                 var (nx, nz) = (-MathF.Sin(road.Geometry.HeadingAt(road.Length * t)), MathF.Cos(road.Geometry.HeadingAt(road.Length * t)));
-                float edge = (HalfWidth(RoadType.TwoLane) + HalfWidth(RoadType.Avenue2x2)) * 0.5f;
+                float edge = (HalfWidth(road.Type) + HalfWidth(target)) * 0.5f;
                 float height = 0.5f * (Terrain.HeightAt(x + nx * edge, z + nz * edge) + Terrain.HeightAt(x - nx * edge, z - nz * edge)) - (y0 + (y1 - y0) * t);
                 float h = MathF.Abs(height);
-                float section = h * (width - HalfWidth(RoadType.TwoLane) * 2f) + Tuning.Roads.EarthworkSlope * h * h;
+                float section = h * (width - HalfWidth(road.Type) * 2f) + Tuning.Roads.EarthworkSlope * h * h;
                 if (height > 0f) cut += section * ds; else fill += section * ds;
             }
         }
-        float perMetre = prices.Avenue.CostPerMetre - prices.UpgradeRefundShare * prices.TwoLane.CostPerMetre;
+        float perMetre = prices.Of(target).CostPerMetre - prices.UpgradeRefundShare * prices.Of(road.Type).CostPerMetre;
         return new RoadCost(road.Length, cut, fill, road.Length * perMetre + cut * prices.CutCostPerCubicMetre + fill * prices.FillCostPerCubicMetre);
     }
 
@@ -1074,7 +1111,8 @@ public sealed class RoadNetwork
     {
         if (!CanUpgrade(id) || !ValidLimit(speedLimit)) return null;
         var old = _roads[id.Value];
-        var upgraded = Reshape(old, RoadType.Avenue2x2, speedLimit);
+        var target = UpgradeTarget(old.Type)!.Value;
+        var upgraded = Reshape(old, target, speedLimit);
 
         if (Terrain != null && old.Structure == RoadStructure.None)
         {
@@ -1087,7 +1125,7 @@ public sealed class RoadNetwork
                 var (x, z) = old.Geometry.PointAt(old.Length * t);
                 path.Add((x, z, y0 + (y1 - y0) * t));
             }
-            Terrain.CarvePath(path, HalfWidth(RoadType.Avenue2x2), Shoulder);
+            Terrain.CarvePath(path, HalfWidth(target), Shoulder);
         }
         return upgraded.Id;
     }
@@ -1112,16 +1150,16 @@ public sealed class RoadNetwork
         float length = 0f, cut = 0f, fill = 0f, money = 0f, bridge = 0f, tunnel = 0f;
         foreach (var m in moved)
         {
-            var cost = Price(m.Plan, m.Geometry, m.Old.Type);
+            var cost = Price(m.Plan, m.Geometry, m.Old.Type, m.Old.LanesForward, m.Old.LanesBack);
             length += cost.Length; cut += cost.CutVolume; fill += cost.FillVolume; bridge += cost.BridgeLength; tunnel += cost.TunnelLength;
             money += cost.Money + DemolitionCost(m.Old.Id);
         }
         return new RoadCost(length, cut, fill, money, bridge, tunnel);
     }
 
-    /// <summary>The roads a move would build (centre line and type), null when the move is refused. For finding what stands in their way.</summary>
-    public IReadOnlyList<(RoadGeometry Geometry, RoadType Type)>? PlannedMoveRoads(int node, float x, float z) =>
-        PlanMove(node, x, z)?.Select(m => (m.Geometry, m.Old.Type)).ToList();
+    /// <summary>The roads a move would build (centre line and half width), null when the move is refused. For finding what stands in their way.</summary>
+    public IReadOnlyList<(RoadGeometry Geometry, float Half)>? PlannedMoveRoads(int node, float x, float z) =>
+        PlanMove(node, x, z)?.Select(m => (m.Geometry, m.Old.HalfWidth)).ToList();
 
     /// <summary>
     /// Drags a node to a new place (see <see cref="EstimateMoveNode"/>). Vehicles on the roads at the node carry on, in
@@ -1141,7 +1179,7 @@ public sealed class RoadNetwork
         {
             // Planned again: an earlier rebuilt road may have split a road this one meets. It always works, because
             // PlanMove refused rebuilt roads that cross each other.
-            var built = BuildRoad(m.X0, m.Z0, m.X1, m.Z1, m.Old.Type, m.Old.SpeedLimit, m.Sweep);
+            var built = BuildRoad(m.X0, m.Z0, m.X1, m.Z1, m.Old.Type, m.Old.SpeedLimit, m.Sweep, m.Old.LanesForward, m.Old.LanesBack);
             if (built.Count == 0) throw new InvalidOperationException("A planned move could not be built.");
             HandOverMoved(m.Old, built);
         }
@@ -1260,14 +1298,14 @@ public sealed class RoadNetwork
     {
         var road = _roads[id.Value];
         if (road.Retired || !ValidLimit(speedLimit) || speedLimit == road.SpeedLimit) return null;
-        return Reshape(road, road.Type, speedLimit).Id;
+        return Reshape(road, road.Type, speedLimit, keepLanes: true).Id;
     }
 
     /// <summary>Retires a road and builds another of the given type and limit between the same nodes on the same centre line; each old lane hands its vehicles to the matching new lane (the last one when the new road has fewer).</summary>
-    Road Reshape(Road old, RoadType type, float speedLimit)
+    Road Reshape(Road old, RoadType type, float speedLimit, bool keepLanes = false)
     {
         Retire(old);
-        var replacement = _roads[AddRoad(old.From, old.To, type, speedLimit, old.Geometry.Sweep, old.Structure).Value];
+        var replacement = _roads[AddRoad(old.From, old.To, type, speedLimit, old.Geometry.Sweep, old.Structure, keepLanes ? old.LanesForward : 0, keepLanes ? old.LanesBack : 0).Value];
         HandOver(old.ForwardLanes, replacement.ForwardLanes);
         HandOver(old.BackwardLanes, replacement.BackwardLanes);
         return replacement;
@@ -1309,8 +1347,8 @@ public sealed class RoadNetwork
         _nodeRoads[road.To].Remove(id);
 
         float sweepFirst = road.Geometry.Sweep * (distance / length);
-        firstId = AddRoad(road.From, middle, road.Type, road.SpeedLimit, sweepFirst, road.Structure);
-        secondId = AddRoad(middle, road.To, road.Type, road.SpeedLimit, road.Geometry.Sweep - sweepFirst, road.Structure);
+        firstId = AddRoad(road.From, middle, road.Type, road.SpeedLimit, sweepFirst, road.Structure, road.LanesForward, road.LanesBack);
+        secondId = AddRoad(middle, road.To, road.Type, road.SpeedLimit, road.Geometry.Sweep - sweepFirst, road.Structure, road.LanesForward, road.LanesBack);
         var first = _roads[firstId.Value];
         var second = _roads[secondId.Value];
         for (int i = 0; i < road.ForwardLanes.Length; i++)
@@ -1328,8 +1366,9 @@ public sealed class RoadNetwork
         lane.SplitDistance = firstLength;
     }
 
-    public RoadId AddRoad(int from, int to, RoadType type, float speedLimit, float sweep = 0f, RoadStructure structure = RoadStructure.None)
+    public RoadId AddRoad(int from, int to, RoadType type, float speedLimit, float sweep = 0f, RoadStructure structure = RoadStructure.None, int lanesForward = 0, int lanesBack = 0)
     {
+        if (!ValidLanes(type, lanesForward, lanesBack)) throw new ArgumentException($"A {type} road cannot have {lanesForward} lanes forward and {lanesBack} back.");
         if (from == to) throw new ArgumentException("A road needs two distinct nodes.");
         var (x0, z0) = _nodes[from];
         var (x1, z1) = _nodes[to];
@@ -1339,12 +1378,12 @@ public sealed class RoadNetwork
         if (!(speedLimit > 0f)) throw new ArgumentOutOfRangeException(nameof(speedLimit), "Speed limit must be positive.");
 
         var id = new RoadId(_roads.Count);
-        int perDirection = type == RoadType.Avenue2x2 ? 2 : 1;
+        if (lanesForward == 0) lanesForward = lanesBack = DefaultLanes(type);
         float rise = _nodeHeights[to] - _nodeHeights[from];
         float curveLimit = geometry.IsStraight ? float.PositiveInfinity : MathF.Sqrt(ComfortLateralAcceleration * geometry.Radius);
-        var forward = NewCarriageway(id, type, perDirection, speedLimit, curveLimit, from, to, geometry, rise / length);
-        var backward = NewCarriageway(id, type, perDirection, speedLimit, curveLimit, to, from, geometry.Reversed(), -rise / length);
-        if (type != RoadType.Avenue2x2)
+        var forward = NewCarriageway(id, type, lanesForward, lanesBack, speedLimit, curveLimit, from, to, geometry, rise / length);
+        var backward = NewCarriageway(id, type, lanesBack, lanesForward, speedLimit, curveLimit, to, from, geometry.Reversed(), -rise / length);
+        if (type != RoadType.Avenue2x2 && type != RoadType.Dirt && lanesForward == 1 && lanesBack == 1)
         {
             _lanes[forward[0].Value].Oncoming = backward[0];
             _lanes[backward[0].Value].Oncoming = forward[0];
@@ -1359,7 +1398,7 @@ public sealed class RoadNetwork
         return id;
     }
 
-    LaneId[] NewCarriageway(RoadId road, RoadType type, int count, float speedLimit, float curveLimit,
+    LaneId[] NewCarriageway(RoadId road, RoadType type, int count, int otherCount, float speedLimit, float curveLimit,
         int startNode, int endNode, RoadGeometry path, float grade)
     {
         float limit = MathF.Min(speedLimit * GradeFactor(grade), curveLimit);
@@ -1369,7 +1408,7 @@ public sealed class RoadNetwork
         {
             ids[i] = new LaneId(_lanes.Count);
             // To the driver's right of the centre line. Lane 0 is the right-most, so it is furthest out.
-            float side = median * 0.5f + (count - 1 - i + 0.5f) * LaneWidth;
+            float side = median * 0.5f + (count - 1 - i + 0.5f) * LaneWidth - (count - otherCount) * LaneWidth * 0.5f; // the pavement stays centred on the centre line
             _lanes.Add(new Lane(ids[i], road, i, limit, path, side, startNode, endNode, grade));
             _incoming[endNode].Add(ids[i]);
         }

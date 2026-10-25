@@ -132,3 +132,101 @@ public class BuildRoadTests
         return x0 + MathF.Sign(x1 - x0) * v.Position;
     }
 }
+
+public class DirtRoadTests
+{
+    [Fact]
+    public void DirtRoad_IsPricedFromItsRowAndHasNoOvertaking()
+    {
+        var net = new RoadNetwork();
+        var cost = net.EstimateCost(0, 0, 200, 0, RoadType.Dirt)!.Value;
+        Assert.Equal(200f * net.Tuning.Roads.Dirt.CostPerMetre, cost.Money, 1);
+        int a = net.AddNode(0, 0), b = net.AddNode(200, 0);
+        var road = net.GetRoad(net.AddRoad(a, b, RoadType.Dirt, net.Tuning.Roads.Dirt.SpeedLimit));
+        Assert.True(net.GetLane(road.ForwardLanes[0]).Oncoming.IsNone);
+        Assert.Equal(3f, RoadNetwork.HalfWidth(RoadType.Dirt));
+    }
+
+    [Fact]
+    public void DirtRoad_UpgradesToTwoLaneForTheDifferenceMinusRefund()
+    {
+        var net = new RoadNetwork();
+        int a = net.AddNode(0, 0), b = net.AddNode(200, 0);
+        var id = net.AddRoad(a, b, RoadType.Dirt, 9f);
+        var roads = net.Tuning.Roads;
+        var cost = net.EstimateUpgrade(id)!.Value;
+        Assert.Equal(200f * (roads.TwoLane.CostPerMetre - roads.UpgradeRefundShare * roads.Dirt.CostPerMetre), cost.Money, 1);
+
+        var upgraded = net.UpgradeRoad(id, roads.TwoLane.SpeedLimit)!.Value;
+        Assert.Equal(RoadType.TwoLane, net.GetRoad(upgraded).Type);
+        Assert.False(net.GetLane(net.GetRoad(upgraded).ForwardLanes[0]).Oncoming.IsNone);
+    }
+}
+
+public class AsymmetricLaneTests
+{
+    static (RoadNetwork Net, Road Road) Build(RoadType type, int forward, int back)
+    {
+        var net = new RoadNetwork();
+        net.BuildRoad(0, 0, 200, 0, type, 14f, 0f, forward, back);
+        return (net, net.GetRoad(new RoadId(0)));
+    }
+
+    [Fact]
+    public void TwoLane_WithTwoForwardAndOneBack_HasThoseLanesAndNoOvertaking()
+    {
+        var (net, road) = Build(RoadType.TwoLane, 2, 1);
+        Assert.Equal(2, road.ForwardLanes.Length);
+        Assert.Single(road.BackwardLanes);
+        Assert.True(net.GetLane(road.ForwardLanes[0]).Oncoming.IsNone);
+        Assert.True(net.GetLane(road.BackwardLanes[0]).Oncoming.IsNone);
+        Assert.Equal(5.25f, road.HalfWidth, 3);
+    }
+
+    [Fact]
+    public void ExtraLane_CostsAShareOfTheTwoLanePrice()
+    {
+        var net = new RoadNetwork();
+        var roads = net.Tuning.Roads;
+        var plain = net.EstimateCost(0, 0, 200, 0, RoadType.TwoLane)!.Value.Money;
+        var wide = net.EstimateCost(0, 0, 200, 0, RoadType.TwoLane, 0f, 2, 1)!.Value.Money;
+        Assert.Equal(200f * roads.ExtraLaneShare * roads.TwoLane.CostPerMetre, wide - plain, 1);
+    }
+
+    [Theory]
+    [InlineData(RoadType.TwoLane, 3, 2)]
+    [InlineData(RoadType.TwoLane, 4, 0)]
+    [InlineData(RoadType.TwoLane, 2, 0)]
+    [InlineData(RoadType.Dirt, 2, 1)]
+    [InlineData(RoadType.Path, 2, 2)]
+    public void InvalidLaneCounts_AreRefused(RoadType type, int forward, int back)
+    {
+        var net = new RoadNetwork();
+        Assert.Null(net.EstimateCost(0, 0, 200, 0, type, 0f, forward, back));
+        Assert.Empty(net.BuildRoad(0, 0, 200, 0, type, 14f, 0f, forward, back));
+    }
+
+    [Fact]
+    public void LanesAreCentredOnTheCentreLine()
+    {
+        var (net, road) = Build(RoadType.TwoLane, 2, 1);
+        // Outer edge of each side equals the half width.
+        float f = net.GetLane(road.ForwardLanes[0]).SideOffset + RoadNetwork.LaneWidth * 0.5f;
+        float b = net.GetLane(road.BackwardLanes[0]).SideOffset + RoadNetwork.LaneWidth * 0.5f;
+        Assert.Equal(road.HalfWidth, f, 3);
+        Assert.Equal(road.HalfWidth, b, 3);
+    }
+
+    [Fact]
+    public void SplittingAndSpeedChange_KeepTheLanes_AndUpgradeResetsThem()
+    {
+        var (net, road) = Build(RoadType.TwoLane, 2, 1);
+        int middle = net.SplitRoad(road.Id, 100f);
+        foreach (var r in net.RoadsAt(middle)) Assert.Equal(3, net.GetRoad(r).LanesForward + net.GetRoad(r).LanesBack);
+        var first = net.RoadsAt(middle).Select(r => net.GetRoad(r)).First();
+        var slower = net.GetRoad(net.SetSpeedLimit(first.Id, 8f)!.Value);
+        Assert.Equal((first.LanesForward, first.LanesBack), (slower.LanesForward, slower.LanesBack));
+        var upgraded = net.GetRoad(net.UpgradeRoad(slower.Id, 19f)!.Value);
+        Assert.Equal((2, 2), (upgraded.LanesForward, upgraded.LanesBack));
+    }
+}

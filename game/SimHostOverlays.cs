@@ -84,7 +84,8 @@ public partial class SimHost
     /// <summary>Darkens the ground, the water and the roads under an overlay (and lights them again).</summary>
     void DimMap(bool dim)
     {
-        var materials = new List<StandardMaterial3D> { _roadMaterial, _medianMaterial, _lineMaterial, _deckMaterial, _waterMaterial, _depotMaterial, _stationMaterial };
+        var materials = new List<StandardMaterial3D> { _roadMaterial, _dirtMaterial, _pathMaterial, _medianMaterial, _lineMaterial, _deckMaterial, _waterMaterial, _depotMaterial, _stationMaterial };
+        materials.AddRange(_blendMaterials.Values);
         if (GetNodeOrNull<MeshInstance3D>("Ground")?.MaterialOverride is StandardMaterial3D ground) materials.Add(ground);
         _terrainMaterial.SetShaderParameter("tint", dim ? 0.45f : 1f);
         foreach (var m in materials)
@@ -327,7 +328,7 @@ public partial class SimHost
         var road = net.GetRoad(id);
         var g = road.Geometry;
         bool avenue = road.Type == RoadType.Avenue2x2;
-        float half = road.Type == RoadType.Path ? RoadNetwork.HalfWidth(RoadType.Path) * 0.9f : ((avenue ? 4 : 2) * Simulation.LaneWidth + (avenue ? RoadNetwork.MedianWidth : 0f)) * 0.45f;
+        float half = road.Type == RoadType.Path ? RoadNetwork.HalfWidth(RoadType.Path) * 0.9f : ((road.LanesForward + road.LanesBack) * Simulation.LaneWidth + (avenue ? RoadNetwork.MedianWidth : 0f)) * 0.45f;
         int n = Math.Max(1, (int)MathF.Ceiling(g.Length / 8f));
         var left = new Vector3[n + 1];
         var right = new Vector3[n + 1];
