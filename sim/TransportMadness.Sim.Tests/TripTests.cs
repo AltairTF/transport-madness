@@ -23,7 +23,7 @@ public class TripTests
     static Terrain DryLevelMap() => Terrain.Create(512, 8f, (_, _) => 5f);
 
     /// <summary>
-    /// A level dry map with one road along x from 0 to 1600. Three tall homes (60 people) stand beside it near x = 200, two
+    /// A level dry map with one road along x from 0 to 1600. Three tall homes (42 people) stand beside it near x = 200, two
     /// factories and a shop near x = 1450. Stations at 200, 800 and 1450, a depot at the west end.
     /// </summary>
     static (Simulation Sim, int Depot, int A, int B, int C) Corridor(Tuning? tuning = null)
@@ -33,7 +33,7 @@ public class TripTests
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, 1600, 0, RoadType.TwoLane, 14f)));
         sim.AddTowns(new WorldPlan(1, new[]
         {
-            new TownPlan("Testville", 800, 0, 0, 1, new[]
+            new TownPlan("Testville", 800, 0, new[]
             {
                 new BuildingPlan(BuildingType.Home, 1, 170, 25, 0),
                 new BuildingPlan(BuildingType.Home, 1, 200, -25, 0),
@@ -71,7 +71,7 @@ public class TripTests
         int Jobs() => new[] { 3, 4, 5 }.Sum(sim.JobsTakenAt);
         int before = Jobs();
         int victims = sim.TripGroups.Where(g => g.Home == 1).Sum(g => g.People);
-        Assert.Equal(60, before);
+        Assert.Equal(42, before);
         Assert.True(victims > 0);
 
         Assert.True(sim.Execute(new BuildRoadCommand(200, -70, 200, 70, RoadType.TwoLane, 14f)) > 0);
@@ -82,7 +82,7 @@ public class TripTests
         Assert.All(sim.TripGroups.Where(g => g.Home != 1), g => Assert.False(g.Retired));
         Assert.Equal(before - victims, Jobs());
         // The rest of the town goes on as before: the other two homes still send their people out.
-        Assert.Equal(40, sim.TripGroups.Where(g => g.Home != 1).Sum(g => g.People));
+        Assert.Equal(28, sim.TripGroups.Where(g => g.Home != 1).Sum(g => g.People));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class TripTests
         for (int k = 0; k < 10; k++) buildings.Add(new BuildingPlan(BuildingType.Home, 1, 100 + k * 5, 25, 0));
         buildings.Add(new BuildingPlan(BuildingType.Commerce, 2, 180, -25, 0)); // near
         buildings.Add(new BuildingPlan(BuildingType.Commerce, 2, 1500, -25, 0)); // far
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 800, 0, 0, 1, buildings) }));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 800, 0, buildings) }));
 
         int near = sim.TripGroups.Count(g => g.Work == 10);
         int far = sim.TripGroups.Count(g => g.Work == 11);
@@ -207,7 +207,7 @@ public class TripTests
         sim.Execute(new BuildRoadCommand(0, 0, 400, 0, RoadType.TwoLane, 14f));
         sim.AddTowns(new WorldPlan(1, new[]
         {
-            new TownPlan("Testville", 200, 0, 0, 1, new[]
+            new TownPlan("Testville", 200, 0, new[]
             {
                 new BuildingPlan(BuildingType.Home, 0, 100, 25, 0),
                 new BuildingPlan(BuildingType.Commerce, 1, 200, -25, 0),

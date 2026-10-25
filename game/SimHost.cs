@@ -1057,7 +1057,7 @@ public partial class SimHost : Node3D
 
     /// <summary>
     /// The towns: for each {id, name, x, y, z, satisfaction, population (what its standing buildings have room for), residents (the people of its trip groups, fewer after raids), capacity (the share of its buildings' nominal room that the call-up has left, 0 to 1; population and jobs are already scaled by it), casualties (killed in raids so far), jobs, homes, commerce, industry, inactive,
-    /// abandoned, unmet, walked, drove, rode, stayed, connectivity, min_connectivity, min_satisfaction, grew_sizes, grew_buildings, grew_blocks, blocked, buildings, covered, needs} (counts of buildings, inactive and abandoned ones apart; unmet is the share
+    /// abandoned, unmet, walked, drove, rode, stayed, connectivity, min_connectivity, min_satisfaction, grew_sizes, grew_buildings, grew_streets, blocked, buildings, covered, needs} (counts of buildings, inactive and abandoned ones apart; unmet is the share
     /// of last month's needs that were not met, 0 to 1; the last four are people-trips of the day before by foot, by car, on the
     /// company's lines, and trips that could not be made; buildings standing and covered is how many of those a station of the company
     /// covers; needs is a list of {cargo, short, monthly, construction}: for each cargo its buildings use or build with, how many buildings
@@ -1084,7 +1084,7 @@ public partial class SimHost : Node3D
                 ["walked"] = town.TripsYesterday[(int)TripMode.Walk], ["drove"] = town.TripsYesterday[(int)TripMode.Car],
                 ["rode"] = town.TripsYesterday[(int)TripMode.Transit], ["stayed"] = town.TripsYesterday[(int)TripMode.None],
                 ["connectivity"] = town.Connectivity, ["min_connectivity"] = Sim.TownTuning.Growth.MinConnectivity, ["min_satisfaction"] = Sim.TownTuning.Growth.MinSatisfaction,
-                ["grew_sizes"] = town.LastGrowth.Upgrades, ["grew_buildings"] = town.LastGrowth.NewBuildings, ["grew_blocks"] = town.LastGrowth.NewBlocks,
+                ["grew_sizes"] = town.LastGrowth.Upgrades, ["grew_buildings"] = town.LastGrowth.NewBuildings, ["grew_streets"] = town.LastGrowth.NewStreets,
                 ["blocked"] = town.LastGrowth.Blocked.ToString(),
                 ["buildings"] = needs.Buildings, ["covered"] = needs.Covered, ["needs"] = needList,
             });

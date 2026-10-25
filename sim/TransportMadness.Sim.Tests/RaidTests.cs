@@ -50,10 +50,10 @@ public class RaidTests
         foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
             sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(60, -60, 1300, -60, RoadType.TwoLane, 14f)));
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
+        var lots = GrowthTests.BlockSpots(tuning);
         var buildings = new List<BuildingPlan>();
         for (int k = 0; k < 8; k++) buildings.Add(new BuildingPlan(k % 4 == 3 ? BuildingType.Commerce : BuildingType.Home, 1, lots[k].X, lots[k].Z, lots[k].Facing));
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, buildings) }, new[] { new IndustryPlan(Sawmill, 600, -30, 0) }, null,
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, buildings) }, new[] { new IndustryPlan(Sawmill, 600, -30, 0) }, null,
             new[] { new GatewayPlan(GatewayKind.Road, "Test Road Gate", 1100, -30, 0) }));
         Assert.True(sim.Execute(new AddDepotCommand(net.FindNodeNear(60, -60, 1f), DepotLevel.Simple)) >= 0);
         return sim;

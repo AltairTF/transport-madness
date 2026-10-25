@@ -7,6 +7,31 @@ public class GrowthTests
 {
     const int Materials = 5, Planks = 3;
 
+    /// <summary>A place for a building in a test town: its middle and the way it faces.</summary>
+    internal readonly record struct BlockSpot(float X, float Z, float Facing);
+
+    /// <summary>The eight places of the test block: two on each side of a square of streets 120 m a side round (0, 0), set back from the street so any size fits, facing it.</summary>
+    internal static IReadOnlyList<BlockSpot> BlockSpots(Tuning tuning)
+    {
+        float widest = 0f;
+        foreach (var type in Enum.GetValues<BuildingType>()) widest = MathF.Max(widest, tuning.Towns.Of(type, TownsTuning.Tiers - 1).Footprint);
+        float setback = 8f + 1.5f + widest, half = 60f;
+        var spots = new List<BlockSpot>();
+        for (int side = 0; side < 4; side++)
+            for (int lot = 0; lot < 2; lot++)
+            {
+                float along = (lot - 0.5f) * 32f;
+                spots.Add(side switch
+                {
+                    0 => new BlockSpot(along, -half + setback, -MathF.PI * 0.5f),
+                    1 => new BlockSpot(along, half - setback, MathF.PI * 0.5f),
+                    2 => new BlockSpot(-half + setback, along, MathF.PI),
+                    _ => new BlockSpot(half - setback, along, 0f),
+                });
+            }
+        return spots;
+    }
+
     internal static Terrain DryLevelMap() => Terrain.Create(512, 8f, (_, _) => 5f);
 
     /// <summary>A short day (60 s) so that months go by quickly; growth does not depend on the length of the day.</summary>
@@ -40,19 +65,19 @@ public class GrowthTests
     /// One square block of streets, 120 m a side, round (0, 0), with its eight lots. <paramref name="occupants"/> puts a
     /// building (type, size) on the lots in order; null leaves a lot free.
     /// </summary>
-    internal static (Simulation Sim, IReadOnlyList<TownGenerator.LotSite> Lots) BlockTown(Tuning tuning, params (BuildingType Type, int Tier)?[] occupants) => BlockTown(tuning, 7, occupants);
+    internal static (Simulation Sim, IReadOnlyList<BlockSpot> Lots) BlockTown(Tuning tuning, params (BuildingType Type, int Tier)?[] occupants) => BlockTown(tuning, 7, occupants);
 
-    internal static (Simulation Sim, IReadOnlyList<TownGenerator.LotSite> Lots) BlockTown(Tuning tuning, ulong seed, params (BuildingType Type, int Tier)?[] occupants)
+    internal static (Simulation Sim, IReadOnlyList<BlockSpot> Lots) BlockTown(Tuning tuning, ulong seed, params (BuildingType Type, int Tier)?[] occupants)
     {
         var net = new RoadNetwork(DryLevelMap(), tuning);
         var sim = new Simulation(net, seed);
         foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
             sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
+        var lots = GrowthTests.BlockSpots(tuning);
         var plans = new List<BuildingPlan>();
         for (int k = 0; k < occupants.Length; k++)
             if (occupants[k] is { } o) plans.Add(new BuildingPlan(o.Type, o.Tier, lots[k].X, lots[k].Z, lots[k].Facing));
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, plans) }));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, plans) }));
         return (sim, lots);
     }
 
@@ -119,7 +144,7 @@ public class GrowthTests
     }
 
     [Fact]
-    public void ABuildingAtTheTopSize_FoundsANewOneOnTheNearestFreeLot()
+    public void ABuildingAtTheTopSize_FoundsANewOneOnTheNearestFreeSpotBesideARoad()
     {
         var (sim, lots) = BlockTown(Quick(), (BuildingType.Home, 2), null, (BuildingType.Home, 2), (BuildingType.Home, 2), (BuildingType.Home, 2), (BuildingType.Home, 2), (BuildingType.Home, 2), null);
         Fill(sim, 0);
@@ -130,8 +155,9 @@ public class GrowthTests
         Assert.Equal(before + 1, sim.Buildings.Count);
         var born = sim.Buildings[^1];
         Assert.Equal(0, born.Tier);
-        Assert.Equal(lots[1].X, born.X, 0.01f); // the lot next to the parent, not the far one
-        Assert.Equal(lots[1].Z, born.Z, 0.01f);
+        var parent = sim.Buildings[0];
+        Assert.True(MathF.Sqrt((born.X - parent.X) * (born.X - parent.X) + (born.Z - parent.Z) * (born.Z - parent.Z)) < 60f, "next to the parent, not the far side of the block");
+        Assert.True(new RoadIndex(sim.Network).HasRoadWithin(born.X, born.Z, sim.TownTuning.AccessRadius));
         Assert.False(HasStock(sim, 0));
         Assert.Equal(1, sim.Towns[0].LastGrowth.NewBuildings);
         Assert.Equal(BuildingState.Active, born.State);
@@ -139,25 +165,37 @@ public class GrowthTests
     }
 
     [Fact]
-    public void ATownWithNoFreeLot_BuildsANewBlockOfStreets_AndFoundsTheBuildingThere()
+    public void ATownWithNoFreeSpotInTheBlock_FoundsTheBuildingBesideARoadOfItsReach()
     {
         var all = Enumerable.Repeat<(BuildingType, int)?>((BuildingType.Home, 2), 8).ToArray();
         var (sim, _) = BlockTown(Quick(), all);
         Fill(sim, 0);
-        int roads = Enumerable.Range(0, sim.Network.RoadCount).Count(r => !sim.Network.GetRoad(new RoadId(r)).Retired);
         int before = sim.Buildings.Count;
 
         RunMonths(sim, 1.1);
 
-        int after = Enumerable.Range(0, sim.Network.RoadCount).Count(r => !sim.Network.GetRoad(new RoadId(r)).Retired);
-        Assert.True(after > roads, $"{after} roads against {roads}");
-        Assert.Equal(1, sim.Towns[0].LastGrowth.NewBlocks);
         Assert.Equal(before + 1, sim.Buildings.Count);
         var born = sim.Buildings[^1];
-        Assert.True(MathF.Abs(born.X) > 60f || MathF.Abs(born.Z) > 60f, $"({born.X}, {born.Z}) is inside the first block");
         Assert.Equal(BuildingState.Active, born.State);
-        // The new streets are real: the building has a road to reach it.
         Assert.True(new RoadIndex(sim.Network).HasRoadWithin(born.X, born.Z, sim.TownTuning.AccessRadius));
+        Assert.Equal(0, sim.Towns[0].LastGrowth.NewStreets); // a road had room
+    }
+
+    [Fact]
+    public void ATown_GrowsAStreetOfEarthFromItsRoad_WithSpotsAlongIt()
+    {
+        var tuning = Quick();
+        var net = new RoadNetwork(DryLevelMap(), tuning);
+        var sim = new Simulation(net, 7);
+        sim.Execute(new BuildRoadCommand(-150f, 0f, 150f, 0f, RoadType.TwoLane, 14f));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Lane", 0, 0, new List<BuildingPlan> { new(BuildingType.Home, 0, 0f, 12f, 0f) }) }));
+        int roads = Enumerable.Range(0, net.RoadCount).Count(r => !net.GetRoad(new RoadId(r)).Retired);
+
+        Assert.True(sim.GrowStreet(sim.Towns[0], 0f, 12f));
+
+        Assert.True(Enumerable.Range(0, net.RoadCount).Count(r => !net.GetRoad(new RoadId(r)).Retired) > roads);
+        Assert.Contains(Enumerable.Range(0, net.RoadCount), r => net.GetRoad(new RoadId(r)).Type == RoadType.Path);
+        Assert.NotNull(sim.FindSpot(sim.Towns[0], 0f, 12f)); // spots along the new street
     }
 
     [Fact]
@@ -170,16 +208,76 @@ public class GrowthTests
         var sim = new Simulation(net, 7);
         foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
             sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Islet", 0, 0, 0, 1, lots.Select(l => new BuildingPlan(BuildingType.Home, 2, l.X, l.Z, l.Facing)).ToList()) }));
+        var lots = GrowthTests.BlockSpots(tuning);
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Islet", 0, 0, lots.Select(l => new BuildingPlan(BuildingType.Home, 2, l.X, l.Z, l.Facing)).ToList()) }));
         Fill(sim, 0);
         int roads = sim.Network.RoadCount;
 
         RunMonths(sim, 1.1);
 
-        Assert.Equal(roads, sim.Network.RoadCount);
-        Assert.Equal(8, sim.Buildings.Count);
-        Assert.True(HasStock(sim, 0)); // nothing was spent
+        Assert.Equal(roads, sim.Network.RoadCount); // no street over water
+        Assert.All(sim.Buildings, b => Assert.True(net.Terrain!.HeightAt(b.X, b.Z) > 0f)); // and no house in it
+    }
+
+    [Fact]
+    public void AStreetThatIsToJoinARoad_BendsBackAndEndsOnIt()
+    {
+        var tuning = Quick();
+        tuning = tuning with { Towns = tuning.Towns with { Generation = tuning.Towns.Generation with { Streets = tuning.Towns.Generation.Streets with { LoopChance = 1f } } } };
+        var net = new RoadNetwork(DryLevelMap(), tuning);
+        var sim = new Simulation(net, 7);
+        sim.Execute(new BuildRoadCommand(-300f, 0f, 300f, 0f, RoadType.TwoLane, 14f));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Lane", 0, 0, new List<BuildingPlan> { new(BuildingType.Home, 0, 0f, 12f, 0f) }, 300f) }));
+
+        Assert.True(sim.GrowStreet(sim.Towns[0], 0f, 12f));
+
+        var roads = Enumerable.Range(0, net.RoadCount).Select(r => net.GetRoad(new RoadId(r))).Where(r => !r.Retired).ToList();
+        var lanes = roads.Where(r => r.Type == RoadType.Path).ToList();
+        Assert.NotEmpty(lanes);
+        // A joined street leaves the main road and arrives on it again: its pieces touch the main road at both ends.
+        var main = roads.Where(r => r.Type == RoadType.TwoLane).ToList();
+        int touching = lanes.SelectMany(l => new[] { l.Geometry.PointAt(0f), l.Geometry.End }).Count(p => main.Any(m => m.Geometry.DistanceTo(p.X, p.Z) < 1f));
+        Assert.True(touching >= 2, $"{touching} street ends on the main road");
+    }
+
+    [Fact]
+    public void AStreet_IsNotLaidAcrossARailway()
+    {
+        var tuning = Quick();
+        var net = new RoadNetwork(DryLevelMap(), tuning);
+        var sim = new Simulation(net, 7);
+        sim.Execute(new TakeLoanCommand(1000000));
+        sim.Execute(new BuildRoadCommand(-150f, 0f, 150f, 0f, RoadType.TwoLane, 14f));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Lane", 0, 0, new List<BuildingPlan> { new(BuildingType.Home, 0, 0f, 12f, 0f) }, 200f) }));
+        Assert.True(sim.Execute(new BuildTrackCommand(-150f, 60f, 150f, 60f)) > 0);
+
+        Assert.True(sim.GrowStreet(sim.Towns[0], 0f, 12f));
+
+        var lanes = Enumerable.Range(0, net.RoadCount).Select(r => net.GetRoad(new RoadId(r))).Where(r => !r.Retired && r.Type == RoadType.Path).ToList();
+        Assert.NotEmpty(lanes);
+        Assert.All(lanes, l => Assert.True(l.Geometry.PointAt(0f).Z < 45f && l.Geometry.End.Z < 45f && l.Geometry.PointAt(l.Geometry.Length * 0.5f).Z < 45f, "a street reaches the railway"));
+    }
+
+    [Fact]
+    public void AWellServedVillage_GrowsStreetByStreetForYears_AndEveryNewHouseHasARoadAndRoom()
+    {
+        var (sim, _) = WorldBuilder.Towns(11, 3, IndustryAmount.Few, Quick());
+        int start = sim.StatsOf(0).Population, roads = sim.Network.RoadCount;
+        for (int month = 0; month < 60; month++) // five years of a town that gets everything it needs
+        {
+            foreach (var t in sim.Towns) t.Satisfaction = 100f;
+            for (int id = 0; id < sim.Buildings.Count; id++) if (sim.Buildings[id].State == BuildingState.Active) Fill(sim, id);
+            RunMonths(sim, 1);
+        }
+        int people = sim.StatsOf(0).Population;
+        Assert.True(people > start, $"{start} people then, {people} now");
+        Assert.True(sim.Network.RoadCount > roads, "no street was born");
+        var index = new RoadIndex(sim.Network);
+        var live = sim.Buildings.Where(b => b.State == BuildingState.Active).ToList();
+        Assert.All(live, b => Assert.True(index.HasRoadWithin(b.X, b.Z, sim.TownTuning.AccessRadius)));
+        for (int a = 0; a < live.Count; a++)
+            for (int c = a + 1; c < live.Count; c++)
+                Assert.True((live[a].X - live[c].X) * (live[a].X - live[c].X) + (live[a].Z - live[c].Z) * (live[a].Z - live[c].Z) > 100f, "two buildings on top of each other");
     }
 
     // ---- The gates ----------------------------------------------------------------------------------------------
@@ -268,7 +366,7 @@ public class GrowthTests
         if (joined) sim.Execute(new BuildRoadCommand(300, 0, 1400, 0, RoadType.TwoLane, 14f));
         sim.AddTowns(new WorldPlan(1, new[]
         {
-            new TownPlan("Testville", 800, 0, 0, 1, new[]
+            new TownPlan("Testville", 800, 0, new[]
             {
                 new BuildingPlan(BuildingType.Home, 0, 100, 25, 0), new BuildingPlan(BuildingType.Home, 0, 160, -25, 0),
                 new BuildingPlan(BuildingType.Home, 0, 220, 25, 0), new BuildingPlan(BuildingType.Home, 0, 40, -25, 0),
@@ -309,7 +407,7 @@ public class GrowthTests
         var start = sim.NeedsOf(0);
         Assert.Equal(2, start.Buildings);
         Assert.Equal(0, start.Covered); // no station yet
-        Assert.Equal(16f, start.Cargo.First(c => c.Cargo == materials).MissingConstruction); // 8 for each building
+        Assert.Equal(40f, start.Cargo.First(c => c.Cargo == materials).MissingConstruction); // 20 for each building
         Assert.All(start.Cargo, c => Assert.Equal(0, c.ShortBuildings)); // they start with some stock
 
         var (x, z) = sim.Network.GetNode(sim.Network.FindNodeNear(-60f, -60f, 20f, withRoadsOnly: true));

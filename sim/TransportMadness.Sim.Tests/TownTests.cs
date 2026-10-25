@@ -21,7 +21,7 @@ public class TownTests
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, 400, 0, RoadType.TwoLane, 14f)));
         var plan = new WorldPlan(1, new[]
         {
-            new TownPlan("Testville", 200, 0, 0, 1, new[]
+            new TownPlan("Testville", 200, 0, new[]
             {
                 new BuildingPlan(BuildingType.Home, 0, 100, 25, 0),
                 new BuildingPlan(BuildingType.Commerce, 1, 300, -25, 0),

@@ -39,10 +39,10 @@ public class OrderTests
         foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
             sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(60, -60, 1300, -60, RoadType.TwoLane, 14f)));
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
-        var buildings = new[] { new BuildingPlan(BuildingType.Home, 0, lots[0].X, lots[0].Z, lots[0].Facing), new BuildingPlan(BuildingType.Commerce, 0, lots[1].X, lots[1].Z, lots[1].Facing) };
+        var lots = GrowthTests.BlockSpots(tuning);
+        var buildings = new[] { new BuildingPlan(BuildingType.Home, 1, lots[0].X, lots[0].Z, lots[0].Facing), new BuildingPlan(BuildingType.Commerce, 0, lots[1].X, lots[1].Z, lots[1].Facing) };
         var industries = new[] { new IndustryPlan(Forest, 500, -30, 0), new IndustryPlan(FoodPlant, 800, -30, 0) };
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, buildings) }, industries, null, gateway ? new[] { RoadGate(1200) } : Array.Empty<GatewayPlan>()));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, buildings, 85f) }, industries, null, gateway ? new[] { RoadGate(1200) } : Array.Empty<GatewayPlan>()));
         int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(60, -60, 1f), DepotLevel.Simple));
         Assert.True(depot >= 0);
         return new World { Sim = sim, Depot = depot };

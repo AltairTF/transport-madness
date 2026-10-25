@@ -3,8 +3,8 @@ namespace TransportMadness.Sim;
 /// <summary>How a town's streets are arranged (docs/town-redo-plan.md): a short road with houses clustered on it, houses both sides of one curving road, or two roads crossing in the middle.</summary>
 public enum TownLayout : byte { Cluster, Linear, Crossing }
 
-/// <summary>A town as <see cref="VillageGenerator"/> made it: its buildings, the spare spots beside its streets, and how far its houses reach.</summary>
-public sealed record VillagePlan(IReadOnlyList<BuildingPlan> Buildings, IReadOnlyList<TownGenerator.LotSite> Lots, float Radius, TownLayout Layout, int People);
+/// <summary>A town as <see cref="VillageGenerator"/> made it: its buildings, and how far its houses reach.</summary>
+public sealed record VillagePlan(IReadOnlyList<BuildingPlan> Buildings, float Radius, TownLayout Layout, int People);
 
 /// <summary>
 /// A small town in the style of the villages of Chernarus: one road curves through it along the contour, lanes of earth leave it (some
@@ -69,8 +69,8 @@ public static class VillageGenerator
             _index = new RoadIndex(_net);
             int target = _class.PeopleMin + _rng.NextInt(_class.PeopleMax - _class.PeopleMin + 1);
             int people = PlaceBuildings(target);
-            // Short of its people, a town lays another lane (up to twelve) and houses it.
-            for (int extra = 0; extra < 12 && people < target; extra++)
+            // Short of its people, a town lays another lane (up to forty) and houses it.
+            for (int extra = 0; extra < 40 && people < target; extra++)
             {
                 int roads = _net.RoadCount;
                 BuildLane(_rng.NextFloat() < 0.5f ? 1 : -1, _used);
@@ -78,11 +78,10 @@ public static class VillageGenerator
                 _index = new RoadIndex(_net);
                 people += PlaceAlong(target - people);
             }
-            var lots = SpareLots();
             float radius = _class.Radius;
             foreach (var b in _placed) radius = MathF.Max(radius, Dist(b.X, b.Z) + 10f);
             var buildings = _placed.Select(b => new BuildingPlan(b.Type, b.Tier, b.X, b.Z, b.Facing)).ToList();
-            return new VillagePlan(buildings, lots, radius, layout, people);
+            return new VillagePlan(buildings, radius, layout, people);
         }
 
         TownLayout BuildStreets()
@@ -472,40 +471,6 @@ public static class VillageGenerator
             float half = size * 1.1f;
             float height = _terrain.MeanHeight(place.X, place.Z, place.Facing, half);
             _terrain.LevelPad(place.X, place.Z, place.Facing, half, height, _st.PadShoulder, apply: true, (px, pz) => _index.DistanceToNearest(px, pz, 5f) <= 5f);
-        }
-
-        /// <summary>
-        /// Spare spots beside the streets, for the buildings the town founds as it grows: where a building of the town's biggest size would
-        /// fit, and the biggest size that does. They keep their distance from the houses and from each other.
-        /// </summary>
-        List<TownGenerator.LotSite> SpareLots()
-        {
-            var lots = new List<TownGenerator.LotSite>();
-            int wanted = Math.Max(8, _placed.Count);
-            var reserved = new List<Placed>();
-            foreach (var slot in Slots(0.35f))
-            {
-                if (lots.Count >= wanted) break;
-                if (slot.Compound) continue;
-                for (int side = 1; side >= -1; side -= 2)
-                {
-                    int bigger = Math.Min(_class.MaxTier, 1);
-                    var place = Place(slot, side, BuildingType.Home, bigger);
-                    if (!Valid(place.X, place.Z, BuildingType.Home, bigger)) continue;
-                    int maxTier = bigger;
-                    for (int tier = _class.MaxTier; tier > bigger; tier--)
-                        if (Valid(place.X, place.Z, BuildingType.Home, tier)) { maxTier = tier; break; }
-                    float ratio = Dist(place.X, place.Z) / _class.Radius;
-                    lots.Add(new TownGenerator.LotSite(0, 0, 0, lots.Count, place.X, place.Z, place.Facing, ratio, 0f, maxTier));
-                    // The lot is kept clear of the next ones, as if a building of its biggest size stood there.
-                    var held = new Placed(BuildingType.Home, maxTier, place.X, place.Z, place.Facing, _tuning.Of(BuildingType.Home, maxTier).Size);
-                    _placed.Add(held);
-                    reserved.Add(held);
-                    break;
-                }
-            }
-            foreach (var held in reserved) _placed.Remove(held);
-            return lots;
         }
     }
 }

@@ -36,8 +36,8 @@ static func details_text(town: Dictionary, cargo_names: Array) -> String:
 		lines.append("Not growing: fewer than %d%% of homes can reach work or leisure" % roundi(100.0 * town["min_connectivity"]))
 	elif town["grew_sizes"] + town["grew_buildings"] > 0:
 		var grew := "Grew last month: %d bigger, %d new buildings" % [town["grew_sizes"], town["grew_buildings"]]
-		if town["grew_blocks"] > 0:
-			grew += ", %d new block of streets" % town["grew_blocks"]
+		if town["grew_streets"] > 0:
+			grew += ", %d new streets" % town["grew_streets"]
 		lines.append(grew)
 	var short := _needs_text(town, cargo_names).split("\n")
 	for line in short:

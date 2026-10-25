@@ -12,7 +12,6 @@ public enum TownSize : byte { Hamlet, Village, Town }
 public static class TownGenerator
 {
     const ulong SeedSalt = 0x544F574E53554C45UL; // keeps this stream apart from the simulation's own
-    const int LotsPerSide = 2;                   // lots along one side of a block (the old grid, see LotSites)
 
     /// <summary>
     /// Builds up to <paramref name="townCount"/> towns into <paramref name="net"/> and returns them. Fewer come out
@@ -30,7 +29,7 @@ public static class TownGenerator
         {
             var p = places[i];
             var village = VillageGenerator.Generate(net, p.Size, p.X, p.Z, seed ^ (ulong)(i + 1) * 0x9E3779B97F4A7C15UL);
-            towns.Add(new TownPlan(names[i % names.Count] + (i >= names.Count ? $" {i / names.Count + 1}" : ""), p.X, p.Z, 0f, 0, village.Buildings, village.Radius, village.Lots));
+            towns.Add(new TownPlan(names[i % names.Count] + (i >= names.Count ? $" {i / names.Count + 1}" : ""), p.X, p.Z, village.Buildings, village.Radius));
         }
         return new WorldPlan(townCount, towns);
     }
@@ -151,62 +150,6 @@ public static class TownGenerator
         if (wet > g.Sizes.WaterShare * samples) return false;
         return highest - lowest <= g.MaxHeightRange;
     }
-
-    /// <summary>Turns a position in a town's own axes (u along its first street direction, v across) into the map's.</summary>
-    public static (float X, float Z) ToWorld(float cx, float cz, float angle, float u, float v)
-    {
-        float c = MathF.Cos(angle), s = MathF.Sin(angle);
-        return (cx + u * c - v * s, cz + u * s + v * c);
-    }
-
-    /// <summary>A place a building can stand: on one side of a block, facing its street. Where it is does not depend on what is built on it.</summary>
-    /// <param name="I">Block column (can be negative or past the first grid when a town has grown).</param>
-    /// <param name="J">Block row.</param>
-    /// <param name="MaxTier">The biggest size a building may grow to on this lot (the lot's frontage allows no wider).</param>
-    /// <param name="U">Middle of the block in the town's own axes, for the ring it lies in.</param>
-    public readonly record struct LotSite(int I, int J, int Side, int Lot, float X, float Z, float Facing, float U, float V, int MaxTier = TownsTuning.Tiers - 1);
-
-    /// <summary>
-    /// The lots of the blocks <paramref name="i0"/>..<paramref name="i1"/> by <paramref name="j0"/>..<paramref name="j1"/> of a town
-    /// whose first grid had <paramref name="blocks"/> blocks a side, in a fixed order (block columns, rows, sides, lots). A building's
-    /// middle is as far from its street as the biggest size needs (and an avenue's width, in case the street is widened later), so
-    /// a building can grow in place.
-    /// </summary>
-    public static IEnumerable<LotSite> LotSites(TownsTuning tuning, float cx, float cz, float angle, int blocks, int i0, int i1, int j0, int j1)
-    {
-        var g = tuning.Generation;
-        float half = blocks * g.BlockLength * 0.5f;
-        float avenueHalf = RoadNetwork.HalfWidth(RoadType.Avenue2x2);
-        float setback = avenueHalf + g.SetbackGap + MaxFootprint(tuning);
-        for (int i = i0; i <= i1; i++)
-            for (int j = j0; j <= j1; j++)
-                for (int side = 0; side < 4; side++)
-                    for (int lot = 0; lot < LotsPerSide; lot++)
-                    {
-                        float u0 = -half + i * g.BlockLength, v0 = -half + j * g.BlockLength;
-                        float along = g.BlockLength * 0.5f + (lot - (LotsPerSide - 1) * 0.5f) * g.LotWidth;
-                        // Local axes: u along the first street direction, v across. Sides: bottom, top, left, right.
-                        (float u, float v, float facing) = side switch
-                        {
-                            0 => (u0 + along, v0 + setback, -MathF.PI * 0.5f),
-                            1 => (u0 + along, v0 + g.BlockLength - setback, MathF.PI * 0.5f),
-                            2 => (u0 + setback, v0 + along, MathF.PI),
-                            _ => (u0 + g.BlockLength - setback, v0 + along, 0f),
-                        };
-                        var (wx, wz) = ToWorld(cx, cz, angle, u, v);
-                        yield return new LotSite(i, j, side, lot, wx, wz, facing + angle, u0 + g.BlockLength * 0.5f, v0 + g.BlockLength * 0.5f);
-                    }
-    }
-
-    internal static float MaxFootprint(TownsTuning tuning)
-    {
-        float widest = 0f;
-        foreach (var type in Enum.GetValues<BuildingType>())
-            widest = MathF.Max(widest, tuning.Of(type, TownsTuning.Tiers - 1).Footprint);
-        return widest;
-    }
-
-    internal const float RingNoise = 0.2f; // how far, as a share of the radius, a lot's ring may be off its distance
 
     /// <summary>The ring at a distance from the middle of the town, as a share of its radius.</summary>
     public static RingTuning RingAt(TownsTuning tuning, float ratio)

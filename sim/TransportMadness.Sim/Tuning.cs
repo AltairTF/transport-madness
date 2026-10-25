@@ -392,8 +392,10 @@ public sealed record GrowthTuning
     public required float MinSatisfaction { get; init; }
     public required float MinConnectivity { get; init; }
     public required float TimeBudgetSeconds { get; init; }
-    public required float LotClearance { get; init; }
-    public required bool ExtendGrid { get; init; }
+    public required float SpotClearance { get; init; }
+    public required float StreetMin { get; init; }
+    public required float StreetMax { get; init; }
+    public required float SpotReach { get; init; }
 }
 
 public sealed record TownGenerationTuning
@@ -404,9 +406,6 @@ public sealed record TownGenerationTuning
     public required float MaxHeightRange { get; init; }
     public required float WaterMargin { get; init; }
     // The grid of the old towns: only the lot and growth code that slice 2 of docs/town-redo-plan.md removes, and test fixtures, still read these.
-    public required float BlockLength { get; init; }
-    public required float LotWidth { get; init; }
-    public required float SetbackGap { get; init; }
     public required TownSizesTuning Sizes { get; init; }
     public required StreetsTuning Streets { get; init; }
     public required TownClassTuning Hamlet { get; init; }

@@ -44,23 +44,13 @@ public sealed class Building
     // The road node cars leave from and arrive at, found on demand for the network version it was last worked out for.
     internal int AccessNode = -1;
     internal int AccessVersion = -1;
-    /// <summary>Index into its town's lots of the lot it stands on, -1 when it stands on none (placed by hand).</summary>
-    internal int Lot = -1;
-}
-
-/// <summary>A place in a town where a building can stand; free while no building stands on it.</summary>
-internal sealed class Lot
-{
-    internal Lot(TownGenerator.LotSite site) => Site = site;
-    internal TownGenerator.LotSite Site;
-    internal int Building = -1;
 }
 
 /// <summary>Why a town did not grow last month, or <see cref="None"/> when it did (or had nothing to spend).</summary>
 public enum GrowthBlock { None, Satisfaction, Connectivity }
 
 /// <summary>What a town did at the last turn of the month.</summary>
-public readonly record struct GrowthReport(int Upgrades, int NewBuildings, int NewBlocks, GrowthBlock Blocked);
+public readonly record struct GrowthReport(int Upgrades, int NewBuildings, int NewStreets, GrowthBlock Blocked);
 
 public sealed class Town
 {
@@ -95,14 +85,8 @@ public sealed class Town
     public float Connectivity { get; internal set; } = 1f;
     public GrowthReport LastGrowth { get; internal set; }
 
-    // The street grid: blocks of the first grid are 0..Blocks-1 either way; growth adds columns and rows on any side.
-    internal float Angle;
-    internal int Blocks;
-    /// <summary>R4: an organic town has no grid; its lots are those the generator laid and <see cref="Radius"/> is how far it reaches.</summary>
-    internal bool Organic;
+    /// <summary>How far from its middle the town reaches (the radius its streets and houses were laid in); houses are founded beside roads within it.</summary>
     internal float Radius;
-    internal int IMin, IMax, JMin, JMax;
-    internal List<Lot> Lots { get; } = new();
     /// <summary>Ids of every building ever in the town, demolished ones too (ids are never reused).</summary>
     public IReadOnlyList<int> Buildings => BuildingIds;
     internal List<int> BuildingIds { get; } = new();
@@ -116,14 +100,11 @@ public sealed class Town
 /// <summary>A building as the generator lays it out.</summary>
 public readonly record struct BuildingPlan(BuildingType Type, int Tier, float X, float Z, float Facing);
 
-/// <summary>
-/// A town as the generator lays it out: where it is, the buildings it starts with, and either its street grid (<c>Angle</c>, <c>Blocks</c>) or,
-/// for an organic town (R4), its radius and the lots along its streets (<c>Blocks</c> and <c>Angle</c> are 0).
-/// </summary>
-public sealed record TownPlan(string Name, float X, float Z, float Angle, int Blocks, IReadOnlyList<BuildingPlan> Buildings, float Radius = 0f, IReadOnlyList<TownGenerator.LotSite>? Lots = null)
+/// <summary>A town as the generator lays it out: where it is, the buildings it starts with and how far it reaches (<c>Radius</c>; when 0, as far as its farthest building plus a margin).</summary>
+public sealed record TownPlan(string Name, float X, float Z, IReadOnlyList<BuildingPlan> Buildings, float Radius = 0f)
 {
-    /// <summary>How far from its centre the town reaches: the radius of an organic town (R4), the half diagonal of the grid of an older one.</summary>
-    public float Reach(TownGenerationTuning g) => Radius > 0f ? Radius : Blocks * g.BlockLength * 0.5f * 1.42f;
+    /// <summary>How far from its centre the town reaches.</summary>
+    public float Reach() => Radius > 0f ? Radius : Math.Max(40f, Buildings.Select(b => MathF.Sqrt((b.X - X) * (b.X - X) + (b.Z - Z) * (b.Z - Z))).DefaultIfEmpty(0f).Max() + 20f);
 }
 
 /// <summary>An industry as the generator lays it out: its type (index into <c>industries.types</c>) and place.</summary>

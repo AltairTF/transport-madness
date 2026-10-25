@@ -1,6 +1,6 @@
 # Town redo: small organic villages (DayZ / Chernarus style)
 
-Status: agreed 2026-10-24 in three rounds of questions; slice 1 built 2026-10-24 (not committed), slices 2 and 3 open. Replaces `docs/town-upgrade-plan.md` and the R4 growth work. Saves break on purpose (`SaveGame.FormatVersion` goes up in slice 3).
+Status: agreed 2026-10-24 in three rounds of questions; slices 1 and 2 built 2026-10-24, slice 3 open. Replaces `docs/town-upgrade-plan.md` and the R4 growth work. Saves break on purpose (`SaveGame.FormatVersion` goes up in slice 3).
 
 ## Why
 
@@ -33,3 +33,13 @@ Tests with the real `RoadNetwork` and terrain: same seed same towns; population 
 - People per building were NOT changed to 5, 14, 34 as planned: many test fixtures hang on 8, 20, 50, so a house still holds 8. The class ranges are in people: hamlet 60 to 160, village 160 to 450, town 450 to 900 (the generator reaches roughly 40 to 100 % of the target; lanes are added, up to twelve, while short).
 - Balance tests moved to small towns: bus line with two buses, served-town supply 30 a day with growth up to 3 times, maintenance share up to 0.25.
 - Spare lots are still handed to the sim (few, since the streets fill up) until slice 2.
+
+## Slice 2 as built (after the audit of 2026-10-24)
+
+- **People and classes follow the plan**: homes hold 5, 14 and 34 people; classes are 80 to 250, 250 to 600, 600 to 1000. To reach them the class radii grew (hamlet 170, village 270, town 360 m, arm lengths with them), hamlets may have size 1 houses, villages up to size 2, and the generator lays up to forty extra lanes while short. Measured on eight flat maps the mean people are inside each class; a single town may come up to 40 % short when its ground leaves little room (tests accept 60 % of the class minimum).
+- **No lots, no reserve**: `Lot`, `LotSite`, `LotSites`, `SpareLots`, the grid tuning (`blockLength`, `lotWidth`, `setbackGap`) and the grid fields of `Town` and `TownPlan` are gone. `TownPlan(Name, X, Z, Buildings, Radius)`; `Radius` 0 means the farthest building plus 20 m. A town grows its `Radius` with its houses.
+- **Growth** (`Simulation.Growth.cs`): a building with a full stock goes up a size when `RoomFor` says the bigger one fits where it stands; else the town founds a house at `FindSpot`: first where a house of the town was destroyed (same spot), else beside any road within `radius + spotReach`, 15 to 32 m apart, nearest to the building that wants room. With no spot, once a month per town, `GrowStreet` branches a `Path` street off a road of the town (nearest first, 16 tries), 60 to 150 m in bent pieces, ending in a dead end or (chance `streets.loopChance`) bending back to join a road 90 to 170 m along. Refused on steep or wet ground, within 12 m of a building, within 14 m of a railway (checked along the whole piece), near an industry, another town or another road. Streets are free and not in the command log.
+- **Ground**: every house founded or grown is levelled with `Terrain.LevelPad` like the generated ones.
+- **Pace**: a hamlet served with 30 a day of materials and planks plus its needs doubles in about a year and a half and reaches 600 people in 5 to 9 years, then stops where the station stops covering houses (it can pass 1000 with more stations). To get there the construction amounts of every building were multiplied by 2.5 (home size 0: 20 materials + 10 planks).
+- **Balance after the change** (tests adapted): bus lines of two buses pay about 1.9 times their upkeep between villages; a line of four buses with the default maintenance costs 15 % of its income on seed 2 (seed 1 stalls with no income: worth a look); a train between two villages roughly pays for itself (average income 0.9 to 1.1 times its upkeep, `rail` is a tuning question) and loses less than six buses.
+- Tests: growth tests rewritten for spots (founded beside a road, a lane grown from a road, a street that joins a road, a street kept off a railway, five years of a generated village), rebuilding tests on spots, fixtures on a hand-made `BlockSpots` block.

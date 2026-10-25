@@ -62,7 +62,7 @@ public static class GatewayGenerator
         float reach = tuning.Size * 1.42f;
         foreach (var town in plan.Towns)
         {
-            float clear = town.Reach(net.Tuning.Towns.Generation) + g.TownClearance + reach;
+            float clear = town.Reach() + g.TownClearance + reach;
             if ((town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z) < clear * clear) return false;
         }
         foreach (var o in plan.Industries ?? Array.Empty<IndustryPlan>())

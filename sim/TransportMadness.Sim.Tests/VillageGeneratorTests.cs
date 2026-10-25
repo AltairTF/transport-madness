@@ -43,15 +43,17 @@ public class VillageGeneratorTests
             for (ulong seed = 1; seed <= 8; seed++)
             {
                 int people = People(t, Flat(size, seed).Plan);
-                Assert.True(people <= 1000, $"{size} {seed}: {people} people");
+                Assert.True(people <= 1000 && people >= Tuning.Load().Towns.Generation.Of(size).PeopleMin * 0.6, $"{size} {seed}: {people} people");
                 counts.Add(people);
             }
             mean[size] = counts.Average();
         }
 
         Assert.True(mean[TownSize.Hamlet] < mean[TownSize.Village] && mean[TownSize.Village] < mean[TownSize.Town], string.Join(", ", mean));
-        Assert.InRange(mean[TownSize.Hamlet], 40, 200);
-        Assert.InRange(mean[TownSize.Town], 300, 1000);
+        // A class holds the people the plan gives it on average; one town may come up a little short when its ground leaves little room.
+        var c = Tuning.Load().Towns.Generation;
+        foreach (var size in Sizes)
+            Assert.InRange(mean[size], c.Of(size).PeopleMin, c.Of(size).PeopleMax);
     }
 
     /// <summary>The towns the generator picks for a map of three: a Town, a Village and a Hamlet, on real ground.</summary>
@@ -140,24 +142,6 @@ public class VillageGeneratorTests
         Assert.Contains(RoadType.TwoLane, types);
         Assert.Contains(RoadType.Path, types);
         Assert.DoesNotContain(RoadType.Avenue2x2, types);
-    }
-
-    [Fact]
-    public void TheSpareLots_AreBesideAStreet_AndClearOfTheBuildings()
-    {
-        var (net, towns) = World(2);
-        var plan = towns[0];
-        var t = net.Tuning.Towns;
-        var index = new RoadIndex(net);
-        foreach (var lot in plan.Lots!)
-        {
-            Assert.True(index.HasRoadWithin(lot.X, lot.Z, t.AccessRadius), "a lot with no road");
-            foreach (var b in plan.Buildings)
-            {
-                float d = MathF.Sqrt((lot.X - b.X) * (lot.X - b.X) + (lot.Z - b.Z) * (lot.Z - b.Z));
-                Assert.True(d >= t.Of(b.Type, b.Tier).Size + t.Of(BuildingType.Home, 0).Size, $"a lot {d:F1} m from a building");
-            }
-        }
     }
 
     // ---- The map -----------------------------------------------------------------------------------------------

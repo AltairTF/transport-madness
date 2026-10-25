@@ -17,14 +17,14 @@ public class RebuildingTests
     static IEnumerable<Building> Standing(Simulation sim, int town = 0) =>
         sim.Buildings.Where(b => b.Town == town && b.State != BuildingState.Demolished);
 
-    static (Simulation Sim, IReadOnlyList<TownGenerator.LotSite> Lots) Block(Tuning tuning, ulong seed, params (BuildingType Type, int Tier)?[] occupants) =>
+    static (Simulation Sim, IReadOnlyList<GrowthTests.BlockSpot> Lots) Block(Tuning tuning, ulong seed, params (BuildingType Type, int Tier)?[] occupants) =>
         GrowthTests.BlockTown(tuning, seed, occupants);
 
-    static (Simulation Sim, IReadOnlyList<TownGenerator.LotSite> Lots) EightHomes(Tuning tuning, ulong seed = 7) =>
+    static (Simulation Sim, IReadOnlyList<GrowthTests.BlockSpot> Lots) EightHomes(Tuning tuning, ulong seed = 7) =>
         Block(tuning, seed, Enumerable.Repeat<(BuildingType, int)?>((BuildingType.Home, 2), 8).ToArray());
 
     /// <summary>The ids of the buildings a bomb on a lot destroys; the lot of each is free afterwards.</summary>
-    static List<Building> Bomb(Simulation sim, TownGenerator.LotSite lot, ulong seed = 1)
+    static List<Building> Bomb(Simulation sim, GrowthTests.BlockSpot lot, ulong seed = 1)
     {
         var before = Standing(sim).ToList();
         sim.BombForTest(lot.X, lot.Z, seed);
@@ -37,14 +37,13 @@ public class RebuildingTests
     public void ADestroyedBuilding_LeavesItsLotFree_AndTheLotCanBeBuiltOnAgain()
     {
         var (sim, lots) = EightHomes(Bombed());
-        var lot = sim.Towns[0].Lots[sim.Buildings[0].Lot];
-        Assert.Equal(0, lot.Building);
+        var home = sim.Buildings[0];
+        Assert.False(sim.RoomFor(home.X, home.Z, BuildingType.Home, 0));
 
         var gone = Bomb(sim, lots[0]);
 
-        Assert.Contains(sim.Buildings[0], gone);
-        Assert.Equal(-1, lot.Building);
-        Assert.True(sim.CanBuildOn(lot));
+        Assert.Contains(home, gone);
+        Assert.True(sim.RoomFor(home.X, home.Z, BuildingType.Home, 0));
     }
 
     [Fact]
@@ -52,20 +51,20 @@ public class RebuildingTests
     {
         var (sim, lots) = EightHomes(Bombed());
         var gone = Bomb(sim, lots[0]);
-        var lot = sim.Towns[0].Lots[gone[0].Lot];
-        Assert.True(sim.CanBuildOn(lot));
-        Assert.NotEqual(0, sim.Execute(new RemoveRoadCommand(sim.Network.RoadAt(lot.Site.X, lot.Site.Z, 60f)!.Value.Value)));
+        var lot = gone[0];
+        Assert.True(sim.RoomFor(lot.X, lot.Z, BuildingType.Home, 0));
+        Assert.NotEqual(0, sim.Execute(new RemoveRoadCommand(sim.Network.RoadAt(lot.X, lot.Z, 60f)!.Value.Value)));
         sim.Step(); // the buildings' view of the roads follows at the next step
-        Assert.False(sim.CanBuildOn(lot));
+        Assert.False(sim.RoomFor(lot.X, lot.Z, BuildingType.Home, 0));
 
         // A survivor on the other side of the block has the stock; whatever it founds, it is not on the lot that lost its street.
-        var survivor = Standing(sim).Where(b => b.State == BuildingState.Active).OrderByDescending(b => (b.X - lot.Site.X) * (b.X - lot.Site.X) + (b.Z - lot.Site.Z) * (b.Z - lot.Site.Z)).First();
+        var survivor = Standing(sim).Where(b => b.State == BuildingState.Active).OrderByDescending(b => (b.X - lot.X) * (b.X - lot.X) + (b.Z - lot.Z) * (b.Z - lot.Z)).First();
         GrowthTests.Fill(sim, survivor.Id);
         int count = sim.Buildings.Count;
 
         GrowthTests.RunMonths(sim, 1.1);
 
-        Assert.Equal(-1, lot.Building);
+        Assert.DoesNotContain(sim.Buildings.Skip(count), b => b.X == lot.X && b.Z == lot.Z);
         var index = new RoadIndex(sim.Network);
         Assert.All(sim.Buildings.Skip(count), b => Assert.True(index.HasRoadWithin(b.X, b.Z, sim.TownTuning.AccessRadius)));
     }
@@ -77,7 +76,7 @@ public class RebuildingTests
     {
         var (sim, lots) = EightHomes(Bombed());
         var gone = Bomb(sim, lots[0]);
-        var freed = gone.Select(b => b.Lot).ToHashSet();
+        var freed = gone.Select(b => (b.X, b.Z)).ToHashSet();
         Assert.NotEmpty(gone);
         int survivors = Standing(sim).Count();
         var survivor = Standing(sim).Last();
@@ -88,11 +87,11 @@ public class RebuildingTests
 
         Assert.Equal(before + 1, sim.Buildings.Count);
         var born = sim.Buildings[^1];
-        Assert.Contains(born.Lot, freed); // on a lot a raid emptied, not on a new block
+        Assert.Contains((born.X, born.Z), freed); // on the spot a raid emptied, not on a new street
         Assert.Equal(0, born.Tier);
         Assert.Equal(BuildingState.Active, born.State);
         Assert.Equal(survivors + 1, Standing(sim).Count());
-        Assert.Equal(0, sim.Towns[0].LastGrowth.NewBlocks);
+        Assert.Equal(0, sim.Towns[0].LastGrowth.NewStreets);
     }
 
     [Fact]
@@ -112,7 +111,7 @@ public class RebuildingTests
 
         // Each survivor at the top size founds one building, on the nearest free lot, until the lots are used (then new blocks of streets are built for the rest).
         Assert.True(Standing(sim).Count() >= 8);
-        Assert.All(gone, b => Assert.NotEqual(-1, sim.Towns[0].Lots[b.Lot].Building));
+        Assert.All(gone, b => Assert.Contains(sim.Buildings.Skip(sim.Buildings.Count - sim.Towns[0].LastGrowth.NewBuildings), n => n.X == b.X && n.Z == b.Z));
         Assert.True(sim.Towns[0].LastGrowth.NewBuildings >= 8 - survivors);
     }
 
@@ -242,7 +241,7 @@ public class RebuildingTests
         var sim = new Simulation(net, 3);
         sim.Execute(new BuildRoadCommand(-60, 0, 60, 0, RoadType.TwoLane, 14f));
         // Two buildings far from every street: standing, but inactive.
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Faraway", 0, 0, 0, 1, new[] { new BuildingPlan(BuildingType.Home, 0, 0, 200, 0), new BuildingPlan(BuildingType.Home, 0, 15, 200, 0) }) }));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Faraway", 0, 0, new[] { new BuildingPlan(BuildingType.Home, 0, 0, 200, 0), new BuildingPlan(BuildingType.Home, 0, 15, 200, 0) }) }));
         Assert.All(sim.Buildings, b => Assert.Equal(BuildingState.Inactive, b.State));
 
         for (ulong seed = 1; seed <= 20; seed++) sim.BombForTest(0, 200, seed);
@@ -259,7 +258,7 @@ public class RebuildingTests
         var net = new RoadNetwork(GrowthTests.DryLevelMap(), tuning);
         var sim = new Simulation(net, 5);
         sim.Execute(new BuildRoadCommand(-60, 0, 60, 0, RoadType.TwoLane, 14f));
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Split", 0, 0, 0, 1, new[]
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Split", 0, 0, new[]
         {
             new BuildingPlan(BuildingType.Home, 1, 0, 25, 0),    // on the road
             new BuildingPlan(BuildingType.Home, 1, 0, 200, 0),   // far from it: inactive

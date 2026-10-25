@@ -9,7 +9,7 @@ public class AccessPointTests
 
     static Terrain Flat() => Terrain.Create(512, 8f, (_, _) => 5f);
 
-    static TownPlan Town(float x, float z) => new("Test Town", x, z, 0f, 1, Array.Empty<BuildingPlan>());
+    static TownPlan Town(float x, float z) => new("Test Town", x, z, Array.Empty<BuildingPlan>(), 85f);
 
     /// <summary>A flat map with a forest at (500, 300) and a town due north of it, so that the access point is (500, 333); no roads.</summary>
     static Simulation World(Tuning? tuning = null, params GatewayPlan[] gateways)

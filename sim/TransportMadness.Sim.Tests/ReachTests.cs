@@ -14,7 +14,7 @@ public class ReachTests
         for (int x = 0; x < 700; x += 100) Assert.Equal(1, sim.Execute(new BuildRoadCommand(x, 0, x + 100, 0, RoadType.TwoLane, 14f)));
         sim.AddTowns(new WorldPlan(1, new[]
         {
-            new TownPlan("Testville", 300, 0, 0, 1, new[]
+            new TownPlan("Testville", 300, 0, new[]
             {
                 new BuildingPlan(BuildingType.Home, 0, 150, 20, 0),  // 50 m from the station: inside its circle
                 new BuildingPlan(BuildingType.Home, 0, 320, 20, 0),  // 220 m in a straight line, about 228 m along the street

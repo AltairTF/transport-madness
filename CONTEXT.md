@@ -12,7 +12,7 @@ A settlement made of buildings along streets laid out in a hierarchy (main stree
 _Avoid_: City
 
 **Building**:
-A home, a commerce building or a light industry building on a lot beside a street of a Town. Has a size tier that sets how many people live or work in it and what it needs. Gets Trip groups from its people. Grows by upgrading its tier, using the Construction stock it has been delivered; at the top tier it founds a new Building on a free Lot instead. Becomes inactive when it loses all road access, is marked Abandoned after 3 months and demolished a month later.
+A home, a commerce building or a light industry building beside a street of a Town. Has a size tier that sets how many people live or work in it and what it needs. Gets Trip groups from its people. Grows by upgrading its tier, using the Construction stock it has been delivered; at the top tier (or when there is no room to grow) it founds a new Building on a free Spot instead. Becomes inactive when it loses all road access, is marked Abandoned after 3 months and demolished a month later.
 _Avoid_: House (a Building is not always a home)
 
 **Deposit**:
@@ -96,14 +96,14 @@ What a Building holds of delivered Cargo. Sustain (food, goods, planks) is used 
 **Connectivity**:
 The share of a Town's homes that were reached in a month: a Trip group living there made a trip to work or leisure within a time budget, by any mode. Below a threshold the Town does not grow.
 
-**Lot**:
-A place beside a street of a Town where a Building can stand, facing it. A Lot has a frontage and the biggest size a Building may grow to on it (a Building never goes up past that), both set by the ring of the Town it lies in. A Town has the lots laid along its streets.
+**Spot**:
+A place beside a road within a Town's reach where a Building can stand, facing the road. Spots are not stored: they are worked out from the roads and Buildings that are there when a Town wants room, so the player's roads count too. Where a Building was destroyed is a Spot too, and is rebuilt first.
 
 **Growth**:
-Once a month a Town whose Satisfaction and Connectivity are high enough lets each Building spend a full Construction stock: it goes up a size, or if it is already the biggest founds a new Building on the nearest free Lot, or on a new block of streets when no Lot is free. A Town never shrinks except by abandonment.
+Once a month a Town whose Satisfaction and Connectivity are high enough lets each Building spend a full Construction stock: it goes up a size, or if it is already the biggest founds a new Building on the nearest free Spot, or on a new street of earth when there is none. A Town never shrinks except by abandonment.
 
 **Rebuilding**:
-How a Town recovers from a raid (C15a): a Building a Bomb destroys frees its Lot, and Growth founds new Buildings on free Lots from the Construction stock the player delivers. There is no command to rebuild and the state pays nothing; without Construction stock the Town stays destroyed. A raid never destroys the last standing Building of a Town (standing: not demolished, whether it has a road or not), nor its last Building with a road, so a Town can always be rebuilt from something.
+How a Town recovers from a raid (C15a): the spot of a Building a Bomb destroys is free again, and Growth founds new Buildings there first (then beside roads of the Town, then on a new street) from the Construction stock the player delivers. There is no command to rebuild and the state pays nothing; without Construction stock the Town stays destroyed. A raid never destroys the last standing Building of a Town (standing: not demolished, whether it has a road or not), nor its last Building with a road, so a Town can always be rebuilt from something.
 
 **Passenger**:
 A person moving between a home and a place of work or leisure, here one who has chosen the company's Lines. Waits at a Station in a queue for a destination Station; a bus takes only those whose destination is on its Line and they leave it there.

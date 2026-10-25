@@ -159,10 +159,10 @@ public class ConscriptionTests
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
         foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
             sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
+        var lots = GrowthTests.BlockSpots(tuning);
         var buildings = new List<BuildingPlan>();
         for (int k = 0; k < 8; k++) buildings.Add(new BuildingPlan(k % 4 == 3 ? BuildingType.Commerce : BuildingType.Home, 1, lots[k].X, lots[k].Z, lots[k].Facing));
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, buildings) }, new[] { new IndustryPlan(Sawmill, 600, 0, 0) }));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, buildings) }, new[] { new IndustryPlan(Sawmill, 600, 0, 0) }));
         return sim;
     }
 
@@ -268,13 +268,13 @@ public class ConscriptionTests
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
         foreach (var (x0, z0, x1, z1) in new[] { (-60f, -60f, 60f, -60f), (60f, -60f, 60f, 60f), (60f, 60f, -60f, 60f), (-60f, 60f, -60f, -60f) })
             sim.Execute(new BuildRoadCommand(x0, z0, x1, z1, RoadType.TwoLane, 14f));
-        var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
-        var homes = new[] { 0, 1 }.Select(k => new BuildingPlan(BuildingType.Home, 1, lots[k].X, lots[k].Z, lots[k].Facing)).ToArray();
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, 0, 1, homes) }, new[] { new IndustryPlan(SteelMill, 100, 0, 0) }));
+        var lots = GrowthTests.BlockSpots(tuning);
+        var homes = new[] { 0, 1, 2 }.Select(k => new BuildingPlan(BuildingType.Home, 1, lots[k].X, lots[k].Z, lots[k].Facing)).ToArray();
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 0, 0, homes) }, new[] { new IndustryPlan(SteelMill, 100, 0, 0) }));
         var mill = sim.Industries[0];
         Assert.All(sim.TripGroups, g => Assert.Equal(Simulation.IndustryPlace, g.Work)); // the mill is next door: they walk
         RunDays(sim, 2);
-        Assert.Equal(1f, sim.StaffingOf(mill)); // 40 people for 40 jobs
+        Assert.Equal(1f, sim.StaffingOf(mill)); // 42 people for 40 jobs
 
         RunDays(sim, 3 * 1 + 1);
 

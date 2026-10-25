@@ -603,8 +603,10 @@
       "minSatisfaction": 50.0,
       "minConnectivity": 0.6,
       "timeBudgetSeconds": 300.0,
-      "lotClearance": 13.0,         // a free lot is built on only when no road runs closer than this to its middle
-      "extendGrid": true            // a town with no free lot builds a new block of streets
+      "spotClearance": 13.0,        // a free spot is built on only when no road runs closer than this to its middle
+      "streetMin": 60.0,            // a town with no free spot grows a street of earth this long
+      "streetMax": 150.0,
+      "spotReach": 30.0             // houses are founded beside any road this far beyond the town radius
     },
 
     // Where and how a town is laid out (docs/town-redo-plan.md): small villages with a curving through road, lanes and loose houses.
@@ -614,10 +616,6 @@
       "minSpacing": 500.0,          // between town centres
       "maxHeightRange": 14.0,       // highest minus lowest ground under the town
       "waterMargin": 1.5,           // ground must stand this far above the water surface everywhere under the town
-      // The grid of the old towns, read only by the lot and growth code that is being replaced and by test fixtures.
-      "blockLength": 120.0,
-      "lotWidth": 30.0,
-      "setbackGap": 1.5,
       "sizes": {
         "candidates": 500,          // random sites scored for the whole map
         "siteRadius": 150.0,        // half the side of the square of ground scored around a site
@@ -648,9 +646,9 @@
         "padShoulder": 3.0,         // the ground under a house is levelled and blends back over this
         "compoundRadius": 28.0      // the ring road of a farm or factory compound
       },
-      "hamlet":  { "peopleMin": 60,  "peopleMax": 160,  "radius": 80.0,  "armLength": 70.0,  "lanesMin": 0, "lanesMax": 1, "crossingChance": 0.0, "compoundChance": 0.0, "maxTier": 0 },
-      "village": { "peopleMin": 160, "peopleMax": 450,  "radius": 130.0, "armLength": 130.0, "lanesMin": 1, "lanesMax": 3, "crossingChance": 0.4, "compoundChance": 0.5, "maxTier": 1 },
-      "town":    { "peopleMin": 450, "peopleMax": 900, "radius": 190.0, "armLength": 190.0, "lanesMin": 3, "lanesMax": 5, "crossingChance": 1.0, "compoundChance": 1.0, "maxTier": 2 }
+      "hamlet":  { "peopleMin": 80,  "peopleMax": 250,  "radius": 170.0, "armLength": 150.0, "lanesMin": 0, "lanesMax": 1, "crossingChance": 0.0, "compoundChance": 0.0, "maxTier": 1 },
+      "village": { "peopleMin": 250, "peopleMax": 600,  "radius": 270.0, "armLength": 270.0, "lanesMin": 1, "lanesMax": 3, "crossingChance": 0.4, "compoundChance": 0.5, "maxTier": 2 },
+      "town":    { "peopleMin": 600, "peopleMax": 1000, "radius": 360.0, "armLength": 360.0, "lanesMin": 3, "lanesMax": 5, "crossingChance": 1.0, "compoundChance": 1.0, "maxTier": 2 }
     },
 
     // From the middle of a town out. 'until' is the distance from the centre as a share of the town's radius; 'mix' the weights of home,
@@ -668,37 +666,37 @@
     // building (M3d) will spend.
     "buildingTypes": [
       { "id": "home", "tiers": [
-        { "size": 8.0, "height": 6.0, "people": 8, "jobs": 0, "demolitionPrice": 3000,
+        { "size": 8.0, "height": 6.0, "people": 5, "jobs": 0, "demolitionPrice": 3000,
           "sustain": [{ "cargo": "food", "amount": 4 }, { "cargo": "goods", "amount": 2 }],
-          "construction": [{ "cargo": "materials", "amount": 8 }, { "cargo": "planks", "amount": 4 }] },
-        { "size": 10.0, "height": 12.0, "people": 20, "jobs": 0, "demolitionPrice": 7000,
-          "sustain": [{ "cargo": "food", "amount": 10 }, { "cargo": "goods", "amount": 5 }],
           "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
-        { "size": 12.0, "height": 24.0, "people": 50, "jobs": 0, "demolitionPrice": 16000,
+        { "size": 10.0, "height": 12.0, "people": 14, "jobs": 0, "demolitionPrice": 7000,
+          "sustain": [{ "cargo": "food", "amount": 10 }, { "cargo": "goods", "amount": 5 }],
+          "construction": [{ "cargo": "materials", "amount": 50 }, { "cargo": "planks", "amount": 25 }] },
+        { "size": 12.0, "height": 24.0, "people": 34, "jobs": 0, "demolitionPrice": 16000,
           "sustain": [{ "cargo": "food", "amount": 24 }, { "cargo": "goods", "amount": 12 }],
-          "construction": [{ "cargo": "materials", "amount": 48 }, { "cargo": "planks", "amount": 24 }] }
+          "construction": [{ "cargo": "materials", "amount": 120 }, { "cargo": "planks", "amount": 60 }] }
       ] },
       { "id": "commerce", "tiers": [
         { "size": 8.0, "height": 6.0, "people": 0, "jobs": 6, "demolitionPrice": 4000,
           "sustain": [{ "cargo": "goods", "amount": 6 }],
-          "construction": [{ "cargo": "materials", "amount": 8 }, { "cargo": "planks", "amount": 4 }] },
+          "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
         { "size": 10.0, "height": 10.0, "people": 0, "jobs": 16, "demolitionPrice": 9000,
           "sustain": [{ "cargo": "goods", "amount": 16 }],
-          "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
+          "construction": [{ "cargo": "materials", "amount": 50 }, { "cargo": "planks", "amount": 25 }] },
         { "size": 12.0, "height": 18.0, "people": 0, "jobs": 40, "demolitionPrice": 20000,
           "sustain": [{ "cargo": "goods", "amount": 36 }],
-          "construction": [{ "cargo": "materials", "amount": 48 }, { "cargo": "planks", "amount": 24 }] }
+          "construction": [{ "cargo": "materials", "amount": 120 }, { "cargo": "planks", "amount": 60 }] }
       ] },
       { "id": "industry", "tiers": [
         { "size": 9.0, "height": 6.0, "people": 0, "jobs": 10, "demolitionPrice": 5000,
           "sustain": [{ "cargo": "planks", "amount": 6 }],
-          "construction": [{ "cargo": "materials", "amount": 8 }, { "cargo": "planks", "amount": 4 }] },
+          "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
         { "size": 11.0, "height": 8.0, "people": 0, "jobs": 25, "demolitionPrice": 11000,
           "sustain": [{ "cargo": "planks", "amount": 14 }],
-          "construction": [{ "cargo": "materials", "amount": 20 }, { "cargo": "planks", "amount": 10 }] },
+          "construction": [{ "cargo": "materials", "amount": 50 }, { "cargo": "planks", "amount": 25 }] },
         { "size": 12.0, "height": 10.0, "people": 0, "jobs": 60, "demolitionPrice": 25000,
           "sustain": [{ "cargo": "planks", "amount": 30 }],
-          "construction": [{ "cargo": "materials", "amount": 48 }, { "cargo": "planks", "amount": 24 }] }
+          "construction": [{ "cargo": "materials", "amount": 120 }, { "cargo": "planks", "amount": 60 }] }
       ] }
     ]
   },

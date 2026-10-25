@@ -66,7 +66,6 @@ public class TuningTests
         Assert.All(t.BuildingTypes, type => Assert.Equal(TownsTuning.Tiers, type.Tiers.Count));
         Assert.All(t.Rings, ring => Assert.Equal(Enum.GetValues<BuildingType>().Length, ring.Mix.Count));
         Assert.True(t.Names.Count >= 10);
-        Assert.True(t.Generation.LotWidth * 2f < t.Generation.BlockLength); // the two lots on a side fit, with the corners left free
     }
 
     [Fact]

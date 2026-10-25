@@ -3,15 +3,14 @@ namespace TransportMadness.Sim;
 /// <summary>What the company pays for incidents: compensation to the injured, fines for negligence, and the goodwill of the town they happen in.</summary>
 public sealed partial class Simulation
 {
-    /// <summary>The town a point is inside (its blocks plus a margin), -1 when none.</summary>
+    /// <summary>The town a point is inside (its radius plus a margin), -1 when none.</summary>
     internal int TownAt(float x, float z)
     {
         int best = -1;
         float bestDistance = float.PositiveInfinity;
         foreach (var town in _towns)
         {
-            float blocks = Math.Max(town.IMax - town.IMin + 1, town.JMax - town.JMin + 1);
-            float reach = (town.Organic ? town.Radius : blocks * _townTuning.Generation.BlockLength * 0.5f) + _maint.Consequences.TownMargin;
+            float reach = town.Radius + _maint.Consequences.TownMargin;
             float d = MathF.Sqrt((town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z));
             if (d > reach || d >= bestDistance) continue;
             best = town.Id;

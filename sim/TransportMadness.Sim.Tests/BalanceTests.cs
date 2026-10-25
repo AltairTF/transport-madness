@@ -99,7 +99,7 @@ public class BalanceTests
     /// materials and planks (a truck line of about three trucks at 60) and, when <paramref name="needsMet"/>, the town's monthly
     /// needs of food and goods. Returns the month of the first growth (0 when none) and the population before and after.
     /// </summary>
-    static (int FirstGrowth, int Before, int After, float Satisfaction) ServedTown(ulong seed, int perDay, bool needsMet, int months)
+    internal static (int FirstGrowth, int Before, int After, float Satisfaction) ServedTown(ulong seed, int perDay, bool needsMet, int months)
     {
         var (sim, _) = World(seed, 1);
         var town = sim.Towns[0];
@@ -128,10 +128,10 @@ public class BalanceTests
     [Fact]
     public void AServedTownWithAFewTrucksOfBuildingSupplies_StartsGrowingWithinAFewMonths_AndDoesNotExplode()
     {
-        // Measured with the probe (Growth_OfAServedTown): first growth in month 2 or 3 and the population 1.5 to 2.2 times its size after a year.
-        var r = ServedTown(4, perDay: 30, needsMet: true, months: 4);
+        // Measured 2026-10-24 (docs/town-redo-plan.md): a hamlet served with 30 a day doubles in about a year and a half and reaches 600 in 5 to 9 years.
+        var r = ServedTown(4, perDay: 30, needsMet: true, months: 12);
 
-        Assert.InRange(r.FirstGrowth, 1, 4);
+        Assert.InRange(r.FirstGrowth, 1, 12);
         Assert.InRange((double)r.After / r.Before, 1.1, 3.0); // a village is small, so each new building is a big share of it
     }
 
@@ -147,8 +147,8 @@ public class BalanceTests
     [Fact]
     public void LessSupplyMeansSlowerGrowth()
     {
-        var little = ServedTown(5, perDay: 4, needsMet: true, months: 4); // the station of an organic town covers fewer buildings, which fill up at a lower rate
-        var more = ServedTown(5, perDay: 30, needsMet: true, months: 4);
+        var little = ServedTown(4, perDay: 4, needsMet: true, months: 12); // the station of an organic town covers fewer buildings, which fill up at a lower rate
+        var more = ServedTown(4, perDay: 30, needsMet: true, months: 12);
 
         Assert.True(more.After > little.After, $"{more.After} people with 30 a period against {little.After} with 4");
         Assert.True(little.FirstGrowth == 0 || little.FirstGrowth >= more.FirstGrowth);

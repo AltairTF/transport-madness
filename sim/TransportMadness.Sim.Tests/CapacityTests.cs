@@ -129,8 +129,8 @@ public class CapacityTests
         sim.Execute(new BuildRoadCommand(-200, 0, 200, 0, RoadType.TwoLane, 14f));
         sim.AddTowns(new WorldPlan(2, new[]
         {
-            new TownPlan("West", -100, 0, 0, 1, new[] { new BuildingPlan(BuildingType.Home, 0, 0, 25, 0), new BuildingPlan(BuildingType.Commerce, 2, -100, 25, 0) }),
-            new TownPlan("East", 100, 0, 0, 1, new[] { new BuildingPlan(BuildingType.Commerce, 2, 100, 25, 0) }),
+            new TownPlan("West", -100, 0, new[] { new BuildingPlan(BuildingType.Home, 0, 0, 25, 0), new BuildingPlan(BuildingType.Commerce, 2, -100, 25, 0) }),
+            new TownPlan("East", 100, 0, new[] { new BuildingPlan(BuildingType.Commerce, 2, 100, 25, 0) }),
         }));
         var home = sim.Buildings[0];
         sim.Towns[1].CapacityFactor = 0.1f;

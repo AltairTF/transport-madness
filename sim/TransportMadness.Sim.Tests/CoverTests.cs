@@ -59,7 +59,7 @@ public class CoverTests
             new(BuildingType.Commerce, 2, VX + 60, VZ - 25, 0), new(BuildingType.Commerce, 2, VX + 70, VZ + 25, 0),
         };
         for (int k = 0; k < extraHomes; k++) buildings.Add(new BuildingPlan(BuildingType.Home, 1, VX - 150 + k * 30, VZ + 25, 0));
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", VX, VZ, 0, 1, buildings) }, new[] { new IndustryPlan(Sawmill, 500, -500, 0) }));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", VX, VZ, buildings) }, new[] { new IndustryPlan(Sawmill, 500, -500, 0) }));
         return sim;
     }
 
@@ -75,7 +75,7 @@ public class CoverTests
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(x0, VZ, x0 + 1600, VZ, RoadType.TwoLane, 14f)));
         sim.AddTowns(new WorldPlan(1, new[]
         {
-            new TownPlan("Testville", x0 + 800, VZ, 0, 1, new[]
+            new TownPlan("Testville", x0 + 800, VZ, new[]
             {
                 new BuildingPlan(BuildingType.Home, 1, x0 + 170, VZ + 25, 0),
                 new BuildingPlan(BuildingType.Home, 1, x0 + 200, VZ - 25, 0),
@@ -384,8 +384,8 @@ public class CoverTests
         Assert.Equal(BuildingState.Demolished, home.State);
         int left = groups.Sum(g => g.People);
         int dead = capacity - left;
-        Assert.InRange(dead, 6, 8);                // 35 % of 20, each group's 3.5 rounded by a draw
-        Assert.All(groups, g => Assert.InRange(g.People, 6, 7));
+        Assert.InRange(dead, 4, 6);                // 35 % of 14, each group's 2.45 rounded by a draw
+        Assert.All(groups, g => Assert.InRange(g.People, 4, 5));
         Assert.Equal(dead, sim.Casualties);
         Assert.Equal(dead, sim.Towns[0].Casualties);
         Assert.Equal(dead, flight.Casualties);
@@ -434,7 +434,7 @@ public class CoverTests
         var flight = sim.BombForTest(x, z);
 
         int dead = people - g.People;
-        Assert.InRange(dead, 3, 4);
+        Assert.InRange(dead, 2, 3);
         Assert.Equal(0, flight.Buildings);
         Assert.Equal(sim.Casualties, people + others.Sum(o => o.Value) - People(sim)); // whoever else was walking through the same blast lost people too
         Assert.True(sim.Casualties >= dead);
@@ -484,7 +484,7 @@ public class CoverTests
 
         Assert.Equal(BuildingState.Demolished, building.State);
         int dead = people - g.People;
-        Assert.InRange(dead, 3, 4);
+        Assert.InRange(dead, 2, 3);
         Assert.Equal(g.People, sim.ShelteredOf(g.Id).Sum(s => s.People)); // the survivors stay where they are until the all-clear
         Assert.True(g.Travelling);
         Assert.Equal(sim.Casualties, sim.TripGroups.Sum(o => (long)(before[o.Id] - o.People)));
@@ -603,7 +603,7 @@ public class CoverTests
         var buildings = new List<BuildingPlan>();
         for (int k = 0; k < 6; k++) buildings.Add(new BuildingPlan(BuildingType.Home, 1, VX - 100 + k * 30, VZ + 25 + (k % 2) * 8, 0));
         for (int k = 0; k < 4; k++) buildings.Add(new BuildingPlan(BuildingType.Commerce, 2, VX - 80 + k * 40, VZ - 28 - (k % 2) * 8, 0));
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", VX, VZ, 0, 1, buildings) }));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", VX, VZ, buildings) }));
         int start = People(sim);
         Assert.Equal(sim.StatsOf(0).Population, start);
 

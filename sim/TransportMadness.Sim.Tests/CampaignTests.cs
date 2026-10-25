@@ -265,7 +265,7 @@ public class CampaignTests
         {
             var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), With(Tuning.Load(), c => c with { Months = 1 }));
             var sim = new Simulation(net, 1);
-            sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 100, 0, 0, 1, Array.Empty<BuildingPlan>()) }));
+            sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", 100, 0, Array.Empty<BuildingPlan>()) }));
             sim.Towns[0].Satisfaction = satisfaction;
             RunMonths(sim, 1);
             return sim.Company.Score;

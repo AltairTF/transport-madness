@@ -67,12 +67,12 @@ public class DefenceTests
         var buildings = new List<BuildingPlan>();
         if (town)
         {
-            var lots = TownGenerator.LotSites(tuning.Towns, 0, 0, 0, 1, 0, 0, 0, 0).ToList();
+            var lots = GrowthTests.BlockSpots(tuning);
             for (int k = 0; k < 8; k++) buildings.Add(new BuildingPlan(k % 4 == 3 ? BuildingType.Commerce : BuildingType.Home, 1, lots[k].X, lots[k].Z, lots[k].Facing));
         }
         var industries = new List<IndustryPlan> { new(Sawmill, 600, -30, 0) };
         industries.AddRange(more);
-        sim.AddTowns(new WorldPlan(1, town ? new[] { new TownPlan("Testville", 0, 0, 0, 1, buildings) } : Array.Empty<TownPlan>(), industries, null,
+        sim.AddTowns(new WorldPlan(1, town ? new[] { new TownPlan("Testville", 0, 0, buildings) } : Array.Empty<TownPlan>(), industries, null,
             new[] { new GatewayPlan(GatewayKind.Road, "Test Road Gate", 1100, -30, 0) }));
         Assert.True(sim.Execute(new AddDepotCommand(net.FindNodeNear(60, -60, 1f), DepotLevel.Simple)) >= 0);
         return sim;

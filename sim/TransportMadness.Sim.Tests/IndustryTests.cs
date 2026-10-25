@@ -24,7 +24,7 @@ public class IndustryTests
         var net = new RoadNetwork(DryLevelMap(), tuning);
         var sim = new Simulation(net, 4, IncidentFrequency.Off);
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(0, 0, length, 0, RoadType.TwoLane, 14f)));
-        var towns = buildings == null ? Array.Empty<TownPlan>() : new[] { new TownPlan("Testville", length - 100, 0, 0, 1, buildings) };
+        var towns = buildings == null ? Array.Empty<TownPlan>() : new[] { new TownPlan("Testville", length - 100, 0, buildings) };
         sim.AddTowns(new WorldPlan(1, towns, industries));
         int depot = sim.Execute(new AddDepotCommand(net.FindNodeNear(0, 0, 1f), DepotLevel.Simple));
         Assert.True(depot >= 0);
@@ -348,14 +348,14 @@ public class IndustryTests
         var tuning = With(t => t with { Towns = t.Towns with { InitialStockMonths = 0f } });
         var (sim, depot) = World(1400, Array.Empty<IndustryPlan>(), new[] { new BuildingPlan(BuildingType.Industry, 0, 1100, 25, 0) }, tuning);
         int a = Station(sim, 300), b = Station(sim, 1100);
-        sim.Stations[a].Waiting[Planks] = 100f; // an industry building: 6 a month (room 12) plus 4 to keep for building
+        sim.Stations[a].Waiting[Planks] = 100f; // an industry building: 6 a month (room 12) plus 10 to keep for building
         int line = sim.Execute(new CreateLineCommand(new[] { a, b }));
         sim.Execute(new BuyVehicleCommand(depot, "truck", line));
 
         RunDays(sim, 2); // less than a month, so nothing has been used up yet
 
         Assert.Equal(12f, sim.Buildings[0].Sustain[Planks], 1);
-        Assert.Equal(4f, sim.Buildings[0].Construction[Planks], 1);
+        Assert.Equal(10f, sim.Buildings[0].Construction[Planks], 1);
     }
 
     // ---- The whole chain -----------------------------------------------------------------------------------------

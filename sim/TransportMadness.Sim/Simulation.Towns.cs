@@ -54,7 +54,7 @@ public sealed partial class Simulation
                 town.BuildingIds.Add(building.Id);
                 CellList(b.X, b.Z, create: true)!.Add(building.Id);
             }
-            InitLots(town, townPlan);
+            town.Radius = townPlan.Reach();
         }
         if (plan.Industries != null) AddIndustries(plan.Industries);
         if (plan.Gateways != null) AddGateways(plan.Gateways);
@@ -234,7 +234,6 @@ public sealed partial class Simulation
     {
         SetState(b, BuildingState.Demolished);
         CellList(b.X, b.Z, create: false)?.Remove(b.Id);
-        if (b.Lot >= 0) _towns[b.Town].Lots[b.Lot].Building = -1;
     }
 
     // ---- Roads through buildings -------------------------------------------------------------------------------

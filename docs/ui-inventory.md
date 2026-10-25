@@ -133,7 +133,7 @@ Each is one page script in `game/ui/` (base `page.gd`, shared pieces `ui_kit.gd`
 
 **Towns** (`towns_window.gd`)
 - Shows: each town: population, jobs, homes, shops and commerce, industries; last month's needs met and unmet; homes reached; satisfaction bar (with its own explanation); trips yesterday by mode (on foot, by bus, by car, could not go); the company's stations in it; the "Show connectivity on the map" toggle.
-- Data: `GetTowns()` (`id`, `name`, `population`, `homes`, `jobs`, `buildings`, `commerce`, `industry`, `needs`, `satisfaction`, `walked`, `rode`, `drove`, `stayed`, `unmet`, `connectivity`, `casualties`, `abandoned`, `x`, `z`), plus the growth numbers (`grew_buildings`, `grew_blocks`, `grew_sizes`).
+- Data: `GetTowns()` (`id`, `name`, `population`, `homes`, `jobs`, `buildings`, `commerce`, `industry`, `needs`, `satisfaction`, `walked`, `rode`, `drove`, `stayed`, `unmet`, `connectivity`, `casualties`, `abandoned`, `x`, `z`), plus the growth numbers (`grew_buildings`, `grew_streets`, `grew_sizes`).
 - Actions: `connectivity_view_toggled`, `town_focus`.
 
 **Industries** (`industries_window.gd`)

@@ -27,7 +27,7 @@ public class WorkerTests
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
         var buildings = new List<BuildingPlan>();
         for (int k = 0; k < homes; k++) buildings.Add(new BuildingPlan(BuildingType.Home, 1, -100 - k * 30, 25, 0));
-        var towns = town ? new[] { new TownPlan("Testville", -150, 0, 0, 1, buildings) } : Array.Empty<TownPlan>();
+        var towns = town ? new[] { new TownPlan("Testville", -150, 0, buildings) } : Array.Empty<TownPlan>();
         sim.AddTowns(new WorldPlan(1, towns, new[] { new IndustryPlan(SteelMill, millX, millZ, 0) }));
         sim.Company.Money = 10_000_000;
         Assert.Equal(1, sim.Execute(new BuildRoadCommand(-200, 0, 0, 0, RoadType.TwoLane, 14f)));
@@ -97,7 +97,7 @@ public class WorkerTests
         int place = Simulation.IndustryPlace;
 
         Assert.All(sim.TripGroups, g => Assert.Equal(place, g.Work));
-        Assert.Equal(60, sim.JobsTakenAt(place));
+        Assert.Equal(42, sim.JobsTakenAt(place));
         Assert.All(sim.TripGroups, g => Assert.Equal(0, g.WorkIndustry));
     }
 
@@ -117,7 +117,7 @@ public class WorkerTests
         var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), Quick());
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
         var homes = new[] { new BuildingPlan(BuildingType.Home, 1, -100, 25, 0) };
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", -150, 0, 0, 1, homes) }, new[] { new IndustryPlan(3, 400, 50, 0) })); // a sawmill
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", -150, 0, homes) }, new[] { new IndustryPlan(3, 400, 50, 0) })); // a sawmill
 
         Assert.All(sim.TripGroups, g => Assert.Equal(-1, g.Work));
     }
@@ -125,20 +125,20 @@ public class WorkerTests
     [Fact]
     public void GroupsByCar_FillTheJobs_AndTheStaffingIsTheShareFilledWhenTheDayCloses()
     {
-        var (sim, _) = Build(homes: 1); // 20 people for 40 jobs
+        var (sim, _) = Build(homes: 1); // 14 people for 40 jobs
         var mill = sim.Industries[0];
 
         RunDays(sim, 1.2);
 
-        Assert.Equal(20, sim.StaffOf(mill));
-        Assert.Equal(0.5f, sim.StaffingOf(mill));
+        Assert.Equal(14, sim.StaffOf(mill));
+        Assert.Equal(0.35f, sim.StaffingOf(mill));
         Assert.Contains(sim.TripGroups, g => g.LastMode == TripMode.Car);
     }
 
     [Fact]
     public void WhenThePeopleOutnumberTheJobs_TheIndustryIsFullyStaffed()
     {
-        var (sim, _) = Build(homes: 3); // 60 people for 40 jobs
+        var (sim, _) = Build(homes: 3); // 42 people for 40 jobs
 
         RunDays(sim, 1.2);
 
@@ -171,12 +171,12 @@ public class WorkerTests
     [Fact]
     public void ANeighbouringIndustry_IsReachedOnFoot()
     {
-        var (sim, _) = Build(homes: 2, millX: -70, millZ: 120, road: false); // 40 people, a hundred metres away
+        var (sim, _) = Build(homes: 2, millX: -70, millZ: 120, road: false); // 28 people, a hundred metres away
 
         RunDays(sim, 1.2);
 
-        Assert.Equal(40, sim.StaffOf(sim.Industries[0]));
-        Assert.Equal(1f, sim.StaffingOf(sim.Industries[0]));
+        Assert.Equal(28, sim.StaffOf(sim.Industries[0]));
+        Assert.Equal(0.7f, sim.StaffingOf(sim.Industries[0]));
         Assert.Contains(sim.TripGroups, g => g.LastMode == TripMode.Walk);
     }
 
@@ -189,7 +189,7 @@ public class WorkerTests
         double made = MillOutput(half), fullMade = MillOutput(full);
 
         Assert.True(fullMade > 0.0);
-        Assert.Equal(0.5, made / fullMade, 1);
+        Assert.Equal(0.35, made / fullMade, 2);
     }
 
     // ---- By a line -------------------------------------------------------------------------------------------------
@@ -279,7 +279,7 @@ public class WorkerTests
         var net = new RoadNetwork(Terrain.Create(512, 8f, (_, _) => 5f), tuning);
         var sim = new Simulation(net, 5, IncidentFrequency.Off);
         var homes = new[] { new BuildingPlan(BuildingType.Home, 1, -100, 25, 0) };
-        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", -150, 0, 0, 1, homes) }, new[] { new IndustryPlan(PowerPlant, 800, 0, 0) }));
+        sim.AddTowns(new WorldPlan(1, new[] { new TownPlan("Testville", -150, 0, homes) }, new[] { new IndustryPlan(PowerPlant, 800, 0, 0) }));
         var plant = sim.Industries[0];
         plant.Input[Coal] = 400f;
 
