@@ -438,15 +438,31 @@ public sealed partial class Simulation
     }
 
     /// <summary>
-    /// Whether a road lies in a built-up area: its middle is within the reach of a town. Such a street has a kerb and pavements; a road outside
-    /// has an earth shoulder. The change comes at a junction at the edge of the town, as streets are a block long.
+    /// Whether a road has a kerb, pavements and lamps: only in the middle of a Town-class settlement (radius from 330 m, road middle within 55 % of it).
+    /// Hamlets and villages are rural: earth shoulder, no furniture (docs/town-redo-plan.md, slice 3).
     /// </summary>
+    const float UrbanRadius = 330f; // a Town-class settlement starts at 360 m; a village (270 m) has to grow to it
+
     public bool IsUrbanRoad(RoadId id)
     {
         var road = _net.GetRoad(id);
         var (x, z) = road.Geometry.PointAt(road.Length * 0.5f);
         foreach (var town in _towns)
-            if (town.Radius > 0f && (town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z) <= town.Radius * town.Radius) return true;
+        {
+            float r = town.Radius * 0.55f;
+            if (town.Radius >= UrbanRadius && r > 0f && (town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z) <= r * r) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Whether a point is in the middle of a settlement (within 75 % of a town's radius): the game keeps trees off it.</summary>
+    public bool InTownCentre(float x, float z)
+    {
+        foreach (var town in _towns)
+        {
+            float r = town.Radius * 0.75f;
+            if (r > 0f && (town.X - x) * (town.X - x) + (town.Z - z) * (town.Z - z) <= r * r) return true;
+        }
         return false;
     }
 }

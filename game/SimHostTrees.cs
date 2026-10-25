@@ -102,7 +102,7 @@ public partial class SimHost
             if ((ox - x) * (ox - x) + (oz - z) * (oz - z) < r * r) return true;
         if (Sim.Network.RoadAt(x, z, 11f) != null) return true;
         if (Sim.Rail.TrackAt(x, z, 10f) != null) return true;
-        return Sim.BuildingsNear(x, z, 20f).Count > 0;
+        return Sim.InTownCentre(x, z) || Sim.BuildingsNear(x, z, 20f).Count > 0;
     }
 
     /// <summary>The chance (0 to 1) that a spot has a tree: a few on open ground, patches of wood, and a thick wood around a Forest industry.</summary>

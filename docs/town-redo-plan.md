@@ -43,3 +43,11 @@ Tests with the real `RoadNetwork` and terrain: same seed same towns; population 
 - **Pace**: a hamlet served with 30 a day of materials and planks plus its needs doubles in about a year and a half and reaches 600 people in 5 to 9 years, then stops where the station stops covering houses (it can pass 1000 with more stations). To get there the construction amounts of every building were multiplied by 2.5 (home size 0: 20 materials + 10 planks).
 - **Balance after the change** (tests adapted): bus lines of two buses pay about 1.9 times their upkeep between villages; a line of four buses with the default maintenance costs 15 % of its income on seed 2 (seed 1 stalls with no income: worth a look); a train between two villages roughly pays for itself (average income 0.9 to 1.1 times its upkeep, `rail` is a tuning question) and loses less than six buses.
 - Tests: growth tests rewritten for spots (founded beside a road, a lane grown from a road, a street that joins a road, a street kept off a railway, five years of a generated village), rebuilding tests on spots, fixtures on a hand-made `BlockSpots` block.
+
+## Slice 3 as built (2026-10-24)
+
+- **Rural cross-section**: `Simulation.IsUrbanRoad` is true only for a road whose middle lies within 55 % of the radius of a settlement with radius from 330 m (Town class). Everything else keeps the earth shoulder: no kerb, pavement, lamps or street trees. `Path` lanes were already drawn in earth.
+- **Forest**: `Simulation.InTownCentre` (within 75 % of a town's radius) blocks trees in `SimHostTrees.Blocked`; the 20 m clearing around buildings stays.
+- **Ground tint** kept as it was (lawn tint near buildings).
+- **Save format 5.**
+- Not done: screenshots, the 3D side was not played (no .NET Godot here).
