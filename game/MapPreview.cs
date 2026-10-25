@@ -37,7 +37,7 @@ public partial class MapPreview : RefCounted
     public int SideMetres(int size) => WorldBuilder.CellsOf((MapSize)System.Math.Clamp(size, 0, 2)) * 8;
 
     /// <summary>The most towns that fit a map of this size (the slider's top).</summary>
-    public int MostTowns(int size) => size == 0 ? 4 : 10;
+    public int MostTowns(int size) => WorldBuilder.MostTowns((MapSize)System.Math.Clamp(size, 0, 2));
 
     static Color BiomeColour(Biome biome) => biome switch
     {

@@ -287,8 +287,8 @@ func _build_new_game_page() -> Control:
 		_land_sliders[entry[0]] = slider
 		land_body.add_child(HSeparator.new())
 	_towns_slider = HSlider.new()
-	_towns_slider.min_value = 2
-	_towns_slider.max_value = 10
+	_towns_slider.min_value = 1
+	_towns_slider.max_value = 5
 	_towns_slider.step = 1
 	_towns_slider.value = Session.towns
 	_towns_value = _slider_row(land_body, "Towns", _towns_slider)

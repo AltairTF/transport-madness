@@ -607,65 +607,59 @@
       "extendGrid": true            // a town with no free lot builds a new block of streets
     },
 
-    // Where and how a town is laid out: a square grid of streets (the middle one an avenue) with two lots per block side.
+    // Where and how a town is laid out (docs/town-redo-plan.md): small villages with a curving through road, lanes and loose houses.
     "generation": {
-      "attempts": 600,              // random places tried for each town
+      "attempts": 600,              // random places tried for each town (industries use their own)
       "edgeMargin": 300.0,          // a town stays this far from the edge of the map
-      "minSpacing": 700.0,          // between town centres
-      "maxHeightRange": 12.0,       // highest minus lowest ground under the town
+      "minSpacing": 500.0,          // between town centres
+      "maxHeightRange": 14.0,       // highest minus lowest ground under the town
       "waterMargin": 1.5,           // ground must stand this far above the water surface everywhere under the town
-      "blocksMin": 3,               // blocks along each side of the grid
-      "blocksMax": 4,
-      "blockLength": 120.0,         // street to street; buildings stand on all four sides of a block, two to a side
-      "lotWidth": 30.0,             // between the middles of the two buildings on one side of a block
-      "setbackGap": 1.5,            // clear space between the pavement of a street and a building
-      // R3: sites are scored, then towns are picked best first; the best gets the metropolis size, a share the medium size, the rest blocksMin..blocksMax.
+      // The grid of the old towns, read only by the lot and growth code that is being replaced and by test fixtures.
+      "blockLength": 120.0,
+      "lotWidth": 30.0,
+      "setbackGap": 1.5,
       "sizes": {
         "candidates": 500,          // random sites scored for the whole map
-        "siteRadius": 400.0,        // half the side of the square of ground scored around a site
-        "waterShare": 0.3,          // the most of a town's disc that may be water (rivers and bays are bridged)
+        "siteRadius": 150.0,        // half the side of the square of ground scored around a site
+        "waterShare": 0.15,         // the most of a town's disc that may be water (a town has no bridges)
         "waterBonus": 0.35,         // score added to a site with water close by
-        "waterBonusReach": 500.0,   // ... within this of the middle
-        "metropolisBlocks": 11,
-        "metropolisMinTowns": 4,    // a map with fewer towns has no metropolis
-        "mediumShare": 0.3,
-        "mediumBlocksMin": 6,
-        "mediumBlocksMax": 7,
-        "spacingShare": 1.2,        // two towns are at least this share of the sum of their radii apart (streets reach outerReach times the radius) ...
+        "waterBonusReach": 400.0,   // ... within this of the middle
+        "townMinTowns": 2,          // a map with fewer towns has no big Town
+        "villageShare": 0.5,        // of the other towns, this share are Villages and the rest Hamlets
+        "spacingShare": 1.0,        // two towns are at least this share of the sum of their reaches apart ...
         "spacingGap": 0.0           // ... plus this
       },
-      // Town upgrade (docs/town-upgrade-plan.md): two or three seed roads cross at the square; collector streets leave them at right angles at every
-      // block step, local streets close the blocks between neighbouring collectors, and the town grows from the middle out until its people add up.
+      // Streets and houses.
       "streets": {
-        "seedRoadsVillage": 2,
-        "seedRoadsMedium": 3,
-        "seedRoadsMetropolis": 3,
-        "populationVillage": 400,   // people a town starts with (in its homes), by size class: the streets and buildings are laid until they add up
-        "populationMedium": 2500,
-        "populationMetropolis": 8000,
-        "blockMin": 60.0,           // one step along a seed road: the distance between two collectors
-        "blockMax": 66.0,
-        "depthMin": 60.0,           // one step along a collector: the distance between two local streets
-        "depthMax": 68.0,
-        "maxDepth": 14,             // steps a collector may take from its seed road
-        "maxSlope": 0.18,           // rise over run a street piece may climb
-        "streetClearance": 44.0,    // two streets that are not joined keep this far apart
-        "maxDeadEnd": 84.0,         // a street end that joins nothing is at most this far from the junction it hangs off
-        "bridgeMax": 70.0,          // the longest water a seed road may cross (as a bridge)
-        "outerReach": 1.1,          // streets stay within this share of the town's nominal radius from its centre
-        "seedReach": 90.0,          // seed roads run this far beyond that
-        "mainReach": 0.6,           // the first seed road is an avenue within this share of the nominal radius
-        "slotClearance": 40.0,      // a collector leaves a seed road at least this far from a junction of it
-        "pavement": 2.5             // width of the pavement each side of an urban street
-      }
+        "pieceMin": 30.0,           // one piece of a street
+        "pieceMax": 60.0,
+        "maxTurn": 0.2,             // the most a street turns over one piece, in radians
+        "maxSlope": 0.1,            // rise over run a street piece may climb; ground under a house may be this steep
+        "laneMin": 60.0,
+        "laneMax": 150.0,
+        "loopChance": 0.5,          // a lane that ends near another street of its town joins it
+        "countryReach": 80.0,       // the through road goes on this far beyond the houses
+        "spacingMin": 17.0,         // between the middles of two houses along a street
+        "spacingMax": 32.0,
+        "yardMin": 3.0,             // clear ground between a road and a house
+        "yardMax": 12.0,
+        "gap": 3.0,                 // clear ground between two houses
+        "yawJitter": 0.2,           // radians a house may be turned from facing its street
+        "padShoulder": 3.0,         // the ground under a house is levelled and blends back over this
+        "compoundRadius": 28.0      // the ring road of a farm or factory compound
+      },
+      "hamlet":  { "peopleMin": 60,  "peopleMax": 160,  "radius": 80.0,  "armLength": 70.0,  "lanesMin": 0, "lanesMax": 1, "crossingChance": 0.0, "compoundChance": 0.0, "maxTier": 0 },
+      "village": { "peopleMin": 160, "peopleMax": 450,  "radius": 130.0, "armLength": 130.0, "lanesMin": 1, "lanesMax": 3, "crossingChance": 0.4, "compoundChance": 0.5, "maxTier": 1 },
+      "town":    { "peopleMin": 450, "peopleMax": 900, "radius": 190.0, "armLength": 190.0, "lanesMin": 3, "lanesMax": 5, "crossingChance": 1.0, "compoundChance": 1.0, "maxTier": 2 }
     },
 
-    // From the middle of a town out. 'until' is the distance from the centre as a share of half the grid; 'fill' the
-    // share of lots that start built on; 'mix' the weights of home, commerce and industry; 'tiers' the weights of the sizes.
+    // From the middle of a town out. 'until' is the distance from the centre as a share of the town's radius; 'mix' the weights of home,
+    // commerce and industry; 'tiers' the weights of the sizes (cut off at the town class's maxTier). 'fill', 'frontage' and 'maxTier'
+    // are read only by the growth code that is being replaced.
     "rings": [
-      { "until": 0.35, "fill": 0.95, "mix": [0.35, 0.60, 0.05], "tiers": [0.2, 0.4, 0.4], "frontage": 20.0, "maxTier": 1 },
-      { "until": 0.70, "fill": 0.85, "mix": [0.65, 0.25, 0.10], "tiers": [0.4, 0.6, 0.0], "frontage": 22.0, "maxTier": 1 },
-      { "until": 99.0, "fill": 0.70, "mix": [0.70, 0.10, 0.20], "tiers": [1.0, 0.0, 0.0], "frontage": 28.0, "maxTier": 0 }
+      { "until": 0.35, "fill": 0.95, "mix": [0.70, 0.22, 0.08], "tiers": [0.45, 0.35, 0.20], "frontage": 20.0, "maxTier": 2 },
+      { "until": 0.70, "fill": 0.85, "mix": [0.80, 0.12, 0.08], "tiers": [0.55, 0.45, 0.0], "frontage": 22.0, "maxTier": 1 },
+      { "until": 99.0, "fill": 0.70, "mix": [0.85, 0.05, 0.10], "tiers": [0.8, 0.2, 0.0], "frontage": 28.0, "maxTier": 0 }
     ],
 
     // One list per kind of building, three sizes each. size: half the side of the square it stands on, in metres.

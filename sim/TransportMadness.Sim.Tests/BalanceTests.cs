@@ -15,7 +15,7 @@ public class BalanceTests
     /// <summary>Income and upkeep per period of 600 s, from period <see cref="From"/> on, of a six-stop passenger line with four buses.</summary>
     static (double Income, double Upkeep) BusLineDaily(ulong seed)
     {
-        var sc = BusScenario(seed, 3, 4)!.Value;
+        var sc = BusScenario(seed, 3, 2)!.Value; // villages are small: two buses fill from them, four would run half empty
         var sim = sc.Sim;
         var line = sim.Lines[sc.Line];
         long income = 0, upkeep = 0;
@@ -129,10 +129,10 @@ public class BalanceTests
     public void AServedTownWithAFewTrucksOfBuildingSupplies_StartsGrowingWithinAFewMonths_AndDoesNotExplode()
     {
         // Measured with the probe (Growth_OfAServedTown): first growth in month 2 or 3 and the population 1.5 to 2.2 times its size after a year.
-        var r = ServedTown(4, perDay: 120, needsMet: true, months: 4);
+        var r = ServedTown(4, perDay: 30, needsMet: true, months: 4);
 
         Assert.InRange(r.FirstGrowth, 1, 4);
-        Assert.InRange((double)r.After / r.Before, 1.1, 2.0);
+        Assert.InRange((double)r.After / r.Before, 1.1, 3.0); // a village is small, so each new building is a big share of it
     }
 
     [Fact]
@@ -147,10 +147,10 @@ public class BalanceTests
     [Fact]
     public void LessSupplyMeansSlowerGrowth()
     {
-        var little = ServedTown(5, perDay: 20, needsMet: true, months: 4); // the station of an organic town covers fewer buildings, which fill up at a lower rate
-        var more = ServedTown(5, perDay: 120, needsMet: true, months: 4);
+        var little = ServedTown(5, perDay: 4, needsMet: true, months: 4); // the station of an organic town covers fewer buildings, which fill up at a lower rate
+        var more = ServedTown(5, perDay: 30, needsMet: true, months: 4);
 
-        Assert.True(more.After > little.After, $"{more.After} people with 120 a period against {little.After} with 20");
+        Assert.True(more.After > little.After, $"{more.After} people with 30 a period against {little.After} with 4");
         Assert.True(little.FirstGrowth == 0 || little.FirstGrowth >= more.FirstGrowth);
     }
 

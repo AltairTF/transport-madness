@@ -1,15 +1,18 @@
 namespace TransportMadness.Sim;
 
+/// <summary>The size class of a town: how many people it starts with (docs/town-redo-plan.md).</summary>
+public enum TownSize : byte { Hamlet, Village, Town }
+
 /// <summary>
 /// Lays out towns on a map: picks flat dry ground, builds each town's streets in the network (free, and before the
-/// simulation exists, so it is not part of the command log) and plans the buildings along them. It draws from its own
-/// random generator seeded from the world seed, so the same seed always gives the same towns and nothing else in the
-/// simulation depends on it (ADR 0003). Tuning is <c>towns.generation</c>, <c>towns.rings</c> and <c>towns.buildingTypes</c>.
+/// simulation exists, so it is not part of the command log) and plans the buildings along them (<see cref="VillageGenerator"/>).
+/// It draws from its own random generator seeded from the world seed, so the same seed always gives the same towns and nothing
+/// else in the simulation depends on it (ADR 0003). Tuning is <c>towns.generation</c>, <c>towns.rings</c> and <c>towns.buildingTypes</c>.
 /// </summary>
 public static class TownGenerator
 {
     const ulong SeedSalt = 0x544F574E53554C45UL; // keeps this stream apart from the simulation's own
-    const int LotsPerSide = 2;                   // lots along one side of a block
+    const int LotsPerSide = 2;                   // lots along one side of a block (the old grid, see LotSites)
 
     /// <summary>
     /// Builds up to <paramref name="townCount"/> towns into <paramref name="net"/> and returns them. Fewer come out
@@ -23,22 +26,11 @@ public static class TownGenerator
         var names = ShuffledNames(tuning, rng);
 
         var towns = new List<TownPlan>();
-        var organic = new List<OrganicTown>();
         for (int i = 0; i < places.Count; i++)
         {
             var p = places[i];
-            var g = tuning.Generation;
-            var size = p.Blocks >= g.Sizes.MetropolisBlocks ? TownSize.Metropolis : p.Blocks >= g.Sizes.MediumBlocksMin ? TownSize.Medium : TownSize.Village;
-            var town = StreetGenerator.Generate(net.Terrain, tuning, size, p.X, p.Z, p.Blocks * g.BlockLength * 0.5f, seed ^ (ulong)i * 0x9E3779B97F4A7C15UL);
-            BuildStreets(net, town.Graph);
-            organic.Add(town);
-        }
-        // A building only goes where a road really is, so the buildings are checked once all the streets are in.
-        var index = new RoadIndex(net);
-        for (int i = 0; i < places.Count; i++)
-        {
-            var p = places[i];
-            towns.Add(new TownPlan(names[i % names.Count] + (i >= names.Count ? $" {i / names.Count + 1}" : ""), p.X, p.Z, 0f, 0, ReachableBuildings(net, index, organic[i]), organic[i].Radius, organic[i].Lots));
+            var village = VillageGenerator.Generate(net, p.Size, p.X, p.Z, seed ^ (ulong)(i + 1) * 0x9E3779B97F4A7C15UL);
+            towns.Add(new TownPlan(names[i % names.Count] + (i >= names.Count ? $" {i / names.Count + 1}" : ""), p.X, p.Z, 0f, 0, village.Buildings, village.Radius, village.Lots));
         }
         return new WorldPlan(townCount, towns);
     }
@@ -55,12 +47,12 @@ public static class TownGenerator
     }
 
     /// <summary>
-    /// R3: scores <c>sizes.candidates</c> random sites (flat dry ground around them, a bonus for water close by), then takes towns best
-    /// site first: the best gets the metropolis size, <c>mediumShare</c> of the rest the medium size, the others the small one. A town
-    /// is made smaller when its site cannot hold its size, and skipped when it cannot hold even the smallest. Rivers and bays may lie
-    /// under a town (up to <c>waterShare</c> of it); the streets that cross them become bridges.
+    /// Scores <c>sizes.candidates</c> random sites (flat dry ground around them, a bonus for water close by), then takes towns best
+    /// site first: the best gets the Town class (when <c>townMinTowns</c> or more are asked for), <c>villageShare</c> of the rest the
+    /// Village class, the others Hamlets. A town is made smaller when its site cannot hold its class, and skipped when it cannot hold
+    /// even a hamlet.
     /// </summary>
-    static List<(float X, float Z, int Blocks)> PickSites(RoadNetwork net, TownsTuning tuning, SimRandom rng, int townCount)
+    static List<(float X, float Z, TownSize Size)> PickSites(RoadNetwork net, TownsTuning tuning, SimRandom rng, int townCount)
     {
         var g = tuning.Generation;
         var s = g.Sizes;
@@ -71,25 +63,28 @@ public static class TownGenerator
         {
             float x = (rng.NextFloat() * 2f - 1f) * range, z = (rng.NextFloat() * 2f - 1f) * range;
             if (net.Terrain is { } terrain && terrain.HeightAt(x, z) - terrain.WaterSurfaceAt(x, z) < g.WaterMargin) continue;
-            sites.Add((SiteScore(net, g, x, z), x, z));
+            sites.Add((SiteScore(net, g, x, z) + 0.05f * rng.NextFloat(), x, z)); // the jitter spreads towns over equally good ground, not along the lowest x
         }
         sites.Sort((a, b) => b.Score != a.Score ? b.Score.CompareTo(a.Score) : a.X.CompareTo(b.X));
 
-        int mediums = (int)MathF.Round(Math.Max(0, townCount - 1) * s.MediumShare);
-        var places = new List<(float X, float Z, int Blocks)>();
+        bool big = townCount >= s.TownMinTowns;
+        int villages = (int)MathF.Round(Math.Max(0, townCount - 1) * s.VillageShare);
+        var places = new List<(float X, float Z, TownSize Size)>();
         foreach (var site in sites)
         {
             if (places.Count == townCount) break;
             int rank = places.Count;
-            int wanted = rank == 0 && townCount >= s.MetropolisMinTowns ? s.MetropolisBlocks
-                : rank < (townCount >= s.MetropolisMinTowns ? 1 : 0) + mediums ? s.MediumBlocksMin + rng.NextInt(s.MediumBlocksMax - s.MediumBlocksMin + 1)
-                : g.BlocksMin + rng.NextInt(g.BlocksMax - g.BlocksMin + 1);
+            var wanted = rank == 0 ? (big ? TownSize.Town : TownSize.Village)
+                : rank <= villages + (big ? 0 : 1) ? TownSize.Village : TownSize.Hamlet;
             // Smaller until the ground holds it and no other town is too near for its size.
-            for (int blocks = wanted; blocks >= g.BlocksMin; blocks--)
+            for (var size = wanted; ; size--)
             {
-                if (!Suitable(net, g, places, site.X, site.Z, blocks)) continue;
-                places.Add((site.X, site.Z, blocks));
-                break;
+                if (Suitable(net, g, places, site.X, site.Z, size))
+                {
+                    places.Add((site.X, site.Z, size));
+                    break;
+                }
+                if (size == TownSize.Hamlet) break;
             }
         }
         return places;
@@ -122,33 +117,38 @@ public static class TownGenerator
         return score;
     }
 
-    /// <summary>The radius of the town of a size class (its streets and lots reach further, by <c>outerReach</c>, but little is built there).</summary>
-    static float Extent(TownGenerationTuning g, int blocks) => blocks * g.BlockLength * 0.5f;
+    /// <summary>How far the roads and houses of a town of a class reach from its middle.</summary>
+    internal static float Extent(TownGenerationTuning g, TownSize size) => MathF.Max(g.Of(size).Radius, g.Of(size).ArmLength + g.Streets.CountryReach);
 
-    static bool Suitable(RoadNetwork net, TownGenerationTuning g, List<(float X, float Z, int Blocks)> others, float cx, float cz, int blocks)
+    static bool Suitable(RoadNetwork net, TownGenerationTuning g, List<(float X, float Z, TownSize Size)> others, float cx, float cz, TownSize size)
     {
-        float extent = Extent(g, blocks);
+        float extent = Extent(g, size);
         foreach (var o in others)
         {
-            float need = MathF.Max(g.MinSpacing, (extent + Extent(g, o.Blocks)) * g.Sizes.SpacingShare + g.Sizes.SpacingGap);
+            float need = MathF.Max(g.MinSpacing, (extent + Extent(g, o.Size)) * g.Sizes.SpacingShare + g.Sizes.SpacingGap);
             if ((o.X - cx) * (o.X - cx) + (o.Z - cz) * (o.Z - cz) < need * need) return false;
         }
         if (net.Terrain is not { } terrain) return true;
-        // The grid may lie at any angle, so test the whole disc around it: the middle is dry, little of the rest is water, and not too much height.
+        // The houses stand within the radius: that disc is mostly dry, and not too steep. The through road goes on beyond, on land.
+        float radius = g.Of(size).Radius;
+        if (MathF.Abs(cx) + extent > terrain.HalfSize - g.EdgeMargin * 0.5f || MathF.Abs(cz) + extent > terrain.HalfSize - g.EdgeMargin * 0.5f) return false;
         float lowest = float.MaxValue, highest = float.MinValue;
-        int wet = 0;
+        int wet = 0, samples = 0;
         const int steps = 9;
         for (int i = 0; i < steps; i++)
             for (int j = 0; j < steps; j++)
             {
-                float x = cx + (i / (steps - 1f) * 2f - 1f) * extent, z = cz + (j / (steps - 1f) * 2f - 1f) * extent;
-                if (MathF.Abs(x) > terrain.HalfSize || MathF.Abs(z) > terrain.HalfSize) return false;
+                float x = (i / (steps - 1f) * 2f - 1f) * radius, z = (j / (steps - 1f) * 2f - 1f) * radius;
+                if (x * x + z * z > radius * radius) continue;
+                x += cx; z += cz;
+                samples++;
                 float h = terrain.HeightAt(x, z);
                 if (h - terrain.WaterSurfaceAt(x, z) < g.WaterMargin) { wet++; continue; }
                 lowest = MathF.Min(lowest, h);
                 highest = MathF.Max(highest, h);
             }
-        if (wet > g.Sizes.WaterShare * steps * steps) return false;
+        if (terrain.HeightAt(cx, cz) - terrain.WaterSurfaceAt(cx, cz) < g.WaterMargin) return false;
+        if (wet > g.Sizes.WaterShare * samples) return false;
         return highest - lowest <= g.MaxHeightRange;
     }
 
@@ -157,24 +157,6 @@ public static class TownGenerator
     {
         float c = MathF.Cos(angle), s = MathF.Sin(angle);
         return (cx + u * c - v * s, cz + u * s + v * c);
-    }
-
-    /// <summary>
-    /// R4b: the streets of a town as <see cref="StreetGenerator"/> grew them, built into the network piece by piece, the main street first so
-    /// the lesser ones are cut by it.
-    /// </summary>
-    static void BuildStreets(RoadNetwork net, StreetGraph graph)
-    {
-        var roads = net.Tuning.Roads;
-        foreach (bool main in new[] { true, false })
-            foreach (var e in graph.Edges)
-            {
-                if (e.Main != main) continue;
-                var (x0, z0) = graph.Nodes[e.A];
-                var (x1, z1) = graph.Nodes[e.B];
-                var type = main ? RoadType.Avenue2x2 : RoadType.TwoLane;
-                net.BuildRoad(x0, z0, x1, z1, type, roads.Of(type).SpeedLimit);
-            }
     }
 
     /// <summary>A place a building can stand: on one side of a block, facing its street. Where it is does not depend on what is built on it.</summary>
@@ -222,20 +204,6 @@ public static class TownGenerator
         foreach (var type in Enum.GetValues<BuildingType>())
             widest = MathF.Max(widest, tuning.Of(type, TownsTuning.Tiers - 1).Footprint);
         return widest;
-    }
-
-    /// <summary>The starting buildings of a town that have a road within reach and none through them (the streets are all in the network by now).</summary>
-    static List<BuildingPlan> ReachableBuildings(RoadNetwork net, RoadIndex index, OrganicTown town)
-    {
-        var tuning = net.Tuning.Towns;
-        float clear = RoadNetwork.HalfWidth(RoadType.TwoLane) + 2f; // not on the road, whatever the street's width
-        var plans = new List<BuildingPlan>();
-        foreach (var b in town.Buildings)
-        {
-            float road = index.DistanceToNearest(b.X, b.Z, tuning.AccessRadius);
-            if (road <= tuning.AccessRadius && road >= clear) plans.Add(b);
-        }
-        return plans;
     }
 
     internal const float RingNoise = 0.2f; // how far, as a share of the radius, a lot's ring may be off its distance

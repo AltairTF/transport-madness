@@ -67,7 +67,7 @@ public class TownTests
         {
             var t = plan.Towns[i];
             Assert.False(terrain.IsWater(t.X, t.Z));
-            Assert.True(t.Buildings.Count >= 20, $"{t.Name} has {t.Buildings.Count} buildings");
+            Assert.True(t.Buildings.Count >= 5, $"{t.Name} has {t.Buildings.Count} buildings");
             for (int j = i + 1; j < plan.Towns.Count; j++)
             {
                 float d = MathF.Sqrt(MathF.Pow(t.X - plan.Towns[j].X, 2) + MathF.Pow(t.Z - plan.Towns[j].Z, 2));

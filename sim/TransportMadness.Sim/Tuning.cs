@@ -381,7 +381,9 @@ public sealed record TownsTuning
         foreach (var ring in Rings)
             if (ring.Mix.Count != types.Length || ring.Tiers.Count != Tiers)
                 throw new JsonException("towns.rings need one mix weight per building type and one tier weight per size");
-        if (Generation.BlocksMin < 1 || Generation.BlocksMax < Generation.BlocksMin) throw new JsonException("towns.generation blocks are out of order");
+        foreach (var (name, c) in new[] { ("hamlet", Generation.Hamlet), ("village", Generation.Village), ("town", Generation.Town) })
+            if (c.PeopleMin < 1 || c.PeopleMax < c.PeopleMin || c.PeopleMax > 1000 || c.MaxTier is < 0 or >= Tiers)
+                throw new JsonException($"towns.generation.{name} has people or maxTier out of range");
     }
 }
 
@@ -401,41 +403,66 @@ public sealed record TownGenerationTuning
     public required float MinSpacing { get; init; }
     public required float MaxHeightRange { get; init; }
     public required float WaterMargin { get; init; }
-    public required int BlocksMin { get; init; }
-    public required int BlocksMax { get; init; }
+    // The grid of the old towns: only the lot and growth code that slice 2 of docs/town-redo-plan.md removes, and test fixtures, still read these.
     public required float BlockLength { get; init; }
     public required float LotWidth { get; init; }
     public required float SetbackGap { get; init; }
     public required TownSizesTuning Sizes { get; init; }
     public required StreetsTuning Streets { get; init; }
+    public required TownClassTuning Hamlet { get; init; }
+    public required TownClassTuning Village { get; init; }
+    public required TownClassTuning Town { get; init; }
+
+    public TownClassTuning Of(TownSize size) => size switch { TownSize.Hamlet => Hamlet, TownSize.Village => Village, _ => Town };
 }
 
-/// <summary>Town upgrade: how a town's streets and buildings grow (<see cref="StreetGenerator"/>, docs/town-upgrade-plan.md).</summary>
+/// <summary>One size class of town (docs/town-redo-plan.md): how many people it starts with and how far its houses reach.</summary>
+public sealed record TownClassTuning
+{
+    public required int PeopleMin { get; init; }
+    public required int PeopleMax { get; init; }
+    /// <summary>How far from the middle the houses may stand.</summary>
+    public required float Radius { get; init; }
+    /// <summary>Length of each arm of the through road from the middle, before the country part.</summary>
+    public required float ArmLength { get; init; }
+    public required int LanesMin { get; init; }
+    public required int LanesMax { get; init; }
+    /// <summary>Chance of a second road across the middle.</summary>
+    public required float CrossingChance { get; init; }
+    /// <summary>Chance of a farm or factory compound apart from the houses.</summary>
+    public required float CompoundChance { get; init; }
+    /// <summary>The biggest size (tier index) a building may have.</summary>
+    public required int MaxTier { get; init; }
+}
+
+/// <summary>How the streets and houses of a town are laid out (<see cref="VillageGenerator"/>).</summary>
 public sealed record StreetsTuning
 {
-    public required int SeedRoadsVillage { get; init; }
-    public required int SeedRoadsMedium { get; init; }
-    public required int SeedRoadsMetropolis { get; init; }
-    public required int PopulationVillage { get; init; }
-    public required int PopulationMedium { get; init; }
-    public required int PopulationMetropolis { get; init; }
-    public required float BlockMin { get; init; }
-    public required float BlockMax { get; init; }
-    public required float DepthMin { get; init; }
-    public required float DepthMax { get; init; }
-    public required int MaxDepth { get; init; }
+    /// <summary>The length of one piece of a street, and the most it may turn over one piece (radians).</summary>
+    public required float PieceMin { get; init; }
+    public required float PieceMax { get; init; }
+    public required float MaxTurn { get; init; }
+    /// <summary>Rise over run a street piece may climb; the ground under a house may be this steep, too.</summary>
     public required float MaxSlope { get; init; }
-    public required float StreetClearance { get; init; }
-    public required float MaxDeadEnd { get; init; }
-    public required float BridgeMax { get; init; }
-    public required float OuterReach { get; init; }
-    public required float SeedReach { get; init; }
-    public required float MainReach { get; init; }
-    public required float SlotClearance { get; init; }
-    public required float Pavement { get; init; }
+    public required float LaneMin { get; init; }
+    public required float LaneMax { get; init; }
+    /// <summary>A lane at most this long ends in a loop back to the through road when one is near enough.</summary>
+    public required float LoopChance { get; init; }
+    /// <summary>The through road goes on this far beyond the houses, as a country road.</summary>
+    public required float CountryReach { get; init; }
+    /// <summary>Metres between the middles of two houses along a street (at least and at most).</summary>
+    public required float SpacingMin { get; init; }
+    public required float SpacingMax { get; init; }
+    /// <summary>Clear ground between a road's edge and a house's footprint (at least and at most): the yard.</summary>
+    public required float YardMin { get; init; }
+    public required float YardMax { get; init; }
+    public required float Gap { get; init; }
+    public required float YawJitter { get; init; }
+    public required float PadShoulder { get; init; }
+    public required float CompoundRadius { get; init; }
 }
 
-/// <summary>How big each town is: the best site gets the metropolis, a share the medium size, the rest <c>blocksMin..blocksMax</c> (R3).</summary>
+/// <summary>Where towns go and how many of each class (docs/town-redo-plan.md).</summary>
 public sealed record TownSizesTuning
 {
     public required int Candidates { get; init; }
@@ -443,11 +470,10 @@ public sealed record TownSizesTuning
     public required float WaterShare { get; init; }
     public required float WaterBonus { get; init; }
     public required float WaterBonusReach { get; init; }
-    public required int MetropolisBlocks { get; init; }
-    public required int MetropolisMinTowns { get; init; }
-    public required float MediumShare { get; init; }
-    public required int MediumBlocksMin { get; init; }
-    public required int MediumBlocksMax { get; init; }
+    /// <summary>A map with fewer towns than this has no big Town; its best site gets a Village.</summary>
+    public required int TownMinTowns { get; init; }
+    /// <summary>Of the towns after the first, this share are Villages and the rest Hamlets.</summary>
+    public required float VillageShare { get; init; }
     public required float SpacingGap { get; init; }
     public required float SpacingShare { get; init; }
 }

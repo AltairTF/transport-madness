@@ -11,8 +11,12 @@ public static class WorldBuilder
     /// industries and the two gateways, with <c>traffic.ambientPerTown</c> ambient cars per town put on the roads by a logged command. The land follows <paramref name="terrain"/> (how many mountains, how much water and forest). The plan says what was
     /// placed and which processors found no supplier within reach.
     /// </summary>
+    /// <summary>The most towns a map of this size is asked for (the new-game slider's top): the region is small and its towns are villages.</summary>
+    public static int MostTowns(MapSize size) => size switch { MapSize.Small => 3, MapSize.Large => 7, _ => 5 };
+
     public static (Simulation Sim, WorldPlan Plan) Towns(ulong seed, int towns, IndustryAmount industries, Tuning? tuning = null, IncidentFrequency frequency = IncidentFrequency.Normal, TerrainSettings? terrain = null, MapSize size = MapSize.Normal)
     {
+        towns = Math.Clamp(towns, 1, MostTowns(size));
         var net = new RoadNetwork(Terrain.Generate(seed, CellsOf(size), settings: terrain), tuning);
         var plan = GatewayGenerator.Generate(net, seed, IndustryGenerator.Generate(net, seed, TownGenerator.Generate(net, seed, towns), industries));
         var sim = new Simulation(net, seed, frequency);
