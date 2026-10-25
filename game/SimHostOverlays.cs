@@ -327,7 +327,7 @@ public partial class SimHost
         var id = new RoadId(roadId);
         var road = net.GetRoad(id);
         var g = road.Geometry;
-        bool avenue = road.Type == RoadType.Avenue2x2;
+        bool avenue = road.Type is RoadType.Avenue2x2 or RoadType.Highway;
         float half = road.Type == RoadType.Path ? RoadNetwork.HalfWidth(RoadType.Path) * 0.9f : ((road.LanesForward + road.LanesBack) * Simulation.LaneWidth + (avenue ? RoadNetwork.MedianWidth : 0f)) * 0.45f;
         int n = Math.Max(1, (int)MathF.Ceiling(g.Length / 8f));
         var left = new Vector3[n + 1];

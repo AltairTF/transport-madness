@@ -111,6 +111,8 @@
     "avenue": { "speedLimit": 19.0, "costPerMetre": 90.0 },
     "extraLaneShare": 0.35, // road-types GDD: each lane above a type's normal count adds this share of the two-lane price
     "dirt": { "speedLimit": 9.0, "costPerMetre": 12.0 }, // road-types GDD: the cheap first road; upgrades to a two-lane road
+    "ramp": { "speedLimit": 12.0, "costPerMetre": 40.0 },    // road-types GDD: one-way link between a highway and an ordinary road
+    "highway": { "speedLimit": 28.0, "costPerMetre": 180.0 }, // road-types GDD: ramps-only, 2+2 lanes
     "path": { "speedLimit": 8.0, "costPerMetre": 15.0 }, // the stone road that joins an access point to the roads (M6e); never chosen by the player
     "cutCostPerCubicMetre": 6.0,
     "fillCostPerCubicMetre": 9.0,
@@ -127,6 +129,8 @@
     "crossingClearance": 5.5,       // a road passes over or under another (no junction) when their surfaces are this far apart, with a bridge above or a tunnel below
     "bridgeCostPerMetre": 320.0,    // two-lane; replaces the road and earthwork price
     "tunnelCostPerMetre": 520.0,
+    // road-types GDD: where a road ends on a highway, the road stops "standoff" m short of it and a one-way ramp pair joins it to the highway "span" m up and down the highway
+    "interchange": { "standoff": 45.0, "span": 90.0, "minRampGap": 120.0, "minAngle": 0.78 },
     "avenueStructureFactor": 1.6,   // an avenue on a bridge or in a tunnel costs this much more
     // Traffic lights (M4): the approaches of a junction fall in two groups by the direction they come from; the groups take turns.
     "trafficLight": { "price": 12000, "upkeepPerDay": 240.0, "greenSeconds": 18.0, "clearSeconds": 4.0 },

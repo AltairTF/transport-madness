@@ -290,7 +290,8 @@ public sealed partial class Simulation
         foreach (var roadId in _net.RoadsAt(node))
         {
             var road = _net.GetRoad(roadId);
-            int lane = (road.From == node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+            int lane = road.RightLaneLeaving(node);
+            if (lane < 0) continue;
             float position = _laneReach[lane] + length + SpawnGap;
             if (position > _laneLength[lane]) continue;
             float cost = field?[lane] ?? 0f;
@@ -383,7 +384,8 @@ public sealed partial class Simulation
             foreach (var roadId in _net.RoadsAt(depot.Node))
             {
                 var road = _net.GetRoad(roadId);
-                int lane = (road.From == depot.Node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+                int lane = road.RightLaneLeaving(depot.Node);
+                if (lane < 0) continue;
                 best = MathF.Min(best, field[lane]);
             }
             if (!float.IsPositiveInfinity(best)) result.Add((best, depot.Id));

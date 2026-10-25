@@ -10,6 +10,10 @@ public enum RoadType
     Path,
     /// <summary>A cheap, slow, narrow road for young networks: one lane per direction, no overtaking. Upgrades to <see cref="TwoLane"/>.</summary>
     Dirt,
+    /// <summary>Two lanes per direction on a median, fast, joined to other roads only by <see cref="Ramp"/>s and never crossed in level.</summary>
+    Highway,
+    /// <summary>A one-way, one-lane link between a <see cref="Highway"/> and an ordinary road. Only made by the highway tool; not offered to build.</summary>
+    Ramp,
 }
 
 /// <summary>How a road piece is carried over or through the ground.</summary>
@@ -134,6 +138,14 @@ public sealed class Road
     public LaneId[] BackwardLanes { get; }
     public int LanesForward => ForwardLanes.Length;
     public int LanesBack => BackwardLanes.Length;
+    /// <summary>Only one direction has lanes (a ramp or a ring piece).</summary>
+    public bool IsOneWay => ForwardLanes.Length == 0 || BackwardLanes.Length == 0;
+    /// <summary>The lanes that run away from <paramref name="node"/> (empty when this one-way road runs towards it).</summary>
+    public LaneId[] LanesLeaving(int node) => From == node ? ForwardLanes : BackwardLanes;
+    /// <summary>The lanes that run towards <paramref name="node"/>.</summary>
+    public LaneId[] LanesEntering(int node) => To == node ? ForwardLanes : BackwardLanes;
+    /// <summary>The right-most lane running away from <paramref name="node"/>, or -1 when none does.</summary>
+    public int RightLaneLeaving(int node) { var l = LanesLeaving(node); return l.Length == 0 ? -1 : l[0].Value; }
     /// <summary>Half the paved width, from the lane counts.</summary>
     public float HalfWidth => RoadNetwork.HalfWidth(Type, LanesForward, LanesBack);
 }
@@ -562,7 +574,7 @@ public sealed class RoadNetwork
     /// </summary>
     public IReadOnlyList<RoadId> BuildRoad(float x0, float z0, float x1, float z1, RoadType type, float speedLimit, float sweep = 0f, int lanesForward = 0, int lanesBack = 0)
     {
-        var plan = Plan(x0, z0, x1, z1, sweep);
+        var plan = Plan(x0, z0, x1, z1, sweep, type);
         if (plan == null || !ValidLanes(type, lanesForward, lanesBack)) return Array.Empty<RoadId>();
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
 
@@ -615,7 +627,7 @@ public sealed class RoadNetwork
     float GroundHeight(float x, float z) => Terrain?.HeightAt(x, z) ?? 0f;
 
     /// <summary>Half the width of the paved road including any median.</summary>
-    public static float HalfWidth(RoadType type) => type switch { RoadType.Avenue2x2 => 8f, RoadType.Path => 2.5f, RoadType.Dirt => 3f, _ => 3.5f };
+    public static float HalfWidth(RoadType type) => type switch { RoadType.Avenue2x2 => 8f, RoadType.Path => 2.5f, RoadType.Ramp => 2.5f, RoadType.Highway => 10f, RoadType.Dirt => 3f, _ => 3.5f };
 
     /// <summary>Half the paved width of a road with the given lane counts (0 for both means the type's own).</summary>
     public static float HalfWidth(RoadType type, int lanesForward, int lanesBack) =>
@@ -623,7 +635,7 @@ public sealed class RoadNetwork
             : (lanesForward + lanesBack) * LaneWidth * 0.5f + (type == RoadType.Avenue2x2 ? MedianWidth * 0.5f : 0f);
 
     /// <summary>Lanes each way of a type's normal layout.</summary>
-    public static int DefaultLanes(RoadType type) => type == RoadType.Avenue2x2 ? 2 : 1;
+    public static int DefaultLanes(RoadType type) => type is RoadType.Avenue2x2 or RoadType.Highway ? 2 : 1;
 
     /// <summary>Most lanes one way, and in total, of a road with its own lane counts.</summary>
     public const int MaxLanesOneWay = 3, MaxLanesTotal = 4;
@@ -631,6 +643,7 @@ public sealed class RoadNetwork
     /// <summary>Whether a road of this type can have these lane counts. (0, 0) means the type's normal layout; only two-lane roads and avenues can differ from it.</summary>
     public static bool ValidLanes(RoadType type, int lanesForward, int lanesBack)
     {
+        if (type == RoadType.Ramp) return lanesForward == 1 && lanesBack == 0;
         if (lanesForward == 0 && lanesBack == 0) return true;
         if (lanesForward == DefaultLanes(type) && lanesBack == lanesForward) return true;
         if (type != RoadType.TwoLane && type != RoadType.Avenue2x2) return false;
@@ -650,7 +663,7 @@ public sealed class RoadNetwork
     /// </summary>
     public RoadCost? EstimateCost(float x0, float z0, float x1, float z1, RoadType type, float sweep = 0f, int lanesForward = 0, int lanesBack = 0)
     {
-        var plan = Plan(x0, z0, x1, z1, sweep);
+        var plan = Plan(x0, z0, x1, z1, sweep, type);
         if (plan == null || !ValidLanes(type, lanesForward, lanesBack)) return null;
         return Price(plan, RoadGeometry.FromChord(x0, z0, x1, z1, sweep), type, lanesForward, lanesBack);
     }
@@ -728,7 +741,7 @@ public sealed class RoadNetwork
     /// The meetings along the planned road, start to end, or null when it cannot be built. Besides the places where it
     /// meets the network there is one wherever it changes between ground, bridge and tunnel.
     /// </summary>
-    List<Meeting>? Plan(float x0, float z0, float x1, float z1, float sweep)
+    List<Meeting>? Plan(float x0, float z0, float x1, float z1, float sweep, RoadType? type = null)
     {
         var meetings = PlanJunctions(x0, z0, x1, z1, sweep);
         if (meetings == null) return null;
@@ -743,7 +756,30 @@ public sealed class RoadNetwork
             if (meetings == null) return null;
         }
         if (!PiecesAllowed(meetings)) return null;
+        if (type != null && !TypeAllowsMeetings(type.Value, meetings)) return null;
         return Terrain == null ? meetings : InsertStructures(meetings, geometry);
+    }
+
+    bool NodeHasHighway(int node) => _nodeRoads[node].Any(id => _roads[id.Value].Type == RoadType.Highway);
+
+    /// <summary>
+    /// A highway is joined to other roads only by ramps: it may not meet any road in level, and no other road may meet it (ramps, made by the
+    /// highway tool, are the one exception). A highway may be continued from the free end of another highway.
+    /// </summary>
+    bool TypeAllowsMeetings(RoadType type, List<Meeting> meetings)
+    {
+        if (type == RoadType.Ramp) return true;
+        for (int i = 0; i < meetings.Count; i++)
+        {
+            var m = meetings[i];
+            bool touchesHighway = m.Node >= 0 ? NodeHasHighway(m.Node) : m.Road.Value >= 0 && _roads[m.Road.Value].Type == RoadType.Highway;
+            bool touches = m.Node >= 0 ? _nodeRoads[m.Node].Count > 0 : m.Road.Value >= 0;
+            if (type != RoadType.Highway) { if (touchesHighway) return false; continue; }
+            if (!touches) continue;
+            bool end = i == 0 || i == meetings.Count - 1;
+            if (!end || m.Node < 0 || _nodeRoads[m.Node].Count != 1 || !touchesHighway) return false;
+        }
+        return true;
     }
 
     /// <summary>Whether every piece between two meetings can be a road: long enough, not a duplicate, not too steep, and no junction left in a road too close to its end.</summary>
@@ -1009,6 +1045,105 @@ public sealed class RoadNetwork
     }
 
 
+    // ---- Interchanges ------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Where a road that ends on a highway is joined to it: the road stops <c>Standoff</c> m short at (<see cref="JX"/>, <see cref="JZ"/>), an off-ramp leads
+    /// from the highway at A to that node and an on-ramp from it back to the highway at B, on the carriageway on the road's side.
+    /// </summary>
+    public sealed record Interchange(float X0, float Z0, float SideSweep, float JX, float JZ, float AX, float AZ, float BX, float BZ, RoadId Highway);
+
+    /// <summary>The highway whose centre line a point lies on (not at one of its nodes), or none.</summary>
+    RoadId? HighwayAt(float x, float z) =>
+        RoadAt(x, z, 0.6f) is { } id && _roads[id.Value].Type == RoadType.Highway && FindNodeNear(x, z, 0.5f) < 0 ? id : null;
+
+    /// <summary>
+    /// The ramps a road would get, when one end of it lies on a highway. Null with no <paramref name="refusal"/> when it does not (an ordinary road);
+    /// null with a refusal when it does but cannot be joined, and the reason why. The road is given from (x0, z0) to (x1, z1) in either order.
+    /// </summary>
+    public Interchange? PlanInterchange(float x0, float z0, float x1, float z1, float sweep, RoadType type, out string? refusal)
+    {
+        refusal = null;
+        if (type is RoadType.Highway or RoadType.Ramp) return null;
+        var hw0 = HighwayAt(x0, z0);
+        var hw1 = HighwayAt(x1, z1);
+        if (hw0 == null && hw1 == null) return null;
+        if (hw0 != null && hw1 != null) { refusal = "a road cannot join two highways"; return null; }
+        if (hw0 != null) { (x0, z0, x1, z1, sweep) = (x1, z1, x0, z0, -sweep); hw1 = hw0; }
+
+        var highway = _roads[hw1!.Value.Value];
+        var ic = Tuning.Roads.Interchange;
+        var g = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
+        float length = g.Length;
+        if (length < ic.Standoff + MinRoadLength) { refusal = "too short to leave room for the ramps"; return null; }
+        float d = highway.Geometry.NearestAlong(x1, z1);
+        float roadHeading = highway.Geometry.HeadingAt(d);
+        if (MathF.Abs(MathF.Sin(g.HeadingAt(length) - roadHeading)) < MathF.Sin(ic.MinAngle)) { refusal = "meets the highway at too shallow an angle"; return null; }
+        if (highway.Structure != RoadStructure.None) { refusal = "ramps cannot be made on a bridge or in a tunnel"; return null; }
+
+        var (jx, jz) = g.PointAt(length - ic.Standoff);
+        float sideSweep = sweep * (length - ic.Standoff) / length;
+        var (px, pz) = highway.Geometry.PointAt(d);
+        bool nearIsForward = (jx - px) * -MathF.Sin(roadHeading) + (jz - pz) * MathF.Cos(roadHeading) > 0f; // the road lies to the right of the forward direction
+        float sign = nearIsForward ? 1f : -1f;
+        float dA = d - sign * ic.Span, dB = d + sign * ic.Span;
+        float margin = MathF.Max(Tuning.Roads.StructureMargin, MinRoadLength);
+        if (dA < margin || dA > highway.Length - margin || dB < margin || dB > highway.Length - margin)
+        { refusal = "no room on the highway for the ramps, or too near a bridge, a tunnel or a junction"; return null; }
+        var (ax, az) = highway.Geometry.PointAt(dA);
+        var (bx, bz) = highway.Geometry.PointAt(dB);
+
+        foreach (var other in _roads)
+        {
+            if (other.Retired || other.Type != RoadType.Ramp) continue;
+            foreach (int node in new[] { other.From, other.To })
+            {
+                if (!NodeHasHighway(node)) continue;
+                var (nx, nz) = _nodes[node];
+                foreach (var (qx, qz) in new[] { (ax, az), (bx, bz) })
+                    if ((nx - qx) * (nx - qx) + (nz - qz) * (nz - qz) < ic.MinRampGap * ic.MinRampGap) { refusal = "too close to another ramp"; return null; }
+            }
+        }
+
+        var plan = new Interchange(x0, z0, sideSweep, jx, jz, ax, az, bx, bz, highway.Id);
+        var side = Plan(x0, z0, jx, jz, sideSweep, type);
+        if (side == null) { refusal = "the road cannot be built there"; return null; }
+        if (side[^1].Node >= 0 || side[^1].Road.Value >= 0) { refusal = "the road would end on another road"; return null; }
+        foreach (var (fx, fz, tx, tz, name) in new[] { (ax, az, jx, jz, "off-ramp"), (jx, jz, bx, bz, "on-ramp") })
+        {
+            var ramp = Plan(fx, fz, tx, tz, 0f, RoadType.Ramp);
+            if (ramp == null) { refusal = $"the {name} cannot be built there (too steep or blocked)"; return null; }
+            if (ramp.Count != 2) { refusal = $"the {name} would cross another road"; return null; }
+            var free = name == "off-ramp" ? ramp[^1] : ramp[0];
+            if (free.Node >= 0 || free.Road.Value >= 0) { refusal = $"the {name} would meet another road"; return null; }
+        }
+        return plan;
+    }
+
+    /// <summary>What the road and its two ramps cost, or null when any cannot be built.</summary>
+    public RoadCost? EstimateInterchange(Interchange ic, RoadType type, int lanesForward = 0, int lanesBack = 0)
+    {
+        var parts = new[]
+        {
+            EstimateCost(ic.X0, ic.Z0, ic.JX, ic.JZ, type, ic.SideSweep, lanesForward, lanesBack),
+            EstimateCost(ic.AX, ic.AZ, ic.JX, ic.JZ, RoadType.Ramp, 0f, 1, 0),
+            EstimateCost(ic.JX, ic.JZ, ic.BX, ic.BZ, RoadType.Ramp, 0f, 1, 0),
+        };
+        if (parts.Any(c => c == null)) return null;
+        return new RoadCost(parts.Sum(c => c!.Value.Length), parts.Sum(c => c!.Value.CutVolume), parts.Sum(c => c!.Value.FillVolume), parts.Sum(c => c!.Value.Money),
+            parts.Sum(c => c!.Value.BridgeLength), parts.Sum(c => c!.Value.TunnelLength));
+    }
+
+    /// <summary>Builds the road and its ramps, in that order. Returns the pieces of the road, then those of the off-ramp and of the on-ramp (the last one ends on the highway).</summary>
+    public (IReadOnlyList<RoadId> Side, IReadOnlyList<RoadId> OffRamp, IReadOnlyList<RoadId> OnRamp) BuildInterchange(Interchange ic, RoadType type, float speedLimit, int lanesForward = 0, int lanesBack = 0)
+    {
+        float rampSpeed = Tuning.Roads.Ramp.SpeedLimit;
+        var side = BuildRoad(ic.X0, ic.Z0, ic.JX, ic.JZ, type, speedLimit, ic.SideSweep, lanesForward, lanesBack);
+        var off = BuildRoad(ic.AX, ic.AZ, ic.JX, ic.JZ, RoadType.Ramp, rampSpeed, 0f, 1, 0);
+        var on = BuildRoad(ic.JX, ic.JZ, ic.BX, ic.BZ, RoadType.Ramp, rampSpeed, 0f, 1, 0);
+        return (side, off, on);
+    }
+
     // ---- Removing and upgrading ------------------------------------------------------------------------------
 
     /// <summary>The road piece whose centre line passes nearest to a point, within <paramref name="radius"/>.</summary>
@@ -1041,8 +1176,29 @@ public sealed class RoadNetwork
         Retire(road);
         RebuildJunction(road.From);
         RebuildJunction(road.To);
+        RemoveStrandedOneWays(road.From);
+        RemoveStrandedOneWays(road.To);
         Version++;
         return true;
+    }
+
+    /// <summary>A one-way road must lead somewhere: when the road it ran into is gone it goes too (a ramp with its highway), and so on along the chain.</summary>
+    void RemoveStrandedOneWays(int node)
+    {
+        foreach (var id in _nodeRoads[node].ToList())
+        {
+            var r = _roads[id.Value];
+            if (r.Retired || !r.IsOneWay) continue;
+            int end = r.ForwardLanes.Length > 0 ? r.To : r.From;
+            int start = end == r.To ? r.From : r.To;
+            bool leadsOn = _nodeRoads[end].Any(o => o != id && _roads[o.Value].LanesLeaving(end).Length > 0);
+            bool fed = _nodeRoads[start].Any(o => o != id && _roads[o.Value].LanesEntering(start).Length > 0);
+            if (leadsOn && fed) continue;
+            Retire(r);
+            RebuildJunction(r.From);
+            RebuildJunction(r.To);
+            RemoveStrandedOneWays(r.From == node ? r.To : r.From);
+        }
     }
 
     void Retire(Road road)
@@ -1235,7 +1391,7 @@ public sealed class RoadNetwork
                 var (fx, fz) = _nodes[startsHere ? road.To : road.From];
                 var (x0, z0, x1, z1) = startsHere ? (x, z, fx, fz) : (fx, fz, x, z);
                 float sweep = road.Geometry.Sweep;
-                var plan = Plan(x0, z0, x1, z1, sweep);
+                var plan = Plan(x0, z0, x1, z1, sweep, road.Type);
                 if (plan == null) return null; // refused: too short, too steep, too tight, or an end in water
                 moved.Add(new MovedRoad(road, x0, z0, x1, z1, sweep, RoadGeometry.FromChord(x0, z0, x1, z1, sweep), plan));
             }
@@ -1378,12 +1534,12 @@ public sealed class RoadNetwork
         if (!(speedLimit > 0f)) throw new ArgumentOutOfRangeException(nameof(speedLimit), "Speed limit must be positive.");
 
         var id = new RoadId(_roads.Count);
-        if (lanesForward == 0) lanesForward = lanesBack = DefaultLanes(type);
+        if (lanesForward == 0) { lanesForward = DefaultLanes(type); lanesBack = type == RoadType.Ramp ? 0 : lanesForward; }
         float rise = _nodeHeights[to] - _nodeHeights[from];
         float curveLimit = geometry.IsStraight ? float.PositiveInfinity : MathF.Sqrt(ComfortLateralAcceleration * geometry.Radius);
         var forward = NewCarriageway(id, type, lanesForward, lanesBack, speedLimit, curveLimit, from, to, geometry, rise / length);
         var backward = NewCarriageway(id, type, lanesBack, lanesForward, speedLimit, curveLimit, to, from, geometry.Reversed(), -rise / length);
-        if (type != RoadType.Avenue2x2 && type != RoadType.Dirt && lanesForward == 1 && lanesBack == 1)
+        if (type is RoadType.TwoLane or RoadType.Path && lanesForward == 1 && lanesBack == 1)
         {
             _lanes[forward[0].Value].Oncoming = backward[0];
             _lanes[backward[0].Value].Oncoming = forward[0];
@@ -1402,7 +1558,7 @@ public sealed class RoadNetwork
         int startNode, int endNode, RoadGeometry path, float grade)
     {
         float limit = MathF.Min(speedLimit * GradeFactor(grade), curveLimit);
-        float median = type == RoadType.Avenue2x2 ? MedianWidth : 0f;
+        float median = type is RoadType.Avenue2x2 or RoadType.Highway ? MedianWidth : 0f;
         var ids = new LaneId[count];
         for (int i = 0; i < count; i++)
         {
@@ -1441,13 +1597,30 @@ public sealed class RoadNetwork
                 foreach (var otherId in roads)
                 {
                     if (otherId == roadId) continue;
-                    next.Add(Outgoing(_roads[otherId.Value], node, lane.Index));
+                    var out1 = _roads[otherId.Value];
+                    if (out1.LanesLeaving(node).Length > 0 && MoveAllowed(lane, road, out1, node)) next.Add(Outgoing(out1, node, lane.Index));
                 }
-                if (next.Count == 0) // dead end: turn around
+                if (next.Count == 0 && road.LanesLeaving(node).Length > 0) // dead end: turn around
                     next.Add(Outgoing(road, node, lane.Index));
                 lane.Next = next.ToArray();
             }
         }
+    }
+
+    /// <summary>
+    /// Whether the lane may lead into the road. Only ramps are special: a ramp never leads into a ramp, and joins a highway only in the direction it
+    /// runs (a highway lane leaves into a ramp it points at, and a ramp merges into the lane that goes the way it does).
+    /// </summary>
+    static bool MoveAllowed(Lane from, Road fromRoad, Road toRoad, int node)
+    {
+        bool inRamp = fromRoad.Type == RoadType.Ramp, outRamp = toRoad.Type == RoadType.Ramp;
+        if (!inRamp && !outRamp) return true;
+        if (inRamp && outRamp) return false;
+        const float SameWay = 0.5f; // cosine of 60 degrees
+        float arrival = from.Path.HeadingAt(from.Path.Length);
+        if (toRoad.Type != RoadType.Highway && fromRoad.Type != RoadType.Highway) return true; // a ramp meets its side road
+        float departure = toRoad.From == node ? toRoad.Geometry.Heading0 : toRoad.Geometry.HeadingAt(toRoad.Length) + MathF.PI;
+        return MathF.Cos(arrival - departure) > SameWay;
     }
 
     static LaneId Outgoing(Road road, int node, int preferredIndex)

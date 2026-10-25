@@ -35,6 +35,17 @@ public class SaveLoadTests
     }
 
     [Fact]
+    public void OneWayRamp_RoundTrips_AndRunsOnTheSame()
+    {
+        var sim = new Simulation(OneWayTests.Loop().Net, 7);
+        sim.Execute(new SeedTrafficCommand(30));
+        Step(sim, 5);
+        var loaded = SaveAndLoad(sim);
+        Assert.True(loaded.Network.GetRoad(new RoadId(4)).IsOneWay);
+        AssertLoadedGameRunsOnTheSame(sim, 60);
+    }
+
+    [Fact]
     public void DirtAndAsymmetricRoads_RoundTrip_AndRunOnTheSame()
     {
         var sim = new Simulation(new RoadNetwork(Terrain.Flat()), 7);

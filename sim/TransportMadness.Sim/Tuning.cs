@@ -192,12 +192,27 @@ public sealed record RoadTypeTuning
     public required float CostPerMetre { get; init; }
 }
 
+/// <summary>The layout of the ramps a road makes where it meets a highway (road-types GDD).</summary>
+public sealed record InterchangeTuning
+{
+    /// <summary>Metres from the highway centre line to the node where the side road ends and the ramps meet it.</summary>
+    public required float Standoff { get; init; }
+    /// <summary>Metres along the highway from the road's meeting point to where each ramp joins it.</summary>
+    public required float Span { get; init; }
+    /// <summary>Least metres between a new ramp's highway end and an existing ramp's.</summary>
+    public required float MinRampGap { get; init; }
+    /// <summary>Smallest angle (radians) between the side road and the highway.</summary>
+    public required float MinAngle { get; init; }
+}
+
 public sealed record RoadTuning
 {
     public required RoadTypeTuning TwoLane { get; init; }
     public required RoadTypeTuning Avenue { get; init; }
     public required RoadTypeTuning Path { get; init; }
     public required RoadTypeTuning Dirt { get; init; }
+    public required RoadTypeTuning Ramp { get; init; }
+    public required RoadTypeTuning Highway { get; init; }
     /// <summary>Share of the two-lane price added per metre for each lane above a type's normal count.</summary>
     public required float ExtraLaneShare { get; init; }
     public required float CutCostPerCubicMetre { get; init; }
@@ -214,14 +229,15 @@ public sealed record RoadTuning
     public required float BridgeCostPerMetre { get; init; }
     public required float TunnelCostPerMetre { get; init; }
     public required float AvenueStructureFactor { get; init; }
+    public required InterchangeTuning Interchange { get; init; }
     public required TrafficLightTuning TrafficLight { get; init; }
     public required RoadSignTuning Signs { get; init; }
 
     /// <summary>Price per metre of a bridge or tunnel of the given road type.</summary>
     public float StructureCostPerMetre(RoadStructure structure, RoadType type) =>
-        (structure == RoadStructure.Tunnel ? TunnelCostPerMetre : BridgeCostPerMetre) * (type == RoadType.Avenue2x2 ? AvenueStructureFactor : 1f);
+        (structure == RoadStructure.Tunnel ? TunnelCostPerMetre : BridgeCostPerMetre) * (type is RoadType.Avenue2x2 or RoadType.Highway ? AvenueStructureFactor : 1f);
 
-    public RoadTypeTuning Of(RoadType type) => type switch { RoadType.Avenue2x2 => Avenue, RoadType.Path => Path, RoadType.Dirt => Dirt, _ => TwoLane };
+    public RoadTypeTuning Of(RoadType type) => type switch { RoadType.Avenue2x2 => Avenue, RoadType.Path => Path, RoadType.Dirt => Dirt, RoadType.Ramp => Ramp, RoadType.Highway => Highway, _ => TwoLane };
 }
 
 /// <summary>Traffic lights at road junctions: two groups of approaches take turns.</summary>

@@ -140,6 +140,7 @@ public sealed partial class Simulation
                 float roadY = _net.RoadHeightAt(road.Id, along);
                 float trackY = PlannedHeight(plan, at, x, z);
                 if (MathF.Abs(roadY - trackY) >= rules.Clearance) continue; // one passes over the other
+                if (road.Type == RoadType.Highway) return false; // a highway is never crossed in level
                 if (AngleBetween(track.HeadingAt(at), road.Geometry.HeadingAt(along)) < rules.MinAngle) return false;
                 if (along < rules.MinFromNode || along > road.Length - rules.MinFromNode) return false;
                 foreach (var p in plan)
@@ -159,7 +160,7 @@ public sealed partial class Simulation
     }
 
     /// <summary>The same check for a road about to be built across tracks.</summary>
-    bool RoadCrossingsAllowed(RoadGeometry road, IReadOnlyList<(float Along, float X, float Z, float Y, bool Junction)> plan, out int count)
+    bool RoadCrossingsAllowed(RoadGeometry road, IReadOnlyList<(float Along, float X, float Z, float Y, bool Junction)> plan, out int count, bool separatedOnly = false)
     {
         count = 0;
         var rules = CrossingRules;
@@ -179,6 +180,7 @@ public sealed partial class Simulation
                 float trackY = _rail.TrackHeightAt(track.Id, along);
                 float roadY = HeightOfPlan(plan, at);
                 if (MathF.Abs(roadY - trackY) >= rules.Clearance) continue;
+                if (separatedOnly) return false;
                 if (AngleBetween(road.HeadingAt(at), track.Geometry.HeadingAt(along)) < rules.MinAngle) return false;
                 if (along < rules.MinFromNode || along > track.Length - rules.MinFromNode) return false;
                 foreach (var p in plan)

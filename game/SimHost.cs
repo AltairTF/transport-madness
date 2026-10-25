@@ -256,6 +256,23 @@ public partial class SimHost : Node3D
     /// </summary>
     public Godot.Collections.Dictionary EstimateCurveCost(float x0, float z0, float x1, float z1, int type, float sweep)
     {
+        var roadType = RoadTypeOf(type);
+        var (ilf, ilb) = LanesFor(type);
+        if (Sim.PlanInterchange(x0, z0, x1, z1, roadType, sweep, out string? refusal) is { } interchange)
+        {
+            // A road that ends on a highway stops short of it and gets two ramps (road-types GDD): priced together.
+            if (Sim.EstimateInterchange(interchange, roadType, ilf, ilb) is not { } ic) return new Godot.Collections.Dictionary { ["valid"] = false, ["reason"] = "the road or its ramps cannot be built there" };
+            var cc = ic.Cost;
+            return new Godot.Collections.Dictionary
+            {
+                ["valid"] = true, ["interchange"] = true, ["length"] = cc.Length, ["cut"] = cc.CutVolume, ["fill"] = cc.FillVolume, ["money"] = cc.Money,
+                ["bridge"] = cc.BridgeLength, ["tunnel"] = cc.TunnelLength, ["max_fill"] = 0f, ["max_cut"] = 0f,
+                ["demolished"] = ic.Demolition.Count, ["demolition_price"] = ic.Demolition.Price,
+                ["spurs"] = 0, ["spurs_blocked"] = 0, ["spur_length"] = 0f, ["spur_money"] = 0f,
+                ["affordable"] = Sim.CanAfford(cc.Money + ic.Demolition.Price),
+            };
+        }
+        if (refusal != null) return new Godot.Collections.Dictionary { ["valid"] = false, ["reason"] = refusal };
         var join = Sim.JoinRoad(x0, z0, x1, z1, RoadTypeOf(type), sweep);
         var (lf, lb) = LanesFor(type);
         var cost = Sim.Network.EstimateCost(x0, z0, x1, z1, RoadTypeOf(type), sweep, lf, lb);
@@ -385,7 +402,7 @@ public partial class SimHost : Node3D
     /// <summary>The lane counts to build a road of this type with: the chosen ones when the type takes them.</summary>
     (int Forward, int Back) LanesFor(int type) => type is 0 or 1 ? (_lanesForward, _lanesBack) : (0, 0);
 
-    static RoadType RoadTypeOf(int type) => type switch { 1 => RoadType.Avenue2x2, 2 => RoadType.Path, 3 => RoadType.Dirt, _ => RoadType.TwoLane };
+    static RoadType RoadTypeOf(int type) => type switch { 1 => RoadType.Avenue2x2, 2 => RoadType.Path, 3 => RoadType.Dirt, 4 => RoadType.Highway, _ => RoadType.TwoLane };
 
     /// <summary>Builds a straight road. Type 0 is 2-lane, 1 is the 2x2 avenue.</summary>
     public bool BuildRoad(float x0, float z0, float x1, float z1, int type) => BuildCurve(x0, z0, x1, z1, type, 0f);
@@ -1149,6 +1166,15 @@ public partial class SimHost : Node3D
 
     public int DepotCount() => Sim.Depots.Count;
 
+    /// <summary>Live roads of one type (0 two-lane, 1 avenue, 2 path, 3 dirt, 4 highway), and 5 for the ramps.</summary>
+    public int RoadCountOfType(int type)
+    {
+        var wanted = type == 5 ? RoadType.Ramp : RoadTypeOf(type);
+        int n = 0;
+        for (int r = 0; r < Sim.Network.RoadCount; r++) { var road = Sim.Network.GetRoad(new RoadId(r)); if (!road.Retired && road.Type == wanted) n++; }
+        return n;
+    }
+
     /// <summary>Roads currently in use (a road split by a junction counts as its two halves).</summary>
     public int RoadCount()
     {
@@ -1459,10 +1485,10 @@ public partial class SimHost : Node3D
             var road = net.GetRoad(new RoadId(r));
             var g = road.Geometry;
             float y0 = net.GetNodeHeight(road.From), y1 = net.GetNodeHeight(road.To);
-            bool avenue = road.Type == RoadType.Avenue2x2;
+            bool avenue = road.Type is RoadType.Avenue2x2 or RoadType.Highway;
             float median = avenue ? RoadNetwork.MedianWidth : 0f;
             bool path = road.Type == RoadType.Path, dirt = road.Type == RoadType.Dirt;
-            bool unmarked = path || dirt; // no centre line on a track
+            bool unmarked = path || dirt || road.Type == RoadType.Ramp; // no centre line on a track or a ramp
             float width = path || dirt ? RoadNetwork.HalfWidth(road.Type) * 2f : (road.LanesForward + road.LanesBack) * Simulation.LaneWidth + median;
             var surface = path ? _pathMaterial : dirt ? _dirtMaterial : _roadMaterial;
 

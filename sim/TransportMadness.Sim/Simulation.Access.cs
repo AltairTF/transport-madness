@@ -154,6 +154,10 @@ public sealed partial class Simulation
     /// </summary>
     int BuildRoadWithAccess(BuildRoadCommand c)
     {
+        if (!RoadNetwork.ValidLanes(c.Type, c.LanesForward, c.LanesBack)) return 0;
+        var interchange = _net.PlanInterchange(c.X0, c.Z0, c.X1, c.Z1, c.Sweep, c.Type, out string? refusal);
+        if (refusal != null) return 0;
+        if (interchange != null) return BuildInterchange(c, interchange);
         var join = JoinRoad(c.X0, c.Z0, c.X1, c.Z1, c.Type, c.Sweep);
         int built = BuildRoadPiece(join.X0, join.Z0, join.X1, join.Z1, c.Type, c.SpeedLimit, c.Sweep, join.SpurMoney, c.LanesForward, c.LanesBack);
         if (built == 0) return 0;
@@ -174,7 +178,7 @@ public sealed partial class Simulation
         var geometry = RoadGeometry.FromChord(x0, z0, x1, z1, sweep);
         var inTheWay = BuildingsInTheWay(new[] { (geometry, RoadNetwork.HalfWidth(type, lanesForward, lanesBack)) });
         int crossings = 0;
-        if (RailInUse && (_net.PlannedPoints(x0, z0, x1, z1, sweep) is not { } plan || !RoadCrossingsAllowed(geometry, plan, out crossings))) return 0;
+        if (RailInUse && (_net.PlannedPoints(x0, z0, x1, z1, sweep) is not { } plan || !RoadCrossingsAllowed(geometry, plan, out crossings, type == RoadType.Highway))) return 0;
         if (!CanAfford(cost.Value.Money + DemolitionOf(inTheWay).Price + crossings * _railTuning.Crossings.Price + reserve)) return 0;
         int built = _net.BuildRoad(x0, z0, x1, z1, type, speedLimit, sweep, lanesForward, lanesBack).Count;
         if (built > 0)

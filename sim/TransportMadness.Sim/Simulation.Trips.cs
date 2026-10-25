@@ -558,7 +558,7 @@ public sealed partial class Simulation
         foreach (var roadId in _net.RoadsAt(node))
         {
             var road = _net.GetRoad(roadId);
-            yield return (road.From == node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+            if (road.RightLaneLeaving(node) is var lane and >= 0) yield return lane;
         }
     }
 

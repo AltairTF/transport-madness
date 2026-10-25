@@ -21,6 +21,7 @@ public sealed partial class Simulation
         switch (command)
         {
             case BuildRoadCommand c:
+                if (c.Type == RoadType.Ramp) return 0; // made only by the highway tool
                 return BuildRoadWithAccess(c);
             case RemoveRoadCommand c:
                 if (!IsLiveRoad(c.Road) || !CanAfford(_net.DemolitionCost(new RoadId(c.Road)))) return 0;

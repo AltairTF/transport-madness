@@ -141,6 +141,7 @@ func set_tool(tool_name: String) -> void:
 		"road1": message.emit("Dirt road: click to start, click again to build (right click or Esc stops)")
 		"road2": message.emit("2-lane road: click to start, click again to build (right click or Esc stops)")
 		"road4": message.emit("2x2 avenue: click to start, click again to build (right click or Esc stops)")
+		"road5": message.emit("Highway: click to start, click again to build (right click or Esc stops). Roads join it only by ramps: end a road on it. It can't be crossed in level")
 		"curve2": message.emit("Curved 2-lane road: click the start, a point on the curve, then the end (right click or Esc stops)")
 		"curve4": message.emit("Curved avenue: click the start, a point on the curve, then the end (right click or Esc stops)")
 		"upgrade": message.emit("Upgrade: click a dirt road to make it a 2-lane road, or a 2-lane road to widen it to an avenue")
@@ -182,6 +183,8 @@ func _is_curve() -> bool:
 
 ## Half the width of the road being drawn: its lanes (the chosen layout, or the type's own), plus the avenue's median.
 func _road_half(avenue: bool, dirt: bool) -> float:
+	if _road_type() == 4:
+		return 10.0
 	if dirt:
 		return 3.0
 	var lanes: Array = LANE_LAYOUTS[_lanes_index]
@@ -192,12 +195,14 @@ func _road_half(avenue: bool, dirt: bool) -> float:
 func _road_type() -> int:
 	if tool == "road1":
 		return 3
+	if tool == "road5":
+		return 4
 	return 1 if tool == "road4" or tool == "curve4" else 0
 
 
 ## The tools that draw a straight road or track from a start to an end (a drag works for them, and a parallel one can go beside).
 func _is_straight_tool() -> bool:
-	return tool == "road1" or tool == "road2" or tool == "road4" or tool == "track"
+	return tool == "road1" or tool == "road2" or tool == "road4" or tool == "road5" or tool == "track"
 
 
 ## The two ends of the road or track built beside the one from a to b, on the side the player chose; null while that is off.
@@ -600,7 +605,7 @@ func _update_preview(screen: Vector2) -> void:
 		runs = host.RoadRuns(_start.x, _start.z, target.x, target.z, sweep, _road_type())
 	var cost: Dictionary = host.EstimateTrackCost(_start.x, _start.z, target.x, target.z, sweep) if _is_rail_tool() else host.EstimateCurveCost(_start.x, _start.z, target.x, target.z, _road_type(), sweep)
 	var valid: bool = cost["valid"]
-	var width := RAIL_WIDTH if _is_rail_tool() else (16.0 if _road_type() == 1 else 7.0)
+	var width := RAIL_WIDTH if _is_rail_tool() else (20.0 if _road_type() == 4 else (16.0 if _road_type() == 1 else 7.0))
 	_material.albedo_color = ROAD_COLORS["valid"] if valid and cost["affordable"] else ROAD_COLORS["invalid"]
 
 	var spurs: Array = [] if join.is_empty() else join["spurs"]
@@ -639,6 +644,8 @@ func _update_preview(screen: Vector2) -> void:
 			text += "   %d level %s" % [cost["crossings"], "crossing" if cost["crossings"] == 1 else "crossings"]
 		text += _join_text(join, cost)
 		text += _demolition_text(cost)
+		if cost.get("interchange", false):
+			text += "   (stops 45 m short; an off-ramp and an on-ramp join the highway)"
 		if twin != null:
 			if twin_cost.get("valid", false):
 				text += "   |   parallel: %s   together %s" % [_money(twin_cost["money"]), _money(cost["money"] + twin_cost["money"])]
@@ -651,14 +658,15 @@ func _update_preview(screen: Vector2) -> void:
 			reason = "too short, too steep (max 4%), curve too tight (radius 90 m), in water, too close to another junction, or it would cross a road too near its end or at too sharp an angle"
 		message.emit("Can't lay track there: " + reason)
 	else:
-		message.emit("Can't build there: too short, too steep (max 12%), curve too tight, in water, or too close to a junction")
+		var why: String = cost.get("reason", "")
+		message.emit("Can't build there: " + (why if why != "" else "too short, too steep (max 12%), curve too tight, in water, or too close to a junction"))
 
 
 ## What the ghost is made like: "road2", "road4", "rail" (the stone path to an access point, "path", is drawn by _draw_spur and by the depot tool).
 func _ghost_kind() -> String:
 	if _is_rail_tool():
 		return "rail"
-	return "road4" if _road_type() == 1 else ("road1" if _road_type() == 3 else "road2")
+	return "road5" if _road_type() == 4 else ("road4" if _road_type() == 1 else ("road1" if _road_type() == 3 else "road2"))
 
 
 func _clear_ghosts() -> void:
@@ -782,7 +790,7 @@ func _draw_ghost(target: MeshInstance3D, points: PackedVector3Array, kind: Strin
 		_ghost_disc(target, points[points.size() - 1], ok)
 	_ghost_strip(mesh, points, -half, half, surface, GHOST_LIFT + 0.02)
 	match kind:
-		"road4":
+		"road4", "road5":
 			_ghost_strip(mesh, points, -MEDIAN_WIDTH * 0.5, MEDIAN_WIDTH * 0.5, GHOST_MEDIAN, GHOST_LIFT + 0.06)
 		"road2":
 			_ghost_strip(mesh, points, -0.12, 0.12, GHOST_LINE, GHOST_LIFT + 0.06)

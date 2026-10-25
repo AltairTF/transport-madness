@@ -69,6 +69,7 @@ const TOOL_CATEGORIES := [
 		["Dirt road", "road1", "Build a cheap, slow dirt road. It can be upgraded to a 2-lane road."],
 		["2-lane road", "road2", "Build a road with one lane each way."],
 		["2x2 avenue", "road4", "Build a road with two lanes each way."],
+		["Highway", "road5", "Build a fast highway with two lanes each way. Roads join it only by ramps: end a road on it and an off-ramp and an on-ramp are made."],
 		["Curve", "curve2", "Build a curved 2-lane road: start, bend, end."],
 		["Curved avenue", "curve4", "Build a curved avenue: start, bend, end."]]},
 	{"name": "Modify", "tools": [

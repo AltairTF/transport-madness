@@ -174,7 +174,8 @@ public sealed partial class Simulation
             foreach (var roadId in _net.RoadsAt(_depots[entry.Depot].Node))
             {
                 var road = _net.GetRoad(roadId);
-                int lane = (road.From == _depots[entry.Depot].Node ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+                int lane = road.RightLaneLeaving(_depots[entry.Depot].Node);
+                if (lane < 0) continue;
                 reaches |= !float.IsPositiveInfinity(field[lane]) && _laneReach[lane] + _models[entry.Model].Length + SpawnGap <= _laneLength[lane];
             }
             return reaches ? null : "no road leads from its depot to the line's first station";

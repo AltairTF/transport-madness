@@ -5,6 +5,7 @@ extends Node3D
 ##   --hour=<0 to 24>             hold the light at that hour of the day (lighting.gd), for screenshots
 ##   --selftest-build             build roads with simulated mouse clicks, run, print stats, quit
 ##   --towns[=<n>]                start on the generated map with n towns (default 5); a self-test that is not told to use --towns runs on a level empty map (the generated land with nothing on it for --selftest-hills, --selftest-place, --selftest-curve and --selftest-models)
+##   --selftest-highway           build a highway and roads ending on it (ramps) with simulated mouse clicks, run traffic, print, screenshot (--shot, --distance, --pitch), quit
 ##   --selftest-hills             build roads over hills, print grade and cost, quit
 ##   --selftest-crash             crash a car, follow the crew until the road is clear, print the timeline, quit
 ##   --selftest-place             right click, drag, parallel roads, a turned and raised depot and the camera following, with simulated input on the hills map, print, quit
@@ -187,6 +188,8 @@ func _ready() -> void:
 		_selftest_build()
 	if _args.has("--selftest-crash"):
 		_selftest_crash()
+	if _args.has("--selftest-highway"):
+		_selftest_highway()
 	if _args.has("--selftest-hills"):
 		_selftest_hills()
 	if _args.has("--selftest-lines"):
@@ -272,7 +275,7 @@ func _process(delta: float) -> void:
 		for warning in host.TakeRailWarnings():
 			hud.show_message(warning)
 
-	if _args.has("--shot") and not _args.has("--selftest-ui") and not _args.has("--selftest-build") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
+	if _args.has("--shot") and not _args.has("--selftest-ui") and not _args.has("--selftest-build") and not _args.has("--selftest-highway") and not _args.has("--selftest-crash") and _elapsed > float(_args.get("--shot-after", 6.0)):
 		get_viewport().get_texture().get_image().save_png(_args["--shot"])
 		get_tree().quit()
 
@@ -523,6 +526,40 @@ func _on_garage_buy(rail: bool, depot: int, option: String) -> void:
 func _on_garage_assign(parked: int, line: int) -> void:
 	var why: String = host.AssignParked(parked, line)
 	hud.show_message("Out of the depot and on line %d" % (line + 1) if why == "" else "Can't put it on that line: " + why)
+
+
+## A highway and three roads ending on it, built with the real tool: each gets an off-ramp and an on-ramp (road-types GDD).
+func _selftest_highway() -> void:
+	host.NewTestWorld(Session.world_seed, false)
+	rig.distance = float(_args.get("--distance", 520.0))
+	rig.pitch = float(_args.get("--pitch", -60.0))
+	rig.position = Vector3.ZERO
+	rig._apply()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var camera: Camera3D = rig.get_node("Camera3D")
+	build_tool.message.connect(func(text: String) -> void: print("HIGHWAY message: ", text))
+	var clicks := [
+		["road5", [Vector3(-520, 0, 0), Vector3(520, 0, 0)]],
+		["road2", [Vector3(0, 0, -240), Vector3(0, 0, 0)]],      # from the south, ends on the highway
+		["road2", [Vector3(330, 0, 240), Vector3(330, 0, 0)]],   # from the north
+		["road2", [Vector3(100, 0, -240), Vector3(100, 0, 0)]],  # too close to the first ramps: refused
+	]
+	for step in clicks:
+		hud.select_tool(step[0])
+		build_tool.set_tool(step[0])
+		for point in step[1]:
+			await _click_world(camera, point)
+		build_tool.set_tool("pointer")
+	print("HIGHWAY highways=%d ramps=%d roads=%d" % [host.RoadCountOfType(4), host.RoadCountOfType(5), host.RoadCount()])
+	host.SpawnTraffic(80)
+	host.SetSpeed(4.0)
+	await get_tree().create_timer(12.0).timeout
+	var stats: Dictionary = host.GetStats()
+	print("HIGHWAY vehicles=%d mean_speed=%.1f incidents=%d" % [stats["vehicles"], stats["mean_speed"], stats["incidents"]])
+	if _args.has("--shot"):
+		get_viewport().get_texture().get_image().save_png(_args["--shot"])
+	get_tree().quit()
 
 
 ## Drives the real tool with synthetic mouse events: two chained roads plus an avenue, a depot, then traffic.

@@ -77,7 +77,8 @@ public sealed partial class Simulation
         foreach (var roadId in _net.RoadsAt(from))
         {
             var road = _net.GetRoad(roadId);
-            int lane = (road.From == from ? road.ForwardLanes : road.BackwardLanes)[0].Value;
+            int lane = road.RightLaneLeaving(from);
+            if (lane < 0) continue;
             if (field[lane] < best) { best = field[lane]; start = lane; }
         }
         var (fx, fz) = StopPoint(fromKind, fromId);

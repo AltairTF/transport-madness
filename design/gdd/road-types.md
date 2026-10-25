@@ -1,6 +1,6 @@
 # Road Types
 
-> **Status**: Designed
+> **Status**: Designed; dirt, asymmetric lanes, highway, ramps and one-way roads built (2026-10-25); data table, speed cap per type and era gating not built
 > **Author**: user + Claude
 > **Last Updated**: 2026-10-25
 > **Last Verified**: 2026-10-25
@@ -123,3 +123,13 @@ No Formulas section at `minimal`; criteria come from Core Rules. Solo mode: `qa-
 12. **GIVEN** a route where a highway saves time, **WHEN** a vehicle is routed, **THEN** it takes the highway.
 
 A retained screenshot of each new type in the 3D view, in `production/qa/evidence/`, is required before the story closes (coding standards).
+
+## Implementation Notes (2026-10-25)
+
+What was built for the highway and where it differs from the rules above. Tests: `HighwayTests`, `RampTests`, `OneWayTests`; evidence `production/qa/evidence/highway-ramps.png`.
+
+- **One-way roads.** A road may have lanes in one direction only (`Road.IsOneWay`, lanes (1, 0)). `RoadType.Ramp` is the only user of it; `BuildRoadCommand` refuses `Ramp`. A one-way road that leads nowhere, or is fed by nothing, is removed with the road it hung on (`RemoveStrandedOneWays`), so ramps go with their highway.
+- **Highway** (`RoadType.Highway`, 2+2 lanes, median, half width 10 m, speed 28, 180 per metre): in `RoadNetwork.TypeAllowsMeetings` it meets no road in level, and no other road meets it; it can be continued from the free end of another highway. A rail line cannot cross it in level and it cannot cross rails in level.
+- **Ramps.** A road built with an end on a highway stops `interchange.standoff` (45 m) short at a node J, and an off-ramp (highway to J) and an on-ramp (J to highway) are built, `interchange.span` (90 m) up and down the highway. Rules: an angle of at least 45 degrees, not on a bridge or tunnel, 10 m from the end of its highway piece, ramp ends at least `minRampGap` (120 m, so interchange centres are about 300 m apart) from other ramps' ends, nothing crossed by the ramps. All of it or nothing is built, and priced and shown in the preview together. The on-ramp has a yield sign at its merge.
+- **Near side only.** The ramps serve the carriageway on the road's side (a road from the south joins the westbound carriageway when the highway runs east). To serve both directions, build a road from each side. Cars on the other carriageway cannot turn into the ramps (`RoadNetwork.MoveAllowed`).
+- **Not built:** the table of types in `data/tuning.json` with the type switches removed (acceptance 1 and 2), a speed cap per type (9), an upgrade or era gate, highway ramps beyond one highway piece (an interchange must fit inside one piece), and an interchange that serves both carriageways from one road. The save format number was not raised: the enum only gained members at its end.

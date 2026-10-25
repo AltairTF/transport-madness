@@ -770,6 +770,7 @@ public sealed partial class Simulation
         if (_net.RoadAt(x, z, b.CraterRadius) is not { } roadId) return false;
         var road = _net.GetRoad(roadId);
         bool back = rng.NextFloat() < 0.5f;
+        if (road.IsOneWay) back = road.ForwardLanes.Length == 0;
         int lane = (back ? road.BackwardLanes : road.ForwardLanes)[0].Value;
         float length = _net.GetLane(new LaneId(lane)).Length;
         if (length < 2f * _traffic.SpawnClearance) return false;
